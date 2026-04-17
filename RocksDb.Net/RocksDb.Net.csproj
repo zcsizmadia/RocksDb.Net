@@ -1,0 +1,25 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>$(DefaultClassLibTargetFrameworks)</TargetFrameworks>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>RocksDb.Net</AssemblyName>
+    <RootNamespace>RocksDbNet</RootNamespace>
+    <PackageId>RocksDb.Net</PackageId>
+    <Description>C# wrapper for the RocksDB embedded key-value store</Description>
+    <IsPackable>true</IsPackable>
+
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Suppress CS1591: library is documented on public API surface; Dispose/ToString are self-evident -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="Native\NativeMethods.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="RocksDb.Net.Runtimes" />
+  </ItemGroup>
+
+</Project>

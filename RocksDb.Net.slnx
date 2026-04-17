@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/Samples/">
+    <Project Path="Samples/Simple/Simple.csproj" />
+  </Folder>
+  <Folder Name="/Solution Files/">
+    <File Path=".editorconfig" />
+    <File Path=".gitignore" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+  </Folder>
+  <Project Path="RocksDb.Net.Tests/RocksDb.Net.Tests.csproj" Id="80e46977-aae4-49f4-b017-24173b4f5551" />
+  <Project Path="RocksDb.Net/RocksDb.Net.csproj" />
+</Solution>
