@@ -1,0 +1,22 @@
+<Project>
+  <PropertyGroup>
+    <DefaultTargetFramework>net10.0</DefaultTargetFramework>
+    <DefaultTargetFrameworks>net10.0</DefaultTargetFrameworks>
+    <!--<DefaultClassLibTargetFrameworks>net8.0;net9.0;net10.0</DefaultClassLibTargetFrameworks>-->
+    <DefaultClassLibTargetFrameworks>net10.0</DefaultClassLibTargetFrameworks>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Version>11.0.4.1</Version>
+    <PackageVersion>$(Version)</PackageVersion>
+    <Authors>Zoltan Csizmadia</Authors>
+  </PropertyGroup>
+</Project>
