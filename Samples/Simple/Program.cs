@@ -1,62 +1,113 @@
-﻿using System.Diagnostics;
-using System.Text;
-
+﻿using System.Text;
 using RocksDbNet;
 
 namespace Simple;
+
+class MyMergeOperator : MergeOperator
+{
+    public MyMergeOperator() : base("MyMergeOperator")
+    {
+    }
+
+    public override bool FullMerge(ReadOnlySpan<byte> key, bool hasExistingValue, ReadOnlySpan<byte> existingValue, IEnumerable<byte[]> operands, out byte[] newValue)
+    {
+        newValue = Array.Empty<byte>();
+        return true;
+    }
+}
+
+class CaseInsensitiveComparator : Comparator
+{
+    public CaseInsensitiveComparator()
+        : base(nameof(CaseInsensitiveComparator))
+    {
+    }
+
+    public override int Compare(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
+    {
+        int alen = a.Length;
+        int blen = b.Length;
+        int min_len = (alen < blen) ? alen : blen;
+        for (int i = 0; i < min_len; i++)
+        {
+            char ca = char.ToLower((char)a[i]);
+            char cb = char.ToLower((char)b[i]);
+            if (ca < cb) return -1;
+            if (ca > cb) return 1;
+        }
+
+        if (alen < blen) return -1;
+        if (alen > blen) return 1;
+
+        return 0;
+    }
+}
+
+class MyLogger : Logger
+{
+    public MyLogger()
+        : base (LogLevel.Debug)
+    {
+    }
+    public override void Log(LogLevel logLevel, string message)
+    {
+        Console.WriteLine($"[{logLevel}] {message}");
+    }
+}
+
+class MyEventListener : EventListener
+{
+    public override void OnFlushCompleted(FlushJobInfo flushJobInfo)
+    {
+        Console.WriteLine($"Flush completed: {flushJobInfo}");
+    }
+    public override void OnCompactionCompleted(CompactionJobInfo compactionJobInfo)
+    {
+        Console.WriteLine($"Compaction completed: {compactionJobInfo}");
+    }
+}
 
 static class Program
 {
     static void Main(string[] args)
     {
-        string temp = Path.GetTempPath();
-        string path = Environment.ExpandEnvironmentVariables(Path.Combine(temp, "rocksdb_prefix_example"));
-        var bbto = new BlockBasedTableOptions()
-            {
-                WholeKeyFiltering = false,
-            }
-            .SetFilterPolicy(FilterPolicy.CreateBloomFull(10));
+        using var logger = new MyLogger();
+
         var options = new DbOptions()
-            {
-                CreateIfMissing = true,
-                CreateMissingColumnFamilies = true
-            };
-        var columnFamilies = new List<ColumnFamilyDescriptor>()
         {
-            new ("default", new DbOptions().OptimizeForPointLookup(256)),
-            new ("test", new DbOptions()
-                .SetPrefixExtractor(SliceTransform.CreateFixedPrefix((ulong)8))
-                .SetBlockBasedTableFactory(bbto))
-        };
-        using (var db = RocksDb.Open(options, path, columnFamilies))
-        {
-            var cf = db.GetColumnFamily("test");
-
-            db.Put("00000000Zero", "", cf: cf);
-            db.Put("00000000One", "", cf: cf);
-            db.Put("00000000Two", "", cf: cf);
-            db.Put("00000000Three", "", cf: cf);
-            db.Put("00000001Red", "", cf: cf);
-            db.Put("00000001Green", "", cf: cf);
-            db.Put("00000001Black", "", cf: cf);
-            db.Put("00000002Apple", "", cf: cf);
-            db.Put("00000002Cranberry", "", cf: cf);
-            db.Put("00000002Banana", "", cf: cf);
-
-            var readOptions = new ReadOptions();
-            using (var iter = db.NewIterator(cf, readOptions))
-            {
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
-                var b = Encoding.UTF8.GetBytes("00000001");
-                iter.Seek(b);
-                while (iter.IsValid())
-                {
-                    Console.WriteLine(iter.KeyAsString());
-                    iter.Next();
-                }
-            }
+            CreateIfMissing = true,
+            InfoLogLevel = LogLevel.Debug,
+            WriteBufferSize = 0
         }
-        Console.WriteLine("Done...");
+        .SetComparator(new CaseInsensitiveComparator())
+        .SetMergeOperator(new MyMergeOperator())
+        .SetInfoLog(logger)
+        .AddEventListener(new MyEventListener());
+
+        var x = Environment.CurrentDirectory;
+
+        using (var db = RocksDb.Open(options, "rocksdb"))
+        {
+            db.Put("user_tags", "active");
+            db.Put(Encoding.UTF8.GetBytes("majom"), null!);
+
+            db.Merge("user_tags", "premium");
+            db.Merge("user_tags2", "verified");
+            db.Merge("majom", "verified");
+
+
+            db.Put("aladar", "active");
+            db.Put("Aladar", "active");
+            db.Put("User_tags", "active");
+            db.Put("Bela", "active");
+            db.Put("bela", "active");
+
+            var value = db.Get("user_tags2");
+
+            db.CompactRange();
+
+            db.Flush();
+        }
+        Console.WriteLine("!!!!!!!!!!!!!!!!!!!!!! Done...");
     }
 }

@@ -31,8 +31,8 @@ public class ColumnFamilyHandle : RocksDbHandle
     {
         get
         {
-            byte* ptr = NativeMethods.rocksdb_column_family_handle_get_name(Handle, out nuint len);
-            return NativeMethods.PtrToStringUTF8(ptr, len) ?? string.Empty;
+            nint ptr = NativeMethods.rocksdb_column_family_handle_get_name(Handle, out nuint len);
+            return NativeMethods.PtrToStringUTF8((byte*)ptr, len) ?? string.Empty;
         }
     }
 

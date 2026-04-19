@@ -1,3 +1,4 @@
+using System.Text;
 using RocksDbNet.Native;
 
 namespace RocksDbNet;
@@ -348,25 +349,27 @@ public sealed class DbOptions : RocksDbHandle
     }
 
     /// <summary>Sets the directory where RocksDB writes log files. Defaults to the DB path.</summary>
-    public DbOptions SetDbLogDir(string path)
+    public unsafe DbOptions SetDbLogDir(string path)
     {
-        NativeMethods.rocksdb_options_set_db_log_dir(Handle, path);
+        fixed (byte* p = Encoding.UTF8.GetBytes(path + '\0'))
+            NativeMethods.rocksdb_options_set_db_log_dir(Handle, p);
         return this;
     }
 
     /// <summary>Sets the directory where WAL files are stored.</summary>
-    public DbOptions SetWalDir(string path)
+    public unsafe DbOptions SetWalDir(string path)
     {
-        NativeMethods.rocksdb_options_set_wal_dir(Handle, path);
+        fixed (byte* p = Encoding.UTF8.GetBytes(path + '\0'))
+            NativeMethods.rocksdb_options_set_wal_dir(Handle, p);
         return this;
     }
 
     // ── Logging ───────────────────────────────────────────────────────────────
 
-    public int InfoLogLevel
+    public LogLevel InfoLogLevel
     {
-        get => NativeMethods.rocksdb_options_get_info_log_level(Handle);
-        set => NativeMethods.rocksdb_options_set_info_log_level(Handle, value);
+        get => (LogLevel)NativeMethods.rocksdb_options_get_info_log_level(Handle);
+        set => NativeMethods.rocksdb_options_set_info_log_level(Handle, (int)value);
     }
 
     public ulong KeepLogFileNum
@@ -496,6 +499,8 @@ public sealed class DbOptions : RocksDbHandle
         return this;
     }
 
+    // ── Compaction filter ──────────────────────────────────
+
     /// <summary>
     /// Attaches a compaction filter. The filter is invoked for every key-value
     /// pair during table-file creation (compaction and flush).
@@ -528,6 +533,48 @@ public sealed class DbOptions : RocksDbHandle
         NativeMethods.rocksdb_options_set_compaction_filter_factory(Handle, factory.Handle);
         return this;
     }
+
+    // ── Merge operator ──────────────────────────────────
+
+    public DbOptions SetMergeOperator(MergeOperator mergeOperator)
+    {
+        ArgumentNullException.ThrowIfNull(mergeOperator);
+        NativeMethods.rocksdb_options_set_merge_operator(Handle, mergeOperator.Handle);
+        return this;
+    }
+
+    public DbOptions SetUInt64AddMergeOperator()
+    {
+        NativeMethods.rocksdb_options_set_uint64add_merge_operator(Handle);
+        return this;
+    }
+
+    public DbOptions SetComparator(Comparator comparator)
+    {
+        ArgumentNullException.ThrowIfNull(comparator);
+        NativeMethods.rocksdb_options_set_comparator(Handle, comparator.Handle);
+        return this;
+    }
+
+    // ── Logging ──────────────────────────────────
+    
+    public DbOptions SetInfoLog(Logger logger)
+    {
+        ArgumentNullException.ThrowIfNull(logger);
+        NativeMethods.rocksdb_options_set_info_log(Handle, logger.Handle);
+        return this;
+    }
+
+    // ── Event listener ──────────────────────────────────
+
+    public DbOptions AddEventListener(EventListener eventListener)
+    {
+        ArgumentNullException.ThrowIfNull(eventListener);
+        NativeMethods.rocksdb_options_add_eventlistener(Handle, eventListener.Handle);
+        return this;
+    }
+
+    // ── Dispose ──────────────────────────────────
 
     public override void DisposeUnmanagedResources()
     {

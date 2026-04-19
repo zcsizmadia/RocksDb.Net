@@ -75,11 +75,12 @@ public sealed class SstFileWriter : RocksDbHandle
     }
 
     /// <summary>Returns the size of the written file in bytes (available after <see cref="Finish"/>).</summary>
-    public ulong FileSize
+    public unsafe ulong FileSize
     {
         get
         {
-            NativeMethods.rocksdb_sstfilewriter_file_size(Handle, out ulong size);
+            ulong size;
+            NativeMethods.rocksdb_sstfilewriter_file_size(Handle, (nint)(&size));
             return size;
         }
     }

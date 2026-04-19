@@ -15,11 +15,19 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include="Native\NativeMethods.cs" />
-  </ItemGroup>
-
-  <ItemGroup>
     <PackageReference Include="RocksDb.Net.Runtimes" />
   </ItemGroup>
+
+  <!-- Generate NativeMethods.g.cs from rocksdb c.h if it doesn't exist -->
+  <Target Name="GenerateNativeMethods"
+          BeforeTargets="BeforeCompile;CoreCompile"
+          Condition="!Exists('$(MSBuildProjectDirectory)/Native/NativeMethods.g.cs')">
+    <Message Importance="high"
+             Text="Generating NativeMethods.g.cs for RocksDb v$(RocksDbVersion)..." />
+    <Exec Command="dotnet run --project &quot;$(MSBuildProjectDirectory)/../tools/NativeMethodsGenerator/NativeMethodsGenerator.csproj&quot; -- --version $(RocksDbVersion) --output &quot;$(MSBuildProjectDirectory)/Native/NativeMethods.g.cs&quot;" />
+    <ItemGroup>
+      <Compile Include="Native/NativeMethods.g.cs" />
+    </ItemGroup>
+  </Target>
 
 </Project>

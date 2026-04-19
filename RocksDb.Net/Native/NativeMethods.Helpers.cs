@@ -4,13 +4,21 @@ using System.Runtime.InteropServices;
 
 namespace RocksDbNet.Native;
 
-internal static class NativeResolver
+internal static unsafe partial class NativeMethods
 {
     internal const string LibName = "librocksdb";
-    internal const string LibMajorVersion = "11";
 
     /// <summary>
-    /// Custom DLL import resolver that locates the liblzma native library
+    /// Registers a custom DLL import resolver to locate the librocksdb native library
+    /// from the runtimes/{rid}/native directory structure at startup.
+    /// </summary>
+    static NativeMethods()
+    {
+        NativeLibrary.SetDllImportResolver(Assembly.GetExecutingAssembly(), ResolveRuntimeDll);
+    }
+
+    /// <summary>
+    /// Custom DLL import resolver that locates the librocksdb native library
     /// from the runtimes/{os}-{arch}/native directory structure.
     /// </summary>
     /// <param name="libraryName">The name of the native library to resolve.</param>
@@ -30,20 +38,22 @@ internal static class NativeResolver
         string libraryNameExt;
         string arch = RuntimeInformation.ProcessArchitecture.ToString().ToLower();
 
+        string libMajorVersion = RocksDbVersion.Split(".")[0];
+
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
             os = "win";
-            libraryNameExt = $"{LibName}.{LibMajorVersion}.dll";
+            libraryNameExt = $"{LibName}.{libMajorVersion}.dll";
         }
         else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
         {
             os = "osx";
-            libraryNameExt = $"{LibName}.{LibMajorVersion}.dylib";
+            libraryNameExt = $"{LibName}.{libMajorVersion}.dylib";
         }
         else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
         {
             os = "linux";
-            libraryNameExt = $"{LibName}.so.{LibMajorVersion}";
+            libraryNameExt = $"{LibName}.so.{libMajorVersion}";
         }
         else
         {
@@ -79,4 +89,37 @@ internal static class NativeResolver
 
         return IntPtr.Zero; // Let the system try its default search paths
     }
+
+    /// <summary>
+    /// Throws a <see cref="RocksDbException"/> if <paramref name="errPtr"/> is non-zero,
+    /// freeing the native error string in the process.
+    /// </summary>
+    internal static void ThrowOnError(nint errPtr)
+    {
+        if (errPtr == nint.Zero)
+        {
+            return;
+        }
+
+        string? msg = Marshal.PtrToStringUTF8(errPtr);
+        rocksdb_free(errPtr);
+        throw new RocksDbException(msg ?? "Unknown RocksDB error");
+    }
+
+    /// <summary>
+    /// Reads a native UTF-8 string pointer (not owned) into a managed string.
+    /// </summary>
+    internal static string? PtrToStringUTF8(byte* ptr, nuint len)
+    {
+        if (ptr == null)
+        {
+            return null;
+        }
+        return System.Text.Encoding.UTF8.GetString(ptr, (int)len);
+    }
+
+    /// <summary>
+    /// Reads a native UTF-8 string pointer (not owned) into a managed string.
+    /// </summary>
+    internal static string? PtrToStringUTF8(nint ptr, nuint len) => PtrToStringUTF8((byte*)ptr, len);
 }
