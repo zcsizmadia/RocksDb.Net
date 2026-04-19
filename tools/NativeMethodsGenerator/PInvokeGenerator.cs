@@ -28,11 +28,13 @@ public static class PInvokeGenerator
         sb.AppendLine( "// (found in the LICENSE.Apache file in the root directory).");
         sb.AppendLine( "// </auto-generated>");
         sb.AppendLine();
+        sb.AppendLine( "using System.Diagnostics.CodeAnalysis;");
         sb.AppendLine( "using System.Runtime.CompilerServices;");
         sb.AppendLine( "using System.Runtime.InteropServices;");
         sb.AppendLine();
         sb.AppendLine( "namespace RocksDbNet.Native;");
         sb.AppendLine();
+        sb.AppendLine( "[ExcludeFromCodeCoverage]");
         sb.AppendLine( "internal static unsafe partial class NativeMethods");
         sb.AppendLine( "{");
         sb.AppendLine( "    // ─────────────────────────────────────────────────────────────────────────");
