@@ -3,7 +3,7 @@
     <Project Path="Samples/WriteBatchSample/WriteBatchSample.csproj" />
     <Project Path="Samples/IteratorSample/IteratorSample.csproj" />
     <Project Path="Samples/ColumnFamilySample/ColumnFamilySample.csproj" />
-    <Project Path="Samples/Simple/BasicSample.csproj" />
+    <Project Path="Samples/BasicSample/BasicSample.csproj" />
     <Project Path="Samples/SnapshotSample/SnapshotSample.csproj" />
     <Project Path="Samples/BackupAndCheckpointSample/BackupAndCheckpointSample.csproj" />
     <Project Path="Samples/SstFileWriterSample/SstFileWriterSample.csproj" />
