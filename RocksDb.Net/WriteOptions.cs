@@ -9,8 +9,8 @@ namespace RocksDbNet;
 public sealed class WriteOptions : RocksDbHandle
 {
     public WriteOptions()
+        : base(NativeMethods.rocksdb_writeoptions_create()) 
     {
-        Handle = NativeMethods.rocksdb_writeoptions_create();
     }
 
     /// <summary>If true, the write will be flushed from the OS buffer cache before the write is considered complete.</summary>
@@ -48,7 +48,7 @@ public sealed class WriteOptions : RocksDbHandle
         set => NativeMethods.rocksdb_writeoptions_set_ignore_missing_column_families(Handle, value ? (byte)1 : (byte)0);
     }
 
-    public override void DisposeUnmanagedResources()
+    public override void DisposeHandle()
     {
         NativeMethods.rocksdb_writeoptions_destroy(Handle);
     }

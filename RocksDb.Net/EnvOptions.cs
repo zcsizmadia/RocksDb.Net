@@ -2,6 +2,10 @@ using RocksDbNet.Native;
 
 namespace RocksDbNet;
 
+/// <summary>
+/// Options for configuring the RocksDB environment used by
+/// <see cref="SstFileWriter"/>.
+/// </summary>
 public sealed class EnvOptions : RocksDbHandle
 {
     public EnvOptions()
@@ -9,7 +13,7 @@ public sealed class EnvOptions : RocksDbHandle
         Handle = NativeMethods.rocksdb_envoptions_create();
     }
 
-    public override void DisposeUnmanagedResources()
+    public override void DisposeHandle()
     {
         NativeMethods.rocksdb_envoptions_destroy(Handle);
     }

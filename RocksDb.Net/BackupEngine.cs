@@ -18,8 +18,8 @@ public sealed record BackupInfo(
 public sealed class BackupEngine : RocksDbHandle
 {
     private BackupEngine(nint handle)
+        : base(handle)
     {
-        Handle = handle;
     }
 
     /// <summary>Opens a backup engine at the given path.</summary>
@@ -85,7 +85,7 @@ public sealed class BackupEngine : RocksDbHandle
         }
     }
 
-    public override void DisposeUnmanagedResources()
+    public override void DisposeHandle()
     {
         NativeMethods.rocksdb_backup_engine_close(Handle);
     }

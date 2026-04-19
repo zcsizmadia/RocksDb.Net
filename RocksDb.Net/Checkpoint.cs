@@ -9,8 +9,8 @@ namespace RocksDbNet;
 public sealed class Checkpoint : RocksDbHandle
 {
     private Checkpoint(nint handle)
+        : base(handle)
     {
-        Handle = handle;
     }
 
     /// <summary>Creates a <see cref="Checkpoint"/> object for the given database.</summary>
@@ -33,7 +33,7 @@ public sealed class Checkpoint : RocksDbHandle
         NativeMethods.ThrowOnError(err);
     }
 
-    public override void DisposeUnmanagedResources()
+    public override void DisposeHandle()
     {
         NativeMethods.rocksdb_checkpoint_object_destroy(Handle);
     }

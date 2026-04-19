@@ -17,7 +17,7 @@ public sealed class FlushOptions : RocksDbHandle
         set => NativeMethods.rocksdb_flushoptions_set_wait(Handle, value ? (byte)1 : (byte)0);
     }
 
-    public override void DisposeUnmanagedResources()
+    public override void DisposeHandle()
     {
         NativeMethods.rocksdb_flushoptions_destroy(Handle);
     }

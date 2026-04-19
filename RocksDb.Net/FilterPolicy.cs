@@ -9,8 +9,8 @@ namespace RocksDbNet;
 public sealed class FilterPolicy : RocksDbHandle
 {
     private FilterPolicy(nint handle)
+        : base(handle)
     {
-        Handle = handle;
     }
 
     /// <summary>Creates a partitioned block-based Bloom filter.</summary>
@@ -29,7 +29,7 @@ public sealed class FilterPolicy : RocksDbHandle
     public static FilterPolicy CreateRibbonHybrid(double bloomEquivalentBitsPerKey, int bloomBeforeLevel = 0)
         => new(NativeMethods.rocksdb_filterpolicy_create_ribbon_hybrid(bloomEquivalentBitsPerKey, bloomBeforeLevel));
 
-    public override void DisposeUnmanagedResources()
+    public override void DisposeHandle()
     {
         NativeMethods.rocksdb_filterpolicy_destroy(Handle);
     }

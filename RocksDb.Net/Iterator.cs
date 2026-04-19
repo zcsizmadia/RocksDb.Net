@@ -181,7 +181,7 @@ public sealed class Iterator : RocksDbHandle
         public ReadOnlySpan<byte> CurrentValue => _iterator.Value();
     }
 
-    public override void DisposeUnmanagedResources()
+    public override void DisposeHandle()
     {
         NativeMethods.rocksdb_iter_destroy(Handle);
     }

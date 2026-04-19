@@ -2,6 +2,8 @@
 
   <PropertyGroup>
     <TargetFrameworks>$(DefaultTargetFrameworks)</TargetFrameworks>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>RocksDbNet.Tests</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
@@ -9,6 +11,10 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RocksDb.Net\RocksDb.Net.csproj" />
   </ItemGroup>
 
   <ItemGroup>

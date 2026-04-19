@@ -18,8 +18,8 @@ public enum BlockBasedTableIndexType
 public sealed class BlockBasedTableOptions : RocksDbHandle
 {
     public BlockBasedTableOptions()
+        : base(NativeMethods.rocksdb_block_based_options_create())
     {
-        Handle = NativeMethods.rocksdb_block_based_options_create();
     }
 
     /// <summary>Sets the block cache to use for this table. Pass <c>null</c> to disable.</summary>
@@ -45,19 +45,23 @@ public sealed class BlockBasedTableOptions : RocksDbHandle
     public BlockBasedTableOptions SetFilterPolicy(FilterPolicy? policy)
     {
         NativeMethods.rocksdb_block_based_options_set_filter_policy(Handle, policy?.Handle ?? nint.Zero);
+        policy?.TransferOwnership();
         return this;
     }
 
+    /// <summary>If true, the entire key is used for filtering; otherwise only the prefix.</summary>
     public bool WholeKeyFiltering
     {
         set => NativeMethods.rocksdb_block_based_options_set_whole_key_filtering(Handle, value ? (byte)1 : (byte)0);
     }
 
+    /// <summary>Format version of the SST table. Higher versions offer more features.</summary>
     public int FormatVersion
     {
         set => NativeMethods.rocksdb_block_based_options_set_format_version(Handle, value);
     }
 
+    /// <summary>Type of index used in the block-based table.</summary>
     public BlockBasedTableIndexType IndexType
     {
         set => NativeMethods.rocksdb_block_based_options_set_index_type(Handle, (int)value);
@@ -75,6 +79,7 @@ public sealed class BlockBasedTableOptions : RocksDbHandle
         set => NativeMethods.rocksdb_block_based_options_set_cache_index_and_filter_blocks_with_high_priority(Handle, value ? (byte)1 : (byte)0);
     }
 
+    /// <summary>If true, pin level-0 index and filter blocks in the block cache.</summary>
     public bool PinL0FilterAndIndexBlocksInCache
     {
         set => NativeMethods.rocksdb_block_based_options_set_pin_l0_filter_and_index_blocks_in_cache(Handle, value ? (byte)1 : (byte)0);
@@ -86,27 +91,31 @@ public sealed class BlockBasedTableOptions : RocksDbHandle
         set => NativeMethods.rocksdb_block_based_options_set_block_size_deviation(Handle, value);
     }
 
+    /// <summary>Number of keys between restart points in data blocks.</summary>
     public int BlockRestartInterval
     {
         set => NativeMethods.rocksdb_block_based_options_set_block_restart_interval(Handle, value);
     }
 
+    /// <summary>If true, use partitioned full filters (requires index type <see cref="BlockBasedTableIndexType.TwoLevelIndexSearch"/>).</summary>
     public bool PartitionFilters
     {
         set => NativeMethods.rocksdb_block_based_options_set_partition_filters(Handle, value ? (byte)1 : (byte)0);
     }
 
+    /// <summary>Target size of metadata blocks in bytes.</summary>
     public ulong MetadataBlockSize
     {
         set => NativeMethods.rocksdb_block_based_options_set_metadata_block_size(Handle, value);
     }
 
+    /// <summary>If true, delta encoding is used for index values to reduce index size.</summary>
     public bool UseDeltaEncoding
     {
         set => NativeMethods.rocksdb_block_based_options_set_use_delta_encoding(Handle, value ? (byte)1 : (byte)0);
     }
 
-    public override void DisposeUnmanagedResources()
+    public override void DisposeHandle()
     {
         NativeMethods.rocksdb_block_based_options_destroy(Handle);
     }

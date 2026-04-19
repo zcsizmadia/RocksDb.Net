@@ -1,4 +1,8 @@
+using System.Text;
+
 using RocksDbNet.Native;
+
+using static System.Net.WebRequestMethods;
 
 namespace RocksDbNet;
 
@@ -10,7 +14,7 @@ public enum Compression
     Zlib    = 2,
     Bz2     = 3,
     Lz4     = 4,
-    Lz4Hc  = 5,
+    Lz4Hc   = 5,
     Xpress  = 6,
     Zstd    = 7,
 }
@@ -39,8 +43,8 @@ public enum WalRecoveryMode
 public sealed class DbOptions : RocksDbHandle
 {
     public DbOptions()
+        : base(NativeMethods.rocksdb_options_create())
     {
-        Handle = NativeMethods.rocksdb_options_create();
     }
 
     /// <summary>Creates a deep copy of this options object.</summary>
@@ -195,42 +199,49 @@ public sealed class DbOptions : RocksDbHandle
         set => NativeMethods.rocksdb_options_set_disable_auto_compactions(Handle, value ? 1 : 0);
     }
 
+    /// <summary>Number of levels used for level-style compaction.</summary>
     public int NumLevels
     {
         get => NativeMethods.rocksdb_options_get_num_levels(Handle);
         set => NativeMethods.rocksdb_options_set_num_levels(Handle, value);
     }
 
+    /// <summary>Number of files at level-0 that triggers compaction.</summary>
     public int Level0FileNumCompactionTrigger
     {
         get => NativeMethods.rocksdb_options_get_level0_file_num_compaction_trigger(Handle);
         set => NativeMethods.rocksdb_options_set_level0_file_num_compaction_trigger(Handle, value);
     }
 
+    /// <summary>Number of level-0 files that triggers write slowdown.</summary>
     public int Level0SlowdownWritesTrigger
     {
         get => NativeMethods.rocksdb_options_get_level0_slowdown_writes_trigger(Handle);
         set => NativeMethods.rocksdb_options_set_level0_slowdown_writes_trigger(Handle, value);
     }
 
+    /// <summary>Number of level-0 files that triggers a full write stop.</summary>
     public int Level0StopWritesTrigger
     {
         get => NativeMethods.rocksdb_options_get_level0_stop_writes_trigger(Handle);
         set => NativeMethods.rocksdb_options_set_level0_stop_writes_trigger(Handle, value);
     }
 
+    /// <summary>Target file size for SST files at level-1, in bytes.</summary>
     public ulong TargetFileSizeBase
     {
         get => NativeMethods.rocksdb_options_get_target_file_size_base(Handle);
         set => NativeMethods.rocksdb_options_set_target_file_size_base(Handle, value);
     }
 
+    /// <summary>Maximum total size of level-1 data in bytes.</summary>
     public ulong MaxBytesForLevelBase
     {
         get => NativeMethods.rocksdb_options_get_max_bytes_for_level_base(Handle);
         set => NativeMethods.rocksdb_options_set_max_bytes_for_level_base(Handle, value);
     }
 
+    /// <summary>Multiplier for computing max bytes at each subsequent level.</summary>
     public double MaxBytesForLevelMultiplier
     {
         get => NativeMethods.rocksdb_options_get_max_bytes_for_level_multiplier(Handle);
@@ -253,18 +264,21 @@ public sealed class DbOptions : RocksDbHandle
         set => NativeMethods.rocksdb_options_set_max_background_jobs(Handle, value);
     }
 
+    /// <summary>Maximum number of concurrent background compaction jobs.</summary>
     public int MaxBackgroundCompactions
     {
         get => NativeMethods.rocksdb_options_get_max_background_compactions(Handle);
         set => NativeMethods.rocksdb_options_set_max_background_compactions(Handle, value);
     }
 
+    /// <summary>Maximum number of concurrent background flush jobs.</summary>
     public int MaxBackgroundFlushes
     {
         get => NativeMethods.rocksdb_options_get_max_background_flushes(Handle);
         set => NativeMethods.rocksdb_options_set_max_background_flushes(Handle, value);
     }
 
+    /// <summary>Maximum number of subcompactions per compaction job.</summary>
     public uint MaxSubcompactions
     {
         get => NativeMethods.rocksdb_options_get_max_subcompactions(Handle);
@@ -273,36 +287,42 @@ public sealed class DbOptions : RocksDbHandle
 
     // ── I/O options ───────────────────────────────────────────────────────────
 
+    /// <summary>Enable direct I/O for reads, bypassing the OS page cache.</summary>
     public bool UseDirectReads
     {
         get => NativeMethods.rocksdb_options_get_use_direct_reads(Handle) != 0;
         set => NativeMethods.rocksdb_options_set_use_direct_reads(Handle, value ? (byte)1 : (byte)0);
     }
 
+    /// <summary>Enable direct I/O for flush and compaction writes.</summary>
     public bool UseDirectIoForFlushAndCompaction
     {
         get => NativeMethods.rocksdb_options_get_use_direct_io_for_flush_and_compaction(Handle) != 0;
         set => NativeMethods.rocksdb_options_set_use_direct_io_for_flush_and_compaction(Handle, value ? (byte)1 : (byte)0);
     }
 
+    /// <summary>Allow memory-mapped reads.</summary>
     public bool AllowMmapReads
     {
         get => NativeMethods.rocksdb_options_get_allow_mmap_reads(Handle) != 0;
         set => NativeMethods.rocksdb_options_set_allow_mmap_reads(Handle, value ? (byte)1 : (byte)0);
     }
 
+    /// <summary>Allow memory-mapped writes.</summary>
     public bool AllowMmapWrites
     {
         get => NativeMethods.rocksdb_options_get_allow_mmap_writes(Handle) != 0;
         set => NativeMethods.rocksdb_options_set_allow_mmap_writes(Handle, value ? (byte)1 : (byte)0);
     }
 
+    /// <summary>Use fsync instead of fdatasync for syncing data to disk.</summary>
     public bool UseFsync
     {
         get => NativeMethods.rocksdb_options_get_use_fsync(Handle) != 0;
         set => NativeMethods.rocksdb_options_set_use_fsync(Handle, value ? 1 : 0);
     }
 
+    /// <summary>Allow concurrent inserts into the memtable from multiple threads.</summary>
     public bool AllowConcurrentMemtableWrite
     {
         get => NativeMethods.rocksdb_options_get_allow_concurrent_memtable_write(Handle) != 0;
@@ -311,36 +331,42 @@ public sealed class DbOptions : RocksDbHandle
 
     // ── WAL / logging ─────────────────────────────────────────────────────────
 
+    /// <summary>WAL recovery mode used when opening the database.</summary>
     public WalRecoveryMode WalRecoveryMode
     {
         get => (WalRecoveryMode)NativeMethods.rocksdb_options_get_wal_recovery_mode(Handle);
         set => NativeMethods.rocksdb_options_set_wal_recovery_mode(Handle, (int)value);
     }
 
+    /// <summary>Time-to-live for WAL files in seconds (0 = no TTL).</summary>
     public ulong WalTtlSeconds
     {
         get => NativeMethods.rocksdb_options_get_WAL_ttl_seconds(Handle);
         set => NativeMethods.rocksdb_options_set_WAL_ttl_seconds(Handle, value);
     }
 
+    /// <summary>Total WAL size limit in MB before old WAL files are archived.</summary>
     public ulong WalSizeLimitMb
     {
         get => NativeMethods.rocksdb_options_get_WAL_size_limit_MB(Handle);
         set => NativeMethods.rocksdb_options_set_WAL_size_limit_MB(Handle, value);
     }
 
+    /// <summary>Bytes synced per WAL write (0 = sync after every write).</summary>
     public ulong WalBytesPerSync
     {
         get => NativeMethods.rocksdb_options_get_wal_bytes_per_sync(Handle);
         set => NativeMethods.rocksdb_options_set_wal_bytes_per_sync(Handle, value);
     }
 
+    /// <summary>If true, WAL is flushed only when explicitly requested.</summary>
     public bool ManualWalFlush
     {
         get => NativeMethods.rocksdb_options_get_manual_wal_flush(Handle) != 0;
         set => NativeMethods.rocksdb_options_set_manual_wal_flush(Handle, value ? (byte)1 : (byte)0);
     }
 
+    /// <summary>Compression type for WAL files.</summary>
     public Compression WalCompression
     {
         get => (Compression)NativeMethods.rocksdb_options_get_wal_compression(Handle);
@@ -348,33 +374,51 @@ public sealed class DbOptions : RocksDbHandle
     }
 
     /// <summary>Sets the directory where RocksDB writes log files. Defaults to the DB path.</summary>
-    public DbOptions SetDbLogDir(string path)
+
+    public string DbLogDir
     {
-        NativeMethods.rocksdb_options_set_db_log_dir(Handle, path);
-        return this;
+        set
+        {
+            unsafe
+            {
+                fixed (byte* p = Encoding.UTF8.GetBytes(value + '\0'))
+                    NativeMethods.rocksdb_options_set_db_log_dir(Handle, p);
+            }
+        }
     }
 
     /// <summary>Sets the directory where WAL files are stored.</summary>
-    public DbOptions SetWalDir(string path)
+
+    public string WalDir
     {
-        NativeMethods.rocksdb_options_set_wal_dir(Handle, path);
-        return this;
+        set
+        {
+            unsafe
+            {
+                fixed (byte* p = Encoding.UTF8.GetBytes(value + '\0'))
+                    NativeMethods.rocksdb_options_set_wal_dir(Handle, p);
+            }
+        }
     }
+
 
     // ── Logging ───────────────────────────────────────────────────────────────
 
-    public int InfoLogLevel
+    /// <summary>Info log verbosity level.</summary>
+    public InfoLogLevel InfoLogLevel
     {
-        get => NativeMethods.rocksdb_options_get_info_log_level(Handle);
-        set => NativeMethods.rocksdb_options_set_info_log_level(Handle, value);
+        get => (InfoLogLevel)NativeMethods.rocksdb_options_get_info_log_level(Handle);
+        set => NativeMethods.rocksdb_options_set_info_log_level(Handle, (int)value);
     }
 
+    /// <summary>Maximum number of info log files to keep.</summary>
     public ulong KeepLogFileNum
     {
         get => (ulong)NativeMethods.rocksdb_options_get_keep_log_file_num(Handle);
         set => NativeMethods.rocksdb_options_set_keep_log_file_num(Handle, (nuint)value);
     }
 
+    /// <summary>Maximum size of a single info log file before rotation, in bytes.</summary>
     public ulong MaxLogFileSize
     {
         get => (ulong)NativeMethods.rocksdb_options_get_max_log_file_size(Handle);
@@ -383,36 +427,42 @@ public sealed class DbOptions : RocksDbHandle
 
     // ── Misc ──────────────────────────────────────────────────────────────────
 
+    /// <summary>Bytes to sync to storage per write operation (0 = sync everything).</summary>
     public ulong BytesPerSync
     {
         get => NativeMethods.rocksdb_options_get_bytes_per_sync(Handle);
         set => NativeMethods.rocksdb_options_set_bytes_per_sync(Handle, value);
     }
 
+    /// <summary>Period (in seconds) between statistics dumps to the info log.</summary>
     public uint StatsDumpPeriodSec
     {
         get => NativeMethods.rocksdb_options_get_stats_dump_period_sec(Handle);
         set => NativeMethods.rocksdb_options_set_stats_dump_period_sec(Handle, value);
     }
 
+    /// <summary>If true, flush all column families atomically.</summary>
     public bool AtomicFlush
     {
         get => NativeMethods.rocksdb_options_get_atomic_flush(Handle) != 0;
         set => NativeMethods.rocksdb_options_set_atomic_flush(Handle, value ? (byte)1 : (byte)0);
     }
 
+    /// <summary>Time-to-live for data in seconds. Expired entries are removed during compaction.</summary>
     public ulong Ttl
     {
         get => NativeMethods.rocksdb_options_get_ttl(Handle);
         set => NativeMethods.rocksdb_options_set_ttl(Handle, value);
     }
 
+    /// <summary>Interval (in seconds) for periodic compaction of all files.</summary>
     public ulong PeriodicCompactionSeconds
     {
         get => NativeMethods.rocksdb_options_get_periodic_compaction_seconds(Handle);
         set => NativeMethods.rocksdb_options_set_periodic_compaction_seconds(Handle, value);
     }
 
+    /// <summary>Fraction of memtable size allocated to the prefix bloom filter (0.0 to 1.0).</summary>
     public double MemtablePrefixBloomSizeRatio
     {
         get => NativeMethods.rocksdb_options_get_memtable_prefix_bloom_size_ratio(Handle);
@@ -421,28 +471,183 @@ public sealed class DbOptions : RocksDbHandle
 
     // ── Blob files ────────────────────────────────────────────────────────────
 
+    /// <summary>Enable storing large values in separate blob files.</summary>
     public bool EnableBlobFiles
     {
         get => NativeMethods.rocksdb_options_get_enable_blob_files(Handle) != 0;
         set => NativeMethods.rocksdb_options_set_enable_blob_files(Handle, value ? (byte)1 : (byte)0);
     }
 
+    /// <summary>Minimum value size (in bytes) to be stored in a blob file.</summary>
     public ulong MinBlobSize
     {
         get => NativeMethods.rocksdb_options_get_min_blob_size(Handle);
         set => NativeMethods.rocksdb_options_set_min_blob_size(Handle, value);
     }
 
+    /// <summary>Size of a single blob file in bytes.</summary>
     public ulong BlobFileSize
     {
         get => NativeMethods.rocksdb_options_get_blob_file_size(Handle);
         set => NativeMethods.rocksdb_options_set_blob_file_size(Handle, value);
     }
 
+    /// <summary>Enable garbage collection for blob files during compaction.</summary>
     public bool EnableBlobGc
     {
         get => NativeMethods.rocksdb_options_get_enable_blob_gc(Handle) != 0;
         set => NativeMethods.rocksdb_options_set_enable_blob_gc(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    // ── Table factory / cache / rate limiter ──────────────────────────────────
+
+    /// <summary>Configures block-based table options.</summary>
+
+    public BlockBasedTableOptions BlockBasedTableFactory
+    {
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            NativeMethods.rocksdb_options_set_block_based_table_factory(Handle, value.Handle);
+        }
+    }
+
+    /// <summary>Attaches a row cache.</summary>
+    /// 
+
+    public Cache RowCache
+    {
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            NativeMethods.rocksdb_options_set_row_cache(Handle, value.Handle);
+        }
+    }
+
+    /// <summary>Attaches a rate limiter.</summary>
+
+    public RateLimiter RateLimiter
+    {
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            NativeMethods.rocksdb_options_set_ratelimiter(Handle, value.Handle);
+            value.TransferOwnership();
+        }
+    }
+
+    /// <summary>Attaches a prefix extractor (slice transform).</summary>
+
+    public SliceTransform PrefixExtractor
+    {
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            NativeMethods.rocksdb_options_set_prefix_extractor(Handle, value.Handle);
+            value.TransferOwnership();
+        }
+    }
+
+    // ── Compaction filter ──────────────────────────────────
+
+    /// <summary>
+    /// Attaches a compaction filter. The filter is invoked for every key-value
+    /// pair during table-file creation (compaction and flush).
+    /// </summary>
+    /// <remarks>
+    /// The <paramref name="value"/> instance must remain alive (not disposed)
+    /// for the entire lifetime of the database. Dispose it only after the
+    /// database has been closed.
+    /// </remarks>
+
+    public CompactionFilter CompactionFilter
+    {
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            NativeMethods.rocksdb_options_set_compaction_filter(Handle, value.Handle);
+        }
+    }
+
+    /// <summary>
+    /// Attaches a compaction filter factory. RocksDB calls
+    /// <see cref="CompactionFilterFactory.CreateFilter"/> at the start of
+    /// each compaction or flush job and owns the returned filter.
+    /// </summary>
+    /// <remarks>
+    /// The C++ options object takes ownership of the factory via
+    /// <c>shared_ptr</c>. Do not dispose <paramref name="value"/> before
+    /// the database and its options have been closed.
+    /// </remarks>
+
+    public CompactionFilterFactory CompactionFilterFactory
+    {
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            NativeMethods.rocksdb_options_set_compaction_filter_factory(Handle, value.Handle);
+        }
+    }
+
+    // ── Merge operator ──────────────────────────────────
+
+    /// <summary>Attaches a custom merge operator.</summary>
+    public MergeOperator MergeOperator
+    {
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            NativeMethods.rocksdb_options_set_merge_operator(Handle, value.Handle);
+        }
+    }
+
+    // ── Comparator ──────────────────────────────────
+
+    /// <summary>Attaches a custom comparator for key ordering.</summary>
+    public Comparator Comparator
+    {
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            NativeMethods.rocksdb_options_set_comparator(Handle, value.Handle);
+        }
+    }
+
+    // ── Logging ──────────────────────────────────
+
+    /// <summary>Attaches a custom info logger.</summary>
+    public Logger InfoLog
+    {
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            NativeMethods.rocksdb_options_set_info_log(Handle, value.Handle);
+        }
+    }
+
+    // ── Event listener ──────────────────────────────────
+
+    /// <summary>Adds an event listener to receive database event notifications.</summary>
+    public EventListener EventListener
+    {
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            NativeMethods.rocksdb_options_add_eventlistener(Handle, value.Handle);
+        }
+    }
+
+    /// <summary>Adds multiple event listeners to receive database event notifications.</summary>
+    public IEnumerable<EventListener> EventListeners
+    {
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            foreach (var listener in value)
+            {
+                NativeMethods.rocksdb_options_add_eventlistener(Handle, listener.Handle);
+            }
+        }
     }
 
     // ── Statistics ────────────────────────────────────────────────────────────
@@ -466,70 +671,104 @@ public sealed class DbOptions : RocksDbHandle
         return result;
     }
 
-    // ── Table factory / cache / rate limiter ──────────────────────────────────
+    // ── Merge operator ──────────────────────────────────
 
-    /// <summary>Configures block-based table options.</summary>
+    /// <summary>Sets the built-in UInt64Add merge operator, which treats values as little-endian 64-bit integers and adds them.</summary>
+    public DbOptions SetUInt64AddMergeOperator()
+    {
+        NativeMethods.rocksdb_options_set_uint64add_merge_operator(Handle);
+        return this;
+    }
+
+    // ── Compatibility with rocksdb-sharp ──────────────────────────────────
+
+    [Obsolete("Use BlockBasedTableFactory property instead.")]
     public DbOptions SetBlockBasedTableFactory(BlockBasedTableOptions tableOptions)
     {
-        NativeMethods.rocksdb_options_set_block_based_table_factory(Handle, tableOptions.Handle);
+        BlockBasedTableFactory = tableOptions;
         return this;
     }
 
-    /// <summary>Attaches a row cache.</summary>
+    [Obsolete("Use RowCache property instead.")]
     public DbOptions SetRowCache(Cache cache)
     {
-        NativeMethods.rocksdb_options_set_row_cache(Handle, cache.Handle);
+        RowCache = cache;
         return this;
     }
 
-    /// <summary>Attaches a rate limiter.</summary>
+    [Obsolete("Use RateLimiter property instead.")]
     public DbOptions SetRateLimiter(RateLimiter limiter)
     {
-        NativeMethods.rocksdb_options_set_ratelimiter(Handle, limiter.Handle);
+        RateLimiter = limiter;
         return this;
     }
 
-    /// <summary>Attaches a prefix extractor (slice transform).</summary>
+    [Obsolete("Use PrefixExtractor property instead.")]
     public DbOptions SetPrefixExtractor(SliceTransform transform)
     {
-        NativeMethods.rocksdb_options_set_prefix_extractor(Handle, transform.Handle);
+        PrefixExtractor = transform;
         return this;
     }
 
-    /// <summary>
-    /// Attaches a compaction filter. The filter is invoked for every key-value
-    /// pair during table-file creation (compaction and flush).
-    /// </summary>
-    /// <remarks>
-    /// The <paramref name="filter"/> instance must remain alive (not disposed)
-    /// for the entire lifetime of the database. Dispose it only after the
-    /// database has been closed.
-    /// </remarks>
+    [Obsolete("Use CompactionFilter property instead.")]
     public DbOptions SetCompactionFilter(CompactionFilter filter)
     {
-        ArgumentNullException.ThrowIfNull(filter);
-        NativeMethods.rocksdb_options_set_compaction_filter(Handle, filter.Handle);
+        CompactionFilter = filter;
         return this;
     }
 
-    /// <summary>
-    /// Attaches a compaction filter factory. RocksDB calls
-    /// <see cref="CompactionFilterFactory.CreateFilter"/> at the start of
-    /// each compaction or flush job and owns the returned filter.
-    /// </summary>
-    /// <remarks>
-    /// The C++ options object takes ownership of the factory via
-    /// <c>shared_ptr</c>. Do not dispose <paramref name="factory"/> before
-    /// the database and its options have been closed.
-    /// </remarks>
+    [Obsolete("Use CompactionFilterFactory property instead.")]
     public DbOptions SetCompactionFilterFactory(CompactionFilterFactory factory)
     {
-        ArgumentNullException.ThrowIfNull(factory);
-        NativeMethods.rocksdb_options_set_compaction_filter_factory(Handle, factory.Handle);
+        CompactionFilterFactory = factory;
         return this;
     }
 
-    public override void DisposeUnmanagedResources()
+    [Obsolete("Use MergeOperator property instead.")]
+    public DbOptions SetMergeOperator(MergeOperator mergeOperator)
+    {
+        MergeOperator = mergeOperator;
+        return this;
+    }
+
+    [Obsolete("Use Comparator property instead.")]
+    public DbOptions SetComparator(Comparator comparator)
+    {
+        Comparator = comparator;
+        return this;
+    }
+
+    [Obsolete("Use InfoLog property instead.")]
+    public DbOptions SetInfoLog(Logger logger)
+    {
+        InfoLog = logger;
+        return this;
+    }
+
+    [Obsolete("Use EventListener or EventListeners properties instead.")]
+    public DbOptions AddEventListener(EventListener eventListener)
+    {
+        EventListener = eventListener;
+        return this;
+    }
+
+    [Obsolete("Use WalDir property instead.")]
+    public DbOptions SetWalDir(string path)
+    {
+        WalDir = path;
+        return this;
+    }
+    
+    [Obsolete("Use DbLogDir property instead.")]
+    public DbOptions SetDbLogDir(string path)
+    {
+        DbLogDir = path;
+        return this;
+    }
+
+    // ── Dispose ──────────────────────────────────
+
+    public override void DisposeHandle()
     {
         NativeMethods.rocksdb_options_destroy(Handle);
     }

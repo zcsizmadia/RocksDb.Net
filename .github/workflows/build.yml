@@ -1,0 +1,44 @@
+name: Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Setup .NET SDKs
+      uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: |
+          8.0.x
+          9.0.x
+          10.0.x
+
+    - name: Build
+      shell: bash
+      run: |
+        dotnet restore
+        dotnet build -c Release --no-restore
+
+    - name: Test
+      shell: bash
+      run: |
+        dotnet test -c Release --no-build
+
+    - name: Pack NuGet package
+      shell: bash
+      run: |
+        dotnet pack -c Release -o nupkgs
+
+    - name: Upload NuGet package artifact
+      uses: actions/upload-artifact@v7
+      with:
+        name: nuget-package
+        path: nupkgs/*.nupkg

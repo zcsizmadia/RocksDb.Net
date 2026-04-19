@@ -9,8 +9,8 @@ public sealed class IngestExternalFileOptions : RocksDbHandle
 {
     /// <summary>Creates a new <see cref="IngestExternalFileOptions"/> with default settings.</summary>
     public IngestExternalFileOptions()
+        : base(NativeMethods.rocksdb_ingestexternalfileoptions_create())
     {
-        Handle = NativeMethods.rocksdb_ingestexternalfileoptions_create();
     }
 
     /// <summary>
@@ -49,7 +49,7 @@ public sealed class IngestExternalFileOptions : RocksDbHandle
         set => NativeMethods.rocksdb_ingestexternalfileoptions_set_allow_blocking_flush(Handle, value ? (byte)1 : (byte)0);
     }
 
-    public override void DisposeUnmanagedResources()
+    public override void DisposeHandle()
     {
         NativeMethods.rocksdb_ingestexternalfileoptions_destroy(Handle);
     }

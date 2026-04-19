@@ -19,18 +19,17 @@ public sealed class RocksDb : RocksDbHandle
     private readonly Dictionary<string, ColumnFamilyHandle>? _columnFamilyHandles;
 
     private RocksDb(nint handle)
+        : base(handle)
     {
-        Handle = handle;
     }
 
     private RocksDb(nint handle, nint[] cfHandles)
+        : base(handle)
     {
-        Handle = handle;
-        
-        _columnFamilyHandles = new();
+        _columnFamilyHandles = [];
         foreach (var cf in cfHandles)
         {
-            ColumnFamilyHandle cfh =  new ColumnFamilyHandle(cf);
+            ColumnFamilyHandle cfh =  new(cf);
             _columnFamilyHandles[cfh.Name] = cfh;
         }
     }
@@ -57,21 +56,41 @@ public sealed class RocksDb : RocksDbHandle
     /// The <c>"default"</c> column family must always be included.
     /// Returns the database and one <see cref="ColumnFamilyHandle"/> per descriptor.
     /// </summary>
-    public static RocksDb Open(DbOptions options, string path, IReadOnlyList<ColumnFamilyDescriptor> columnFamilies)
+    public static unsafe RocksDb Open(DbOptions options, string path, IReadOnlyList<ColumnFamilyDescriptor> columnFamilies)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentException.ThrowIfNullOrEmpty(path);
         ArgumentNullException.ThrowIfNull(columnFamilies);
 
-        nint[] cfHandles = new nint[columnFamilies.Count];
+        int count = columnFamilies.Count;
+        nint[] cfHandles = new nint[count];
+        nint[] cfOptions = [.. columnFamilies.Select(cf => cf.Options.Handle)];
+        byte[][] cfNameBytes = [.. columnFamilies.Select(cf => Encoding.UTF8.GetBytes(cf.Name + '\0'))];
 
+        nint handle;
         nint err = default;
-        nint handle = NativeMethods.rocksdb_open_column_families(
-            options.Handle, path,
-            columnFamilies.Count,
-            columnFamilies.Select(cf => cf.Name).ToArray(),
-            columnFamilies.Select(cf => cf.Options.Handle).ToArray(),
-            cfHandles, ref err);
+        var pins = new GCHandle[count];
+        var namePtrs = new byte*[count];
+        try
+        {
+            for (int i = 0; i < count; i++)
+            {
+                pins[i] = GCHandle.Alloc(cfNameBytes[i], GCHandleType.Pinned);
+                namePtrs[i] = (byte*)pins[i].AddrOfPinnedObject();
+            }
+
+            fixed (byte** namesPtr = namePtrs)
+            fixed (nint* optsPtr = cfOptions)
+            fixed (nint* handlesPtr = cfHandles)
+                handle = NativeMethods.rocksdb_open_column_families(
+                    options.Handle, path, count,
+                    namesPtr, (nint)optsPtr, handlesPtr, ref err);
+        }
+        finally
+        {
+            for (int i = 0; i < count; i++)
+                if (pins[i].IsAllocated) pins[i].Free();
+        }
         NativeMethods.ThrowOnError(err);
 
         return new RocksDb(handle, cfHandles);
@@ -92,23 +111,42 @@ public sealed class RocksDb : RocksDbHandle
     }
 
     /// <summary>Opens an existing database in read-only mode.</summary>
-    public static RocksDb OpenReadOnly(DbOptions options, string path, IReadOnlyList<ColumnFamilyDescriptor> columnFamilies, bool errorIfWalExists = false)
+    public static unsafe RocksDb OpenReadOnly(DbOptions options, string path, IReadOnlyList<ColumnFamilyDescriptor> columnFamilies, bool errorIfWalExists = false)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentException.ThrowIfNullOrEmpty(path);
         ArgumentNullException.ThrowIfNull(columnFamilies);
 
-        nint[] cfHandles = new nint[columnFamilies.Count];
+        int count = columnFamilies.Count;
+        nint[] cfHandles = new nint[count];
+        nint[] cfOptions = [.. columnFamilies.Select(cf => cf.Options.Handle)];
+        byte[][] cfNameBytes = [.. columnFamilies.Select(cf => Encoding.UTF8.GetBytes(cf.Name + '\0'))];
 
+        nint handle;
         nint err = default;
-        nint handle = NativeMethods.rocksdb_open_for_read_only_column_families(
-            options.Handle, path,
-            columnFamilies.Count,
-            columnFamilies.Select(cf => cf.Name).ToArray(),
-            columnFamilies.Select(cf => cf.Options.Handle).ToArray(),
-            cfHandles,
-            errorIfWalExists ? (byte)1 : (byte)0,
-            ref err);
+        var pins = new GCHandle[count];
+        var namePtrs = new byte*[count];
+        try
+        {
+            for (int i = 0; i < count; i++)
+            {
+                pins[i] = GCHandle.Alloc(cfNameBytes[i], GCHandleType.Pinned);
+                namePtrs[i] = (byte*)pins[i].AddrOfPinnedObject();
+            }
+
+            fixed (byte** namesPtr = namePtrs)
+            fixed (nint* optsPtr = cfOptions)
+            fixed (nint* handlesPtr = cfHandles)
+                handle = NativeMethods.rocksdb_open_for_read_only_column_families(
+                    options.Handle, path, count,
+                    namesPtr, (nint)optsPtr, handlesPtr,
+                    errorIfWalExists ? (byte)1 : (byte)0, ref err);
+        }
+        finally
+        {
+            for (int i = 0; i < count; i++)
+                if (pins[i].IsAllocated) pins[i].Free();
+        }
         NativeMethods.ThrowOnError(err);
 
         return new RocksDb(handle, cfHandles);
@@ -172,12 +210,13 @@ public sealed class RocksDb : RocksDbHandle
         ArgumentException.ThrowIfNullOrEmpty(path);
 
         nint err = default;
-        nint* list = NativeMethods.rocksdb_list_column_families(options.Handle, path, out nuint count, ref err);
+        nuint count;
+        byte** list = NativeMethods.rocksdb_list_column_families(options.Handle, path, &count, ref err);
         NativeMethods.ThrowOnError(err);
 
         var result = new string[(int)count];
         for (int i = 0; i < (int)count; i++)
-            result[i] = Marshal.PtrToStringUTF8(list[i]) ?? string.Empty;
+            result[i] = Marshal.PtrToStringUTF8((nint)list[i]) ?? string.Empty;
 
         NativeMethods.rocksdb_list_column_families_destroy(list, count);
         return Array.AsReadOnly(result);
@@ -263,6 +302,20 @@ public sealed class RocksDb : RocksDbHandle
         NativeMethods.ThrowOnError(err);
     }
 
+    /// <summary>
+    /// Deletes all keys in the range [<paramref name="startKey"/>, <paramref name="endKey"/>)
+    /// from the default column family.
+    /// </summary>
+    /// <remarks>
+    /// The <c>DeleteRange</c> API is more efficient than issuing individual deletes for each key in the range,
+    /// but it does not immediately remove the keys from storage. Instead, it adds a range tombstone that marks
+    /// the keys as deleted. The actual removal of the keys happens during compaction, so the space is not reclaimed
+    /// until then. Also, range tombstones can affect read performance for keys in the deleted range until compaction occurs.
+    /// Use <c>DeleteRange</c> when you need to delete large contiguous ranges of keys and can tolerate the delayed cleanup and potential read performance impact.
+    /// </remarks>
+    public unsafe void DeleteRange(ReadOnlySpan<byte> startKey, ReadOnlySpan<byte> endKey, WriteOptions? options = null)
+        => DeleteRange(startKey, endKey, GetDefaultColumnFamily(), options);
+
     // ─────────────────────────────────────────────────────────────────────────
 
     /// <summary>Applies a merge operation to <paramref name="key"/> in the default column family.</summary>
@@ -276,6 +329,10 @@ public sealed class RocksDb : RocksDbHandle
         NativeMethods.ThrowOnError(err);
     }
 
+    /// <summary>Applies a merge operation to <paramref name="key"/> in the default column family.</summary>
+    public void Merge(string key, string value, WriteOptions? options = null)
+        => Merge(Encoding.UTF8.GetBytes(key), Encoding.UTF8.GetBytes(value), options);
+
     /// <summary>Applies a merge operation to <paramref name="key"/> in <paramref name="cf"/>.</summary>
     public unsafe void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value,
         ColumnFamilyHandle cf, WriteOptions? options = null)
@@ -287,6 +344,11 @@ public sealed class RocksDb : RocksDbHandle
                 k, (nuint)key.Length, v, (nuint)value.Length, ref err);
         NativeMethods.ThrowOnError(err);
     }
+
+    /// <summary>Applies a merge operation to <paramref name="key"/> in <paramref name="cf"/>.</summary>
+    public void Merge(string key, string value, ColumnFamilyHandle cf, WriteOptions? options = null)
+        => Merge(Encoding.UTF8.GetBytes(key), Encoding.UTF8.GetBytes(value), cf, options);
+
 
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -315,16 +377,19 @@ public sealed class RocksDb : RocksDbHandle
     private unsafe byte[]? GetInternal(ReadOnlySpan<byte> key, ReadOptions? options)
     {
         nint err = default;
-        byte* valPtr;
+        nint valNint;
         nuint vallen;
         fixed (byte* k = key)
-            valPtr = NativeMethods.rocksdb_get(Handle, (options ?? _defaultReadOptions).Handle,
+        {
+            valNint = NativeMethods.rocksdb_get(Handle, (options ?? _defaultReadOptions).Handle,
                 k, (nuint)key.Length, out vallen, ref err);
+        }
         NativeMethods.ThrowOnError(err);
-        if (valPtr == null) return null;
+        if (valNint == nint.Zero) return null;
 
+        byte* valPtr = (byte*)valNint;
         byte[] result = new ReadOnlySpan<byte>(valPtr, checked((int)vallen)).ToArray();
-        NativeMethods.rocksdb_free((nint)valPtr);
+        NativeMethods.rocksdb_free(valNint);
         return result;
     }
 
@@ -333,15 +398,16 @@ public sealed class RocksDb : RocksDbHandle
     {
         nint err = default;
         nuint vallen;
-        byte* valPtr;
+        nint valNint;
         fixed (byte* k = key)
-            valPtr = NativeMethods.rocksdb_get_cf(Handle, (options ?? _defaultReadOptions).Handle, cf.Handle,
+            valNint = NativeMethods.rocksdb_get_cf(Handle, (options ?? _defaultReadOptions).Handle, cf.Handle,
                 k, (nuint)key.Length, out vallen, ref err);
         NativeMethods.ThrowOnError(err);
-        if (valPtr == null) return null;
+        if (valNint == nint.Zero) return null;
 
+        byte* valPtr = (byte*)valNint;
         byte[] result = new ReadOnlySpan<byte>(valPtr, checked((int)vallen)).ToArray();
-        NativeMethods.rocksdb_free((nint)valPtr);
+        NativeMethods.rocksdb_free(valNint);
         return result;
     }
 
@@ -387,7 +453,10 @@ public sealed class RocksDb : RocksDbHandle
         ArgumentNullException.ThrowIfNull(keys);
 
         int n = keys.Count;
-        if (n == 0) return Array.Empty<byte[]?>();
+        if (n == 0)
+        {
+            return [];
+        }
 
         // Stack-allocate pointer arrays for small batches to avoid heap pressure.
         byte*[] keyPtrs  = new byte*[n];
@@ -413,7 +482,7 @@ public sealed class RocksDb : RocksDbHandle
             fixed (nuint* vs = valSizes)
             fixed (nint*  ep = errs)
                 NativeMethods.rocksdb_multi_get(Handle, (options ?? _defaultReadOptions).Handle,
-                    (nuint)n, kp, ks, vp, vs, ep);
+                    (nuint)n, kp, ks, vp, vs, (byte**)ep);
         }
         finally
         {
@@ -451,7 +520,7 @@ public sealed class RocksDb : RocksDbHandle
     {
         fixed (byte* k = key)
             return NativeMethods.rocksdb_key_may_exist(Handle, (options ?? _defaultReadOptions).Handle,
-                k, (nuint)key.Length, (byte**)null, (nuint*)null, (byte*)null, 0, (byte*)null) != 0;
+                k, (nuint)key.Length, (byte**)null, out nuint dummyValLen, (byte*)null, 0, (byte*)null) != 0;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -537,13 +606,10 @@ public sealed class RocksDb : RocksDbHandle
         return new ColumnFamilyHandle(h, owned: false);
     }
 
+    /// <summary>Returns the column family handle for <paramref name="name"/> opened at database creation.</summary>
     public ColumnFamilyHandle GetColumnFamily(string name)
     {
-        if (_columnFamilyHandles != null && _columnFamilyHandles.TryGetValue(name, out var cfh))
-        {
-            return cfh;
-        }
-        return null!;
+        return _columnFamilyHandles != null && _columnFamilyHandles.TryGetValue(name, out ColumnFamilyHandle? cfh) ? cfh : null!;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -625,9 +691,10 @@ public sealed class RocksDb : RocksDbHandle
     }
 
     /// <summary>Returns an integer property value, or <c>null</c> if unavailable.</summary>
-    public ulong? GetPropertyInt(string propName)
+    public unsafe ulong? GetPropertyInt(string propName)
     {
-        int rc = NativeMethods.rocksdb_property_int(Handle, propName, out ulong val);
+        ulong val;
+        int rc = NativeMethods.rocksdb_property_int(Handle, propName, (nint)(&val));
         return rc == 0 ? val : null;
     }
 
@@ -643,9 +710,10 @@ public sealed class RocksDb : RocksDbHandle
     }
 
     /// <summary>Returns an integer property for a specific column family.</summary>
-    public ulong? GetPropertyInt(string propName, ColumnFamilyHandle cf)
+    public unsafe ulong? GetPropertyInt(string propName, ColumnFamilyHandle cf)
     {
-        int rc = NativeMethods.rocksdb_property_int_cf(Handle, cf.Handle, propName, out ulong val);
+        ulong val;
+        int rc = NativeMethods.rocksdb_property_int_cf(Handle, cf.Handle, propName, (nint)(&val));
         return rc == 0 ? val : null;
     }
 
@@ -690,30 +758,66 @@ public sealed class RocksDb : RocksDbHandle
     /// <summary>
     /// Ingests a list of pre-built SST files into the default column family.
     /// </summary>
-    public void IngestExternalFile(IReadOnlyList<string> filePaths, IngestExternalFileOptions options)
+    public unsafe void IngestExternalFile(IReadOnlyList<string> filePaths, IngestExternalFileOptions options)
     {
         ArgumentNullException.ThrowIfNull(filePaths);
         ArgumentNullException.ThrowIfNull(options);
 
-        string[] paths = [.. filePaths];
-        nint err = default;
-        NativeMethods.rocksdb_ingest_external_file(Handle, paths, (nuint)paths.Length, options.Handle, ref err);
-        NativeMethods.ThrowOnError(err);
+        int count = filePaths.Count;
+        byte[][] pathBytes = [.. filePaths.Select(p => Encoding.UTF8.GetBytes(p + '\0'))];
+        var pins = new GCHandle[count];
+        var pathPtrs = new byte*[count];
+        try
+        {
+            for (int i = 0; i < count; i++)
+            {
+                pins[i] = GCHandle.Alloc(pathBytes[i], GCHandleType.Pinned);
+                pathPtrs[i] = (byte*)pins[i].AddrOfPinnedObject();
+            }
+
+            nint err = default;
+            fixed (byte** pp = pathPtrs)
+                NativeMethods.rocksdb_ingest_external_file(Handle, pp, (nint)count, options.Handle, ref err);
+            NativeMethods.ThrowOnError(err);
+        }
+        finally
+        {
+            for (int i = 0; i < count; i++)
+                if (pins[i].IsAllocated) pins[i].Free();
+        }
     }
 
     /// <summary>
     /// Ingests a list of pre-built SST files into <paramref name="cf"/>.
     /// </summary>
-    public void IngestExternalFile(IReadOnlyList<string> filePaths, ColumnFamilyHandle cf, IngestExternalFileOptions options)
+    public unsafe void IngestExternalFile(IReadOnlyList<string> filePaths, ColumnFamilyHandle cf, IngestExternalFileOptions options)
     {
         ArgumentNullException.ThrowIfNull(filePaths);
         ArgumentNullException.ThrowIfNull(cf);
         ArgumentNullException.ThrowIfNull(options);
 
-        string[] paths = [.. filePaths];
-        nint err = default;
-        NativeMethods.rocksdb_ingest_external_file_cf(Handle, cf.Handle, paths, (nuint)paths.Length, options.Handle, ref err);
-        NativeMethods.ThrowOnError(err);
+        int count = filePaths.Count;
+        byte[][] pathBytes = [.. filePaths.Select(p => Encoding.UTF8.GetBytes(p + '\0'))];
+        var pins = new GCHandle[count];
+        var pathPtrs = new byte*[count];
+        try
+        {
+            for (int i = 0; i < count; i++)
+            {
+                pins[i] = GCHandle.Alloc(pathBytes[i], GCHandleType.Pinned);
+                pathPtrs[i] = (byte*)pins[i].AddrOfPinnedObject();
+            }
+
+            nint err = default;
+            fixed (byte** pp = pathPtrs)
+                NativeMethods.rocksdb_ingest_external_file_cf(Handle, cf.Handle, pp, (nint)count, options.Handle, ref err);
+            NativeMethods.ThrowOnError(err);
+        }
+        finally
+        {
+            for (int i = 0; i < count; i++)
+                if (pins[i].IsAllocated) pins[i].Free();
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -736,6 +840,11 @@ public sealed class RocksDb : RocksDbHandle
         NativeMethods.ThrowOnError(err);
     }
 
+    public override void DisposeHandle()
+    {
+        NativeMethods.rocksdb_close(Handle);
+    }
+
     public override void DisposeUnmanagedResources()
     {
         if (_columnFamilyHandles != null)
@@ -745,7 +854,5 @@ public sealed class RocksDb : RocksDbHandle
                 cfh.Dispose();
             }
         }
-
-        NativeMethods.rocksdb_close(Handle);
     }
 }

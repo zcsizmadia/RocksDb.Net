@@ -110,10 +110,10 @@ public abstract class CompactionFilter : RocksDbHandle
 
     private static void CB_Destructor(nint state)
     {
-        Console.WriteLine($"CompactionFilter.CB_Destructor({state})");
-
-        // Unpin self
-        GCHandle.FromIntPtr(state).Free();
+        var handle = GCHandle.FromIntPtr(state);
+        var self = (CompactionFilter)handle.Target!;
+        self.TransferOwnership();
+        handle.Free();
     }
 
     private static unsafe byte CB_Filter(
@@ -153,7 +153,9 @@ public abstract class CompactionFilter : RocksDbHandle
             *valueChanged = 0;
         }
 
-        return (byte)decision;
+        // C API: return non-zero to remove the key, 0 to keep it.
+        // ChangeValue keeps the key (return 0) with *valueChanged = 1.
+        return decision == FilterDecision.Remove ? (byte)1 : (byte)0;
     }
 
     private static nint CB_Name(nint state) => SelfFromState(state)._namePtr;
@@ -224,17 +226,19 @@ public abstract class CompactionFilter : RocksDbHandle
         ReadOnlySpan<byte> existingValue,
         out byte[]? newValue);
 
-    public override void DisposeUnmanagedResources()
+    public override void DisposeHandle()
     {
         NativeMethods.rocksdb_compactionfilter_destroy(Handle);
+    }
 
+    public override void DisposeUnmanagedResources()
+    {
         // Free name
         Marshal.FreeCoTaskMem(_namePtr);
 
         // Free new var buffers
         foreach (var buf in _newValueBufs.Keys)
         {
-            Console.WriteLine($"CompactionFilter.CB_Destructor: Freeing buffer {buf}");
             Marshal.FreeHGlobal(buf);
         }
         _newValueBufs.Clear();

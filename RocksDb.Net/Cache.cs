@@ -9,8 +9,8 @@ namespace RocksDbNet;
 public sealed class Cache : RocksDbHandle
 {
     private Cache(nint handle)
+        : base(handle)
     {
-        Handle = handle;
     }
 
     /// <summary>Creates an LRU cache with the specified capacity (bytes).</summary>
@@ -38,7 +38,7 @@ public sealed class Cache : RocksDbHandle
     /// <summary>Current pinned memory usage of the cache in bytes.</summary>
     public ulong PinnedUsage => (ulong)NativeMethods.rocksdb_cache_get_pinned_usage(Handle);
     
-    public override void DisposeUnmanagedResources()
+    public override void DisposeHandle()
     {
         NativeMethods.rocksdb_cache_destroy(Handle);
     }
