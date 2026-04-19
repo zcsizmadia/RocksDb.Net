@@ -54,11 +54,7 @@ public abstract class RocksDbHandle : IDisposable
     /// object (e.g. when set on options). After this call, <see cref="Dispose()"/>
     /// will not destroy the native handle, preventing double-free crashes.
     /// </summary>
-    internal void TransferOwnership()
-    {
-        Interlocked.Exchange(ref _owned, 0);
-        //GC.SuppressFinalize(this);
-    }
+    internal void TransferOwnership() => Interlocked.Exchange(ref _owned, 0);
 
     /// <summary>
     /// Throws an exception if the object has been disposed.

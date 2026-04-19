@@ -31,3 +31,14 @@ jobs:
       shell: bash
       run: |
         dotnet test -c Release --no-build
+
+    - name: Pack NuGet package
+      shell: bash
+      run: |
+        dotnet pack -c Release -o nupkgs
+
+    - name: Upload NuGet package artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: nuget-package
+          path: nupkgs/*.nupkg
