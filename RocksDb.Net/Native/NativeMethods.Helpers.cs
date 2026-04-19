@@ -103,7 +103,7 @@ internal static unsafe partial class NativeMethods
 
         string? msg = Marshal.PtrToStringUTF8(errPtr);
         rocksdb_free(errPtr);
-        throw new RocksDbException(msg ?? "Unknown RocksDB error");
+        throw new RocksDbException(msg ?? "Unknown RocksDb error");
     }
 
     /// <summary>

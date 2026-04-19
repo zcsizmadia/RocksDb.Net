@@ -1,4 +1,3 @@
-using RocksDbNet.Native;
 using System.Text;
 
 namespace RocksDbNet;

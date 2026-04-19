@@ -1,11 +1,10 @@
-using RocksDbNet.Native;
 using System.Runtime.InteropServices;
 
 namespace RocksDbNet;
 
 /// <summary>
 /// User-defined comparator for controlling the sort order of keys in
-/// a RocksDB database. Override <see cref="Compare"/> to define custom
+/// a RocksDb database. Override <see cref="Compare"/> to define custom
 /// key ordering.
 /// </summary>
 /// <remarks>

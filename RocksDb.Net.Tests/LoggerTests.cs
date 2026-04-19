@@ -29,7 +29,7 @@ public class LoggerTests
         db.Put("key", "value");
         db.Flush();
 
-        // RocksDB should log at least some messages
+        // RocksDb should log at least some messages
         Assert.NotEmpty(logger.Logs);
     }
 

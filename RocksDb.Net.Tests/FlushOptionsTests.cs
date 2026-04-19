@@ -6,7 +6,7 @@ public class FlushOptionsTests
     public void Create_DefaultWait()
     {
         using var opts = new FlushOptions();
-        // Default wait is true in RocksDB
+        // Default wait is true in RocksDb
         Assert.True(opts.Wait);
     }
 

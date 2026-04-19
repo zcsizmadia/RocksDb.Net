@@ -1,10 +1,10 @@
 # RocksDb.Net
 
-A modern C# wrapper for [RocksDB](https://rocksdb.org/), the high-performance embedded key-value store developed by Meta. Built on .NET's `LibraryImport` source generator with zero-copy spans and deterministic disposal.
+A modern C# wrapper for [RocksDb](https://rocksdb.org/), the high-performance embedded key-value store developed by Meta. Built on .NET's `LibraryImport` source generator with zero-copy spans and deterministic disposal.
 
 ## Features
 
-- **Full RocksDB C API coverage** — 1,000+ auto-generated P/Invoke bindings from the official `rocksdb/c.h` header
+- **Full RocksDb C API coverage** — 1,000+ auto-generated P/Invoke bindings from the official `rocksdb/c.h` header
 - **Modern .NET** — targets .NET 10, uses `LibraryImport`, `ReadOnlySpan<byte>`, and `ref struct` iterators
 - **Idiomatic C# API** — `IDisposable` handles, properties, string overloads, LINQ-compatible iterators
 - **Column families** — create, drop, and operate on multiple column families
@@ -20,7 +20,7 @@ A modern C# wrapper for [RocksDB](https://rocksdb.org/), the high-performance em
 ## Requirements
 
 - .NET 10 SDK (or later)
-- RocksDB native binaries (provided by the `RocksDb.Net.Runtimes` NuGet package)
+- RocksDb native binaries (provided by the `RocksDb.Net.Runtimes` NuGet package)
 
 ## Quick Start
 
@@ -163,7 +163,7 @@ The [`Samples/`](Samples/) directory contains runnable examples:
 
 | Sample | Description |
 |--------|-------------|
-| [Simple](Samples/Simple/) | Basic open, put, get, delete |
+| [Basic](Samples/Basic/) | Basic open, put, get, delete |
 | [WriteBatchSample](Samples/WriteBatchSample/) | Atomic multi-key writes |
 | [IteratorSample](Samples/IteratorSample/) | Key-range scanning and seeking |
 | [ColumnFamilySample](Samples/ColumnFamilySample/) | Working with column families |
@@ -214,10 +214,10 @@ dotnet build
 dotnet test
 ```
 
-The P/Invoke bindings in `NativeMethods.g.cs` are auto-generated from the RocksDB C header. To regenerate:
+The P/Invoke bindings in `NativeMethods.g.cs` are auto-generated from the [RocksDb C header](https://github.com/facebook/rocksdb/blob/main/include/rocksdb/c.h). To regenerate:
 
 ```shell
-dotnet run --project tools/NativeMethodsGenerator -- \
+dotnet run --project NativeMethodsGenerator -- \
     --version 11.0.4 \
     --output RocksDb.Net/Native/NativeMethods.g.cs
 ```

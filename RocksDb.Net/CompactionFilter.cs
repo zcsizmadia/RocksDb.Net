@@ -1,8 +1,5 @@
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
-using System.Xml.Linq;
-
-using RocksDbNet.Native;
 
 namespace RocksDbNet;
 
@@ -32,7 +29,7 @@ public enum FilterDecision
 
 /// <summary>
 /// Context information passed to
-/// <see cref="CompactionFilterFactory.CreateFilter"/> when RocksDB starts
+/// <see cref="CompactionFilterFactory.CreateFilter"/> when RocksDb starts
 /// a new compaction or flush job.
 /// </summary>
 public readonly struct CompactionFilterContext

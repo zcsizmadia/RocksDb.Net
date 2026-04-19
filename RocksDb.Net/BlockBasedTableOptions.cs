@@ -1,5 +1,3 @@
-using RocksDbNet.Native;
-
 namespace RocksDbNet;
 
 /// <summary>Index type for block-based table.</summary>

@@ -1,4 +1,9 @@
 <Solution>
+  <Folder Name="/Documentation/">
+    <File Path="docs/API.md" />
+    <File Path="LICENSE" />
+    <File Path="README.md" />
+  </Folder>
   <Folder Name="/Samples/">
     <Project Path="Samples/WriteBatchSample/WriteBatchSample.csproj" />
     <Project Path="Samples/IteratorSample/IteratorSample.csproj" />
@@ -20,6 +25,7 @@
     <File Path="Directory.Build.props" />
     <File Path="Directory.Packages.props" />
   </Folder>
+  <Project Path="NativeMethodsGenerator/NativeMethodsGenerator.csproj" />
   <Project Path="RocksDb.Net.Tests/RocksDb.Net.Tests.csproj" Id="80e46977-aae4-49f4-b017-24173b4f5551" />
   <Project Path="RocksDb.Net/RocksDb.Net.csproj" />
 </Solution>

@@ -1,7 +1,3 @@
-using System.Reflection.Metadata;
-
-using RocksDbNet.Native;
-
 namespace RocksDbNet;
 
 /// <summary>

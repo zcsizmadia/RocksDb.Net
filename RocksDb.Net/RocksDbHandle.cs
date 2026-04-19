@@ -3,7 +3,7 @@
 namespace RocksDbNet;
 
 /// <summary>
-/// Abstract base class for all managed wrappers around native RocksDB handles.
+/// Abstract base class for all managed wrappers around native RocksDb handles.
 /// Provides deterministic disposal via <see cref="IDisposable"/> and a GC
 /// finalizer safety net.
 /// </summary>

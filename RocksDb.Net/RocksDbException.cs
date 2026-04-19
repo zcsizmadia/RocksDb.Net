@@ -1,6 +1,6 @@
 namespace RocksDbNet;
 
-/// <summary>Represents an error returned by the RocksDB native library.</summary>
+/// <summary>Represents an error returned by the RocksDb native library.</summary>
 public sealed class RocksDbException : Exception
 {
     public RocksDbException(string message) : base(message) { }
