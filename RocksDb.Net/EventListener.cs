@@ -41,6 +41,7 @@ public enum BackgroundErrorReason : uint
     CompactionNoSpace = 6,
 }
 
+/// <summary>Describes the write stall condition of a column family.</summary>
 public enum WriteStallCondition : int
 {
     Normal = 0,
@@ -48,6 +49,7 @@ public enum WriteStallCondition : int
     Stopped = 2
 }
 
+/// <summary>Information about a completed flush job.</summary>
 public sealed record FlushJobInfo(
     string? ColumnFamilyName,
     string? FilePath,
@@ -57,6 +59,7 @@ public sealed record FlushJobInfo(
     ulong SmallestSeqno,
     FlushReason FlushReason);
 
+/// <summary>Information about a completed compaction job.</summary>
 public sealed record CompactionJobInfo(
     string? ColumnFamilyName,
     string[] InputFiles,
@@ -69,23 +72,28 @@ public sealed record CompactionJobInfo(
     CompactionReason CompactionReason,
     string? Status);
 
+/// <summary>Information about a sub-compaction job.</summary>
 public sealed record SubCompactionJobInfo(
     string? ColumnFamilyName,
     string? Status);
 
+/// <summary>Information about an external file ingestion event.</summary>
 public sealed record ExternalFileIngestionInfo(
     string? ColumnFamilyName,
     string? InternalFilePath);
 
+/// <summary>Information about a background error.</summary>
 public sealed record BackgroundErrorInfo(
     BackgroundErrorReason Reason,
     string? Message);
 
+/// <summary>Information about a write stall condition change.</summary>
 public sealed record WriteStallInfo(
     string? ColumnFamilyName,
     WriteStallCondition Condition,
     WriteStallCondition PreviousCondition);
 
+/// <summary>Information about a sealed memtable.</summary>
 public sealed record MemTableInfo(
     string? ColumnFamilyName,
     ulong FirstSeqno,
@@ -93,6 +101,11 @@ public sealed record MemTableInfo(
     ulong NumEntries,
     ulong NumDeletes);
 
+/// <summary>
+/// Base class for receiving database event notifications such as flushes,
+/// compactions, and background errors. Override the virtual methods for
+/// events you want to observe.
+/// </summary>
 public abstract class EventListener : RocksDbHandle
 {
     // ── Unmanaged delegate types ─────────────────────────────────────────────
@@ -273,42 +286,52 @@ public abstract class EventListener : RocksDbHandle
 
     // ── Virtual methods ───────────────────────────────────────────────
 
+    /// <summary>Called when a flush job begins.</summary>
     public virtual void OnFlushBegin(FlushJobInfo info)
     {
     }
 
+    /// <summary>Called when a flush job completes.</summary>
     public virtual void OnFlushCompleted(FlushJobInfo info)
     {
     }
 
+    /// <summary>Called when a compaction job begins.</summary>
     public virtual void OnCompactionBegin(CompactionJobInfo info)
     {
     }
 
+    /// <summary>Called when a compaction job completes.</summary>
     public virtual void OnCompactionCompleted(CompactionJobInfo info)
     {
     }
 
+    /// <summary>Called when a sub-compaction job begins.</summary>
     public virtual void OnSubCompactionBegin(SubCompactionJobInfo info)
     {
     }
 
+    /// <summary>Called when a sub-compaction job completes.</summary>
     public virtual void OnSubCompactionCompleted(SubCompactionJobInfo info)
     {
     }
 
+    /// <summary>Called when an external file has been ingested.</summary>
     public virtual void OnExternalFileIngested(ExternalFileIngestionInfo info)
     {
     }
 
+    /// <summary>Called when a background error occurs.</summary>
     public virtual void OnBackgroundError(BackgroundErrorInfo info)
     {
     }
 
+    /// <summary>Called when write stall conditions change for a column family.</summary>
     public virtual void OnStallConditionsChanged(WriteStallInfo info)
     {
     }
 
+    /// <summary>Called when a memtable is sealed.</summary>
     public virtual void OnMemTableSealed(MemTableInfo info)
     {
     }

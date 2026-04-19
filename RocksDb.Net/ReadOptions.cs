@@ -75,12 +75,14 @@ public sealed class ReadOptions : RocksDbHandle
         set => NativeMethods.rocksdb_readoptions_set_tailing(Handle, value ? (byte)1 : (byte)0);
     }
 
+    /// <summary>Size of readahead for compaction reads, in bytes (0 = default).</summary>
     public ulong ReadaheadSize
     {
         get => (ulong)NativeMethods.rocksdb_readoptions_get_readahead_size(Handle);
         set => NativeMethods.rocksdb_readoptions_set_readahead_size(Handle, (nuint)value);
     }
 
+    /// <summary>If true, all returned keys must share the same prefix as the seek key.</summary>
     public bool PrefixSameAsStart
     {
         get => NativeMethods.rocksdb_readoptions_get_prefix_same_as_start(Handle) != 0;
@@ -94,18 +96,21 @@ public sealed class ReadOptions : RocksDbHandle
         set => NativeMethods.rocksdb_readoptions_set_pin_data(Handle, value ? (byte)1 : (byte)0);
     }
 
+    /// <summary>If true, bypass prefix-based iteration and use total order (sorted) iteration.</summary>
     public bool TotalOrderSeek
     {
         get => NativeMethods.rocksdb_readoptions_get_total_order_seek(Handle) != 0;
         set => NativeMethods.rocksdb_readoptions_set_total_order_seek(Handle, value ? (byte)1 : (byte)0);
     }
 
+    /// <summary>If true, enable asynchronous I/O during iteration.</summary>
     public bool AsyncIo
     {
         get => NativeMethods.rocksdb_readoptions_get_async_io(Handle) != 0;
         set => NativeMethods.rocksdb_readoptions_set_async_io(Handle, value ? (byte)1 : (byte)0);
     }
 
+    /// <summary>If true, range deletion tombstones are ignored during reads.</summary>
     public bool IgnoreRangeDeletions
     {
         get => NativeMethods.rocksdb_readoptions_get_ignore_range_deletions(Handle) != 0;

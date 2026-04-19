@@ -303,6 +303,20 @@ public sealed class RocksDb : RocksDbHandle
         NativeMethods.ThrowOnError(err);
     }
 
+    /// <summary>
+    /// Deletes all keys in the range [<paramref name="startKey"/>, <paramref name="endKey"/>)
+    /// from the default column family.
+    /// </summary>
+    /// <remarks>
+    /// The <c>DeleteRange</c> API is more efficient than issuing individual deletes for each key in the range,
+    /// but it does not immediately remove the keys from storage. Instead, it adds a range tombstone that marks
+    /// the keys as deleted. The actual removal of the keys happens during compaction, so the space is not reclaimed
+    /// until then. Also, range tombstones can affect read performance for keys in the deleted range until compaction occurs.
+    /// Use <c>DeleteRange</c> when you need to delete large contiguous ranges of keys and can tolerate the delayed cleanup and potential read performance impact.
+    /// </remarks>
+    public unsafe void DeleteRange(ReadOnlySpan<byte> startKey, ReadOnlySpan<byte> endKey, WriteOptions? options = null)
+        => DeleteRange(startKey, endKey, GetDefaultColumnFamily(), options);
+
     // ─────────────────────────────────────────────────────────────────────────
 
     /// <summary>Applies a merge operation to <paramref name="key"/> in the default column family.</summary>
@@ -591,6 +605,7 @@ public sealed class RocksDb : RocksDbHandle
         return new ColumnFamilyHandle(h, owned: false);
     }
 
+    /// <summary>Returns the column family handle for <paramref name="name"/> opened at database creation.</summary>
     public ColumnFamilyHandle GetColumnFamily(string name)
     {
         if (_columnFamilyHandles != null && _columnFamilyHandles.TryGetValue(name, out var cfh))

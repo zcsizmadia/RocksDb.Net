@@ -3,6 +3,24 @@ using System.Runtime.InteropServices;
 
 namespace RocksDbNet;
 
+/// <summary>
+/// User-defined comparator for controlling the sort order of keys in
+/// a RocksDB database. Override <see cref="Compare"/> to define custom
+/// key ordering.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Every database uses a comparator to determine the ordering of keys.
+/// The default comparator uses bytewise (lexicographic) ordering. To use
+/// a custom comparator, create a subclass and pass it to
+/// <see cref="DbOptions.Comparator"/>.
+/// </para>
+/// <para>
+/// <b>Important:</b> Once a database has been created with a given
+/// comparator, every subsequent open must use a comparator with the
+/// same name and semantics.
+/// </para>
+/// </remarks>
 public abstract class Comparator : RocksDbHandle
 {
     // ── Unmanaged delegate types ─────────────────────────────────────────────
@@ -21,6 +39,7 @@ public abstract class Comparator : RocksDbHandle
     // ── Instance state ───────────────────────────────────────────────────────
     private readonly nint _namePtr;   // CoTaskMem UTF-8 name string
     private GCHandle _gcHandle;       // strong root → object stays alive while native holds it
+    private int _nativeDestroyed;     // 1 when the native destructor has already fired
     
     // Delegate instances kept as fields to prevent GC from collecting the
     // objects while the native side still holds function pointers into them.
@@ -33,8 +52,10 @@ public abstract class Comparator : RocksDbHandle
 
     private static void DestructorCallback(nint state)
     {
-        // Unpin self
-        GCHandle.FromIntPtr(state).Free();
+        var handle = GCHandle.FromIntPtr(state);
+        var self = (Comparator)handle.Target!;
+        Interlocked.Exchange(ref self._nativeDestroyed, 1);
+        handle.Free();
     }
 
     private static unsafe int CompareCallback(
@@ -77,11 +98,24 @@ public abstract class Comparator : RocksDbHandle
 
     // ── Abstract methods ───────────────────────────────────────────────
 
+    /// <summary>
+    /// Compares two keys and returns their relative ordering.
+    /// </summary>
+    /// <param name="keyA">The first key.</param>
+    /// <param name="keyB">The second key.</param>
+    /// <returns>
+    /// A negative value if <paramref name="keyA"/> is less than <paramref name="keyB"/>,
+    /// zero if they are equal, or a positive value if <paramref name="keyA"/> is
+    /// greater than <paramref name="keyB"/>.
+    /// </returns>
     public abstract int Compare(ReadOnlySpan<byte> keyA, ReadOnlySpan<byte> keyB);
 
     public override void DisposeUnmanagedResources()
     {
-        NativeMethods.rocksdb_mergeoperator_destroy(Handle);
+        if (Interlocked.CompareExchange(ref _nativeDestroyed, 1, 0) == 0)
+        {
+            NativeMethods.rocksdb_comparator_destroy(Handle);
+        }
 
         // Free name
         Marshal.FreeCoTaskMem(_namePtr);

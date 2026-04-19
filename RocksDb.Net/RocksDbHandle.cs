@@ -2,10 +2,16 @@
 
 namespace RocksDbNet;
 
+/// <summary>
+/// Abstract base class for all managed wrappers around native RocksDB handles.
+/// Provides deterministic disposal via <see cref="IDisposable"/> and a GC
+/// finalizer safety net.
+/// </summary>
 public abstract class RocksDbHandle : IDisposable
 {
     private IntPtr _handle;
     private int _disposed;
+    private int _ownershipTransferred;
 
     /// <summary>
     /// Gets the native handle associated with the underlying resource.
@@ -24,6 +30,17 @@ public abstract class RocksDbHandle : IDisposable
     ~RocksDbHandle()
     {
         Dispose(false);
+    }
+
+    /// <summary>
+    /// Marks this handle as having its ownership transferred to a native
+    /// object (e.g. when set on options). After this call, <see cref="Dispose()"/>
+    /// will not destroy the native handle, preventing double-free crashes.
+    /// </summary>
+    internal void TransferOwnership()
+    {
+        Interlocked.Exchange(ref _ownershipTransferred, 1);
+        GC.SuppressFinalize(this);
     }
 
     /// <summary>
@@ -64,13 +81,24 @@ public abstract class RocksDbHandle : IDisposable
             DisposeManagedResources();
         }
 
-        DisposeUnmanagedResources();
+        if (_ownershipTransferred == 0)
+        {
+            DisposeUnmanagedResources();
+        }
 
         Handle = IntPtr.Zero;
     }
 
+    /// <summary>
+    /// Releases unmanaged resources used by the current instance.
+    /// </summary>
     public abstract void DisposeUnmanagedResources();
 
+    //public abstract void DisposeHandle();
+
+    /// <summary>
+    /// Releases managed resources used by the current instance.
+    /// </summary>
     public virtual void DisposeManagedResources()
     {
     }

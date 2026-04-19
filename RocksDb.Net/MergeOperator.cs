@@ -3,6 +3,24 @@ using System.Runtime.InteropServices;
 
 namespace RocksDbNet;
 
+/// <summary>
+/// User-defined merge operator that enables read-modify-write semantics
+/// on values stored in RocksDB. Override <see cref="FullMerge"/> (and
+/// optionally <see cref="PartialMerge"/>) to implement custom merge logic.
+/// </summary>
+/// <remarks>
+/// <para>
+/// A merge operator is used with <see cref="RocksDb.Merge(string, string, WriteOptions)"/>
+/// and similar overloads to combine new values with existing ones without
+/// a separate read step. Common use cases include counters, lists, and
+/// append-only logs.
+/// </para>
+/// <para>
+/// Register a merge operator via <see cref="DbOptions.MergeOperator"/> or
+/// use <see cref="DbOptions.SetUInt64AddMergeOperator"/> for the built-in
+/// 64-bit addition operator.
+/// </para>
+/// </remarks>
 public abstract class MergeOperator : RocksDbHandle
 {
     // ── Unmanaged delegate types ─────────────────────────────────────────────
@@ -41,6 +59,7 @@ public abstract class MergeOperator : RocksDbHandle
     // ── Instance state ───────────────────────────────────────────────────────
     private readonly nint _namePtr;   // CoTaskMem UTF-8 name string
     private GCHandle _gcHandle;       // strong root → object stays alive while native holds it
+    private int _nativeDestroyed;     // 1 when the native destructor has already fired
     
     // Delegate instances kept as fields to prevent GC from collecting the
     // objects while the native side still holds function pointers into them.
@@ -55,8 +74,10 @@ public abstract class MergeOperator : RocksDbHandle
 
     private static void DestructorCallback(nint state)
     {
-        // Unpin self
-        GCHandle.FromIntPtr(state).Free();
+        var handle = GCHandle.FromIntPtr(state);
+        var self = (MergeOperator)handle.Target!;
+        Interlocked.Exchange(ref self._nativeDestroyed, 1);
+        handle.Free();
     }
 
     private static unsafe nint FullMergeCallback(
@@ -188,9 +209,21 @@ public abstract class MergeOperator : RocksDbHandle
 
     // ── Abstract methods ───────────────────────────────────────────────
 
+    /// <summary>
+    /// Called to merge all accumulated operands with the existing value for a key.
+    /// </summary>
+    /// <param name="key">The key being merged.</param>
+    /// <param name="hasExistingValue"><c>true</c> if the key has a pre-existing value.</param>
+    /// <param name="existingValue">The current value (valid only when <paramref name="hasExistingValue"/> is <c>true</c>).</param>
+    /// <param name="operands">The operands to merge, in chronological order.</param>
+    /// <param name="newValue">Output: the result of the merge.</param>
+    /// <returns><c>true</c> if the merge succeeded; <c>false</c> to signal failure.</returns>
     public abstract bool FullMerge(ReadOnlySpan<byte> key, bool hasExistingValue, ReadOnlySpan<byte> existingValue, IEnumerable<byte[]> operands, out byte[] newValue);
 
-    // Partial merge is optional.
+    /// <summary>
+    /// Optional partial merge: combines a subset of operands before a full
+    /// merge. Return <c>false</c> to fall back to <see cref="FullMerge"/>.
+    /// </summary>
     public virtual bool PartialMerge(ReadOnlySpan<byte> key, IEnumerable<byte[]> operands, out byte[] newValue)
     {
         newValue = Array.Empty<byte>();
@@ -199,7 +232,10 @@ public abstract class MergeOperator : RocksDbHandle
 
     public override void DisposeUnmanagedResources()
     {
-        NativeMethods.rocksdb_mergeoperator_destroy(Handle);
+        if (Interlocked.CompareExchange(ref _nativeDestroyed, 1, 0) == 0)
+        {
+            NativeMethods.rocksdb_mergeoperator_destroy(Handle);
+        }
 
         // Free name
         Marshal.FreeCoTaskMem(_namePtr);

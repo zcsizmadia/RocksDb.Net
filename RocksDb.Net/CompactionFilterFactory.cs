@@ -31,6 +31,7 @@ public abstract class CompactionFilterFactory : RocksDbHandle
     // ── Instance state ───────────────────────────────────────────────────────
     private readonly nint _namePtr;
     private GCHandle _gcHandle;
+    private int _nativeDestroyed;
 
     private readonly DestructorCallback _destructorCallback;
     private readonly CreateFilterCallback _createFilterCallback;
@@ -62,8 +63,10 @@ public abstract class CompactionFilterFactory : RocksDbHandle
 
     private static void FCB_Destructor(nint state)
     {
-        // Unpin instance
-        GCHandle.FromIntPtr(state).Free();
+        var handle = GCHandle.FromIntPtr(state);
+        var self = (CompactionFilterFactory)handle.Target!;
+        Interlocked.Exchange(ref self._nativeDestroyed, 1);
+        handle.Free();
     }
 
     // Called by C++ for each compaction job. The returned filter handle is
@@ -105,7 +108,10 @@ public abstract class CompactionFilterFactory : RocksDbHandle
 
     public override void DisposeUnmanagedResources()
     {
-        NativeMethods.rocksdb_compactionfilterfactory_destroy(Handle);
+        if (Interlocked.CompareExchange(ref _nativeDestroyed, 1, 0) == 0)
+        {
+            NativeMethods.rocksdb_compactionfilterfactory_destroy(Handle);
+        }
 
         Marshal.FreeCoTaskMem(_namePtr);
     }

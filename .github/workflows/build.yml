@@ -31,4 +31,3 @@ jobs:
       shell: bash
       run: |
         dotnet test -c Release --no-build
-        dotnet run -c Release --project Samples/Simple

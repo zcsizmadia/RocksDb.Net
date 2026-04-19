@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 
 namespace RocksDbNet;
 
-public enum LogLevel : int
+public enum InfoLogLevel : int
 {
     /// <summary>
     /// Detailed logs for debugging the database engine.
@@ -36,6 +36,10 @@ public enum LogLevel : int
     Header = 5
 }
 
+/// <summary>
+/// User-defined info logger for RocksDB. Override <see cref="Log"/> to
+/// receive log messages from the database engine.
+/// </summary>
 public abstract class Logger : RocksDbHandle
 {
     // ── Unmanaged delegate types ─────────────────────────────────────────────
@@ -66,14 +70,14 @@ public abstract class Logger : RocksDbHandle
         var self = SelfFromState(state);
         var message = Marshal.PtrToStringUTF8(msg, (int)msg_len) ?? string.Empty;
 
-        self.Log((LogLevel)level, message);
+        self.Log((InfoLogLevel)level, message);
     }
 
     private static Logger SelfFromState(nint state) => (Logger)GCHandle.FromIntPtr(state).Target!;
 
     // ── Construction ─────────────────────────────────────────────────────────
 
-    protected Logger(LogLevel logLevel)
+    protected Logger(InfoLogLevel logLevel)
     {
         // Pin this instance so that the C++ callbacks can access it via the state pointer
         _gcHandle = GCHandle.Alloc(this);
@@ -88,7 +92,15 @@ public abstract class Logger : RocksDbHandle
 
     // ── Abstract methods ───────────────────────────────────────────────
 
-    public abstract void Log(LogLevel logLevel, string message);
+    /// <summary>
+    /// Called by RocksDB to log a message at the specified level.
+    /// </summary>
+    /// <param name="logLevel">The severity level of the message.</param>
+    /// <param name="message">The log message text.</param>
+    public abstract void Log(InfoLogLevel logLevel, string message);
+
+
+    // ── Disposal ─────────────────────────────────────────────────────────────
 
     public override void DisposeUnmanagedResources()
     {

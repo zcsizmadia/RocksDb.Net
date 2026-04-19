@@ -87,6 +87,7 @@ public abstract class CompactionFilter : RocksDbHandle
     // ── Instance state ───────────────────────────────────────────────────────
     private readonly nint _namePtr;   // CoTaskMem UTF-8 name string
     private GCHandle   _gcHandle;     // strong root → object stays alive while native holds it
+    private int _nativeDestroyed;     // 1 when the native destructor has already fired
     
     // Delegate instances kept as fields to prevent GC from collecting the
     // objects while the native side still holds function pointers into them.
@@ -110,10 +111,10 @@ public abstract class CompactionFilter : RocksDbHandle
 
     private static void CB_Destructor(nint state)
     {
-        Console.WriteLine($"CompactionFilter.CB_Destructor({state})");
-
-        // Unpin self
-        GCHandle.FromIntPtr(state).Free();
+        var handle = GCHandle.FromIntPtr(state);
+        var self = (CompactionFilter)handle.Target!;
+        Interlocked.Exchange(ref self._nativeDestroyed, 1);
+        handle.Free();
     }
 
     private static unsafe byte CB_Filter(
@@ -153,7 +154,9 @@ public abstract class CompactionFilter : RocksDbHandle
             *valueChanged = 0;
         }
 
-        return (byte)decision;
+        // C API: return non-zero to remove the key, 0 to keep it.
+        // ChangeValue keeps the key (return 0) with *valueChanged = 1.
+        return decision == FilterDecision.Remove ? (byte)1 : (byte)0;
     }
 
     private static nint CB_Name(nint state) => SelfFromState(state)._namePtr;
@@ -226,7 +229,10 @@ public abstract class CompactionFilter : RocksDbHandle
 
     public override void DisposeUnmanagedResources()
     {
-        NativeMethods.rocksdb_compactionfilter_destroy(Handle);
+        if (Interlocked.CompareExchange(ref _nativeDestroyed, 1, 0) == 0)
+        {
+            NativeMethods.rocksdb_compactionfilter_destroy(Handle);
+        }
 
         // Free name
         Marshal.FreeCoTaskMem(_namePtr);
@@ -234,7 +240,6 @@ public abstract class CompactionFilter : RocksDbHandle
         // Free new var buffers
         foreach (var buf in _newValueBufs.Keys)
         {
-            Console.WriteLine($"CompactionFilter.CB_Destructor: Freeing buffer {buf}");
             Marshal.FreeHGlobal(buf);
         }
         _newValueBufs.Clear();
