@@ -11,8 +11,8 @@ public sealed class WriteBatch : RocksDbHandle
 {
     /// <summary>Creates an empty write batch.</summary>
     public WriteBatch()
+        : base(NativeMethods.rocksdb_writebatch_create())
     {
-        Handle = NativeMethods.rocksdb_writebatch_create();
     }
 
     /// <summary>Returns the number of operations in the batch.</summary>

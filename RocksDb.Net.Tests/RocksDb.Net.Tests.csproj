@@ -3,6 +3,7 @@
   <PropertyGroup>
     <TargetFrameworks>$(DefaultTargetFrameworks)</TargetFrameworks>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>RocksDbNet.Tests</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>

@@ -111,11 +111,7 @@ internal static unsafe partial class NativeMethods
     /// </summary>
     internal static string? PtrToStringUTF8(byte* ptr, nuint len)
     {
-        if (ptr == null)
-        {
-            return null;
-        }
-        return System.Text.Encoding.UTF8.GetString(ptr, (int)len);
+        return ptr == null ? null : System.Text.Encoding.UTF8.GetString(ptr, (int)len);
     }
 
     /// <summary>

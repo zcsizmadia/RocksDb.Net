@@ -9,8 +9,8 @@ namespace RocksDbNet;
 public sealed class WriteOptions : RocksDbHandle
 {
     public WriteOptions()
+        : base(NativeMethods.rocksdb_writeoptions_create()) 
     {
-        Handle = NativeMethods.rocksdb_writeoptions_create();
     }
 
     /// <summary>If true, the write will be flushed from the OS buffer cache before the write is considered complete.</summary>

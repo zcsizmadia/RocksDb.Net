@@ -9,8 +9,8 @@ namespace RocksDbNet;
 public sealed class Cache : RocksDbHandle
 {
     private Cache(nint handle)
+        : base(handle)
     {
-        Handle = handle;
     }
 
     /// <summary>Creates an LRU cache with the specified capacity (bytes).</summary>

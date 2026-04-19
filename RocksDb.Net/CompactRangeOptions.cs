@@ -6,8 +6,8 @@ namespace RocksDbNet;
 public sealed class CompactRangeOptions : RocksDbHandle
 {
     public CompactRangeOptions()
+        : base(NativeMethods.rocksdb_compactoptions_create())
     {
-        Handle = NativeMethods.rocksdb_compactoptions_create();
     }
 
     /// <summary>If true, no other compaction will run at the same time as this one.</summary>

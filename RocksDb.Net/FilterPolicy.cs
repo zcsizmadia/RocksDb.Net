@@ -9,8 +9,8 @@ namespace RocksDbNet;
 public sealed class FilterPolicy : RocksDbHandle
 {
     private FilterPolicy(nint handle)
+        : base(handle)
     {
-        Handle = handle;
     }
 
     /// <summary>Creates a partitioned block-based Bloom filter.</summary>

@@ -18,8 +18,8 @@ public sealed record BackupInfo(
 public sealed class BackupEngine : RocksDbHandle
 {
     private BackupEngine(nint handle)
+        : base(handle)
     {
-        Handle = handle;
     }
 
     /// <summary>Opens a backup engine at the given path.</summary>

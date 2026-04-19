@@ -43,8 +43,8 @@ public enum WalRecoveryMode
 public sealed class DbOptions : RocksDbHandle
 {
     public DbOptions()
+        : base(NativeMethods.rocksdb_options_create())
     {
-        Handle = NativeMethods.rocksdb_options_create();
     }
 
     /// <summary>Creates a deep copy of this options object.</summary>

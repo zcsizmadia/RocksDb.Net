@@ -19,18 +19,17 @@ public sealed class RocksDb : RocksDbHandle
     private readonly Dictionary<string, ColumnFamilyHandle>? _columnFamilyHandles;
 
     private RocksDb(nint handle)
+        : base(handle)
     {
-        Handle = handle;
     }
 
     private RocksDb(nint handle, nint[] cfHandles)
+        : base(handle)
     {
-        Handle = handle;
-        
-        _columnFamilyHandles = new();
+        _columnFamilyHandles = [];
         foreach (var cf in cfHandles)
         {
-            ColumnFamilyHandle cfh =  new ColumnFamilyHandle(cf);
+            ColumnFamilyHandle cfh =  new(cf);
             _columnFamilyHandles[cfh.Name] = cfh;
         }
     }
@@ -65,8 +64,8 @@ public sealed class RocksDb : RocksDbHandle
 
         int count = columnFamilies.Count;
         nint[] cfHandles = new nint[count];
-        nint[] cfOptions = columnFamilies.Select(cf => cf.Options.Handle).ToArray();
-        byte[][] cfNameBytes = columnFamilies.Select(cf => Encoding.UTF8.GetBytes(cf.Name + '\0')).ToArray();
+        nint[] cfOptions = [.. columnFamilies.Select(cf => cf.Options.Handle)];
+        byte[][] cfNameBytes = [.. columnFamilies.Select(cf => Encoding.UTF8.GetBytes(cf.Name + '\0'))];
 
         nint handle;
         nint err = default;
@@ -120,8 +119,8 @@ public sealed class RocksDb : RocksDbHandle
 
         int count = columnFamilies.Count;
         nint[] cfHandles = new nint[count];
-        nint[] cfOptions = columnFamilies.Select(cf => cf.Options.Handle).ToArray();
-        byte[][] cfNameBytes = columnFamilies.Select(cf => Encoding.UTF8.GetBytes(cf.Name + '\0')).ToArray();
+        nint[] cfOptions = [.. columnFamilies.Select(cf => cf.Options.Handle)];
+        byte[][] cfNameBytes = [.. columnFamilies.Select(cf => Encoding.UTF8.GetBytes(cf.Name + '\0'))];
 
         nint handle;
         nint err = default;
@@ -454,7 +453,10 @@ public sealed class RocksDb : RocksDbHandle
         ArgumentNullException.ThrowIfNull(keys);
 
         int n = keys.Count;
-        if (n == 0) return Array.Empty<byte[]?>();
+        if (n == 0)
+        {
+            return [];
+        }
 
         // Stack-allocate pointer arrays for small batches to avoid heap pressure.
         byte*[] keyPtrs  = new byte*[n];
@@ -516,10 +518,9 @@ public sealed class RocksDb : RocksDbHandle
     /// </summary>
     public unsafe bool KeyMayExist(ReadOnlySpan<byte> key, ReadOptions? options = null)
     {
-        nuint dummyValLen;
         fixed (byte* k = key)
             return NativeMethods.rocksdb_key_may_exist(Handle, (options ?? _defaultReadOptions).Handle,
-                k, (nuint)key.Length, (byte**)null, out dummyValLen, (byte*)null, 0, (byte*)null) != 0;
+                k, (nuint)key.Length, (byte**)null, out nuint dummyValLen, (byte*)null, 0, (byte*)null) != 0;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -608,11 +609,7 @@ public sealed class RocksDb : RocksDbHandle
     /// <summary>Returns the column family handle for <paramref name="name"/> opened at database creation.</summary>
     public ColumnFamilyHandle GetColumnFamily(string name)
     {
-        if (_columnFamilyHandles != null && _columnFamilyHandles.TryGetValue(name, out var cfh))
-        {
-            return cfh;
-        }
-        return null!;
+        return _columnFamilyHandles != null && _columnFamilyHandles.TryGetValue(name, out ColumnFamilyHandle? cfh) ? cfh : null!;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -767,7 +764,7 @@ public sealed class RocksDb : RocksDbHandle
         ArgumentNullException.ThrowIfNull(options);
 
         int count = filePaths.Count;
-        byte[][] pathBytes = filePaths.Select(p => Encoding.UTF8.GetBytes(p + '\0')).ToArray();
+        byte[][] pathBytes = [.. filePaths.Select(p => Encoding.UTF8.GetBytes(p + '\0'))];
         var pins = new GCHandle[count];
         var pathPtrs = new byte*[count];
         try
@@ -800,7 +797,7 @@ public sealed class RocksDb : RocksDbHandle
         ArgumentNullException.ThrowIfNull(options);
 
         int count = filePaths.Count;
-        byte[][] pathBytes = filePaths.Select(p => Encoding.UTF8.GetBytes(p + '\0')).ToArray();
+        byte[][] pathBytes = [.. filePaths.Select(p => Encoding.UTF8.GetBytes(p + '\0'))];
         var pins = new GCHandle[count];
         var pathPtrs = new byte*[count];
         try

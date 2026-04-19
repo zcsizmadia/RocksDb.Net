@@ -9,8 +9,8 @@ namespace RocksDbNet;
 public sealed class ReadOptions : RocksDbHandle
 {
     public ReadOptions()
+        : base(NativeMethods.rocksdb_readoptions_create())
     {
-        Handle = NativeMethods.rocksdb_readoptions_create();
     }
 
     /// <summary>If true, all data read from underlying storage will be verified against checksums.</summary>

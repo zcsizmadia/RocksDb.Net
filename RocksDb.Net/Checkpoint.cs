@@ -9,8 +9,8 @@ namespace RocksDbNet;
 public sealed class Checkpoint : RocksDbHandle
 {
     private Checkpoint(nint handle)
+        : base(handle)
     {
-        Handle = handle;
     }
 
     /// <summary>Creates a <see cref="Checkpoint"/> object for the given database.</summary>

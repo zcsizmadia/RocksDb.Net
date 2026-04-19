@@ -148,7 +148,7 @@ public class RocksDbBasicTests
     {
         using var db = new TempDb();
 
-        var results = db.Db.MultiGet(new List<byte[]>());
+        var results = db.Db.MultiGet([]);
 
         Assert.Empty(results);
     }

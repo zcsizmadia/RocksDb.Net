@@ -10,9 +10,18 @@ namespace RocksDbNet;
 public abstract class RocksDbHandle : IDisposable
 {
     private nint _handle;
+    private int _owned = 1; // Default to owned, meaning this instance is responsible for releasing the native handle.
+
+    protected RocksDbHandle()
+    {
+    }
+
+    protected RocksDbHandle(nint handle)
+    {
+        _handle = handle;
+    }
+
     private int _disposed;
-    private int _ownershipTransferred;
-    private int _owned;
 
     /// <summary>
     /// Gets the native handle associated with the underlying resource.
@@ -48,7 +57,7 @@ public abstract class RocksDbHandle : IDisposable
     internal void TransferOwnership()
     {
         Interlocked.Exchange(ref _owned, 0);
-        GC.SuppressFinalize(this);
+        //GC.SuppressFinalize(this);
     }
 
     /// <summary>
@@ -57,14 +66,8 @@ public abstract class RocksDbHandle : IDisposable
     /// <remarks>Call this method before performing operations that require the object to be in a valid,
     /// non-disposed state. This helps prevent accessing resources that have already been released.</remarks>
     /// <exception cref="ObjectDisposedException">Thrown if the object has already been disposed.</exception>
-    public void ThrowIfDisposed()
-    {
-        if (IsDisposed)
-        {
-            throw new ObjectDisposedException(GetType().FullName);
-        }
-    }
-
+    public void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(IsDisposed, this);
+    
     /// <summary>
     /// Releases all resources used by the current instance.
     /// </summary>

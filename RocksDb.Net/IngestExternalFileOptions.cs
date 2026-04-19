@@ -9,8 +9,8 @@ public sealed class IngestExternalFileOptions : RocksDbHandle
 {
     /// <summary>Creates a new <see cref="IngestExternalFileOptions"/> with default settings.</summary>
     public IngestExternalFileOptions()
+        : base(NativeMethods.rocksdb_ingestexternalfileoptions_create())
     {
-        Handle = NativeMethods.rocksdb_ingestexternalfileoptions_create();
     }
 
     /// <summary>

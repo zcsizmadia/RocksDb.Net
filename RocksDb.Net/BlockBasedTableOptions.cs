@@ -18,8 +18,8 @@ public enum BlockBasedTableIndexType
 public sealed class BlockBasedTableOptions : RocksDbHandle
 {
     public BlockBasedTableOptions()
+        : base(NativeMethods.rocksdb_block_based_options_create())
     {
-        Handle = NativeMethods.rocksdb_block_based_options_create();
     }
 
     /// <summary>Sets the block cache to use for this table. Pass <c>null</c> to disable.</summary>
