@@ -768,7 +768,7 @@ public sealed class DbOptions : RocksDbHandle
 
     // ── Dispose ──────────────────────────────────
 
-    public override void DisposeUnmanagedResources()
+    public override void DisposeHandle()
     {
         NativeMethods.rocksdb_options_destroy(Handle);
     }

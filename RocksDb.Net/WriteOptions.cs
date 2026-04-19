@@ -48,7 +48,7 @@ public sealed class WriteOptions : RocksDbHandle
         set => NativeMethods.rocksdb_writeoptions_set_ignore_missing_column_families(Handle, value ? (byte)1 : (byte)0);
     }
 
-    public override void DisposeUnmanagedResources()
+    public override void DisposeHandle()
     {
         NativeMethods.rocksdb_writeoptions_destroy(Handle);
     }

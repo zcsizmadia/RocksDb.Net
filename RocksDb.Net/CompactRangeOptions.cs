@@ -40,7 +40,7 @@ public sealed class CompactRangeOptions : RocksDbHandle
         set => NativeMethods.rocksdb_compactoptions_set_max_subcompactions(Handle, value);
     }
 
-    public override void DisposeUnmanagedResources()
+    public override void DisposeHandle()
     {
         NativeMethods.rocksdb_compactoptions_destroy(Handle);
     }

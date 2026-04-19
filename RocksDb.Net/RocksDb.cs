@@ -843,6 +843,11 @@ public sealed class RocksDb : RocksDbHandle
         NativeMethods.ThrowOnError(err);
     }
 
+    public override void DisposeHandle()
+    {
+        NativeMethods.rocksdb_close(Handle);
+    }
+
     public override void DisposeUnmanagedResources()
     {
         if (_columnFamilyHandles != null)
@@ -852,7 +857,5 @@ public sealed class RocksDb : RocksDbHandle
                 cfh.Dispose();
             }
         }
-
-        NativeMethods.rocksdb_close(Handle);
     }
 }

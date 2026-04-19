@@ -85,7 +85,7 @@ public sealed class BackupEngine : RocksDbHandle
         }
     }
 
-    public override void DisposeUnmanagedResources()
+    public override void DisposeHandle()
     {
         NativeMethods.rocksdb_backup_engine_close(Handle);
     }

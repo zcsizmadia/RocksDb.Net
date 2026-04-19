@@ -115,7 +115,7 @@ public sealed class BlockBasedTableOptions : RocksDbHandle
         set => NativeMethods.rocksdb_block_based_options_set_use_delta_encoding(Handle, value ? (byte)1 : (byte)0);
     }
 
-    public override void DisposeUnmanagedResources()
+    public override void DisposeHandle()
     {
         NativeMethods.rocksdb_block_based_options_destroy(Handle);
     }

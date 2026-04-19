@@ -13,7 +13,7 @@ public sealed class EnvOptions : RocksDbHandle
         Handle = NativeMethods.rocksdb_envoptions_create();
     }
 
-    public override void DisposeUnmanagedResources()
+    public override void DisposeHandle()
     {
         NativeMethods.rocksdb_envoptions_destroy(Handle);
     }

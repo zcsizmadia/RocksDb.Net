@@ -493,7 +493,7 @@ public abstract class EventListener : RocksDbHandle
 
     // --
 
-    public override void DisposeUnmanagedResources()
+    public override void DisposeHandle()
     {
         NativeMethods.rocksdb_mergeoperator_destroy(Handle);
     }

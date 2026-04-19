@@ -16,7 +16,7 @@ public sealed class RateLimiter : RocksDbHandle
         Handle = NativeMethods.rocksdb_ratelimiter_create(rateBytesPerSec, refillPeriodMicros, fairness);
     }
 
-    public override void DisposeUnmanagedResources()
+    public override void DisposeHandle()
     {
         NativeMethods.rocksdb_ratelimiter_destroy(Handle);
     }

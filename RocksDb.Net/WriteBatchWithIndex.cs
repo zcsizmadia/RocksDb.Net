@@ -179,7 +179,7 @@ public sealed class WriteBatchWithIndex : RocksDbHandle
         return new ReadOnlySpan<byte>(ptr, checked((int)size)).ToArray();
     }
 
-    public override void DisposeUnmanagedResources()
+    public override void DisposeHandle()
     {
         NativeMethods.rocksdb_writebatch_wi_destroy(Handle);
     }

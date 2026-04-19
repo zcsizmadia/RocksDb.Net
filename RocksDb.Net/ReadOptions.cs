@@ -117,7 +117,7 @@ public sealed class ReadOptions : RocksDbHandle
         set => NativeMethods.rocksdb_readoptions_set_ignore_range_deletions(Handle, value ? (byte)1 : (byte)0);
     }
 
-    public override void DisposeUnmanagedResources()
+    public override void DisposeHandle()
     {
         NativeMethods.rocksdb_readoptions_destroy(Handle);
     }

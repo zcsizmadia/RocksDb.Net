@@ -21,7 +21,7 @@ public sealed class Snapshot : RocksDbHandle
     /// <summary>Returns the sequence number at which this snapshot was taken.</summary>
     public ulong SequenceNumber => NativeMethods.rocksdb_snapshot_get_sequence_number(Handle);
 
-    public override void DisposeUnmanagedResources()
+    public override void DisposeHandle()
     {
         NativeMethods.rocksdb_release_snapshot(_db.Handle, Handle);
     }

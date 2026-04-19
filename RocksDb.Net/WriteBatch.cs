@@ -184,7 +184,7 @@ public sealed class WriteBatch : RocksDbHandle
         return new ReadOnlySpan<byte>(ptr, checked((int)size)).ToArray();
     }
 
-    public override void DisposeUnmanagedResources()
+    public override void DisposeHandle()
     {
         NativeMethods.rocksdb_writebatch_destroy(Handle);
     }

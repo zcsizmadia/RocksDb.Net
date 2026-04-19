@@ -33,7 +33,7 @@ public sealed class Checkpoint : RocksDbHandle
         NativeMethods.ThrowOnError(err);
     }
 
-    public override void DisposeUnmanagedResources()
+    public override void DisposeHandle()
     {
         NativeMethods.rocksdb_checkpoint_object_destroy(Handle);
     }

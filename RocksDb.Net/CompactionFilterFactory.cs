@@ -31,7 +31,6 @@ public abstract class CompactionFilterFactory : RocksDbHandle
     // ── Instance state ───────────────────────────────────────────────────────
     private readonly nint _namePtr;
     private GCHandle _gcHandle;
-    private int _nativeDestroyed;
 
     private readonly DestructorCallback _destructorCallback;
     private readonly CreateFilterCallback _createFilterCallback;
@@ -65,7 +64,7 @@ public abstract class CompactionFilterFactory : RocksDbHandle
     {
         var handle = GCHandle.FromIntPtr(state);
         var self = (CompactionFilterFactory)handle.Target!;
-        Interlocked.Exchange(ref self._nativeDestroyed, 1);
+        self.TransferOwnership();
         handle.Free();
     }
 
@@ -106,13 +105,13 @@ public abstract class CompactionFilterFactory : RocksDbHandle
     /// </summary>
     protected abstract CompactionFilter CreateFilter(CompactionFilterContext context);
 
+    public override void DisposeHandle()
+    {
+        NativeMethods.rocksdb_compactionfilterfactory_destroy(Handle);
+    }
+
     public override void DisposeUnmanagedResources()
     {
-        if (Interlocked.CompareExchange(ref _nativeDestroyed, 1, 0) == 0)
-        {
-            NativeMethods.rocksdb_compactionfilterfactory_destroy(Handle);
-        }
-
         Marshal.FreeCoTaskMem(_namePtr);
     }
 }

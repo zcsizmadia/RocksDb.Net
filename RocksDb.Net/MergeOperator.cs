@@ -59,7 +59,6 @@ public abstract class MergeOperator : RocksDbHandle
     // ── Instance state ───────────────────────────────────────────────────────
     private readonly nint _namePtr;   // CoTaskMem UTF-8 name string
     private GCHandle _gcHandle;       // strong root → object stays alive while native holds it
-    private int _nativeDestroyed;     // 1 when the native destructor has already fired
     
     // Delegate instances kept as fields to prevent GC from collecting the
     // objects while the native side still holds function pointers into them.
@@ -76,7 +75,7 @@ public abstract class MergeOperator : RocksDbHandle
     {
         var handle = GCHandle.FromIntPtr(state);
         var self = (MergeOperator)handle.Target!;
-        Interlocked.Exchange(ref self._nativeDestroyed, 1);
+        self.TransferOwnership();
         handle.Free();
     }
 
@@ -230,13 +229,13 @@ public abstract class MergeOperator : RocksDbHandle
         return false;
     }
 
+    public override void DisposeHandle()
+    {
+        NativeMethods.rocksdb_mergeoperator_destroy(Handle);
+    }
+
     public override void DisposeUnmanagedResources()
     {
-        if (Interlocked.CompareExchange(ref _nativeDestroyed, 1, 0) == 0)
-        {
-            NativeMethods.rocksdb_mergeoperator_destroy(Handle);
-        }
-
         // Free name
         Marshal.FreeCoTaskMem(_namePtr);
     }

@@ -102,10 +102,13 @@ public abstract class Logger : RocksDbHandle
 
     // ── Disposal ─────────────────────────────────────────────────────────────
 
-    public override void DisposeUnmanagedResources()
+    public override void DisposeHandle()
     {
         NativeMethods.rocksdb_logger_destroy(Handle);
+    }
 
+    public override void DisposeUnmanagedResources()
+    {
         _gcHandle.Free();
     }
 }

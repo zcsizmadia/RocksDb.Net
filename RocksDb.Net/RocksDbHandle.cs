@@ -9,16 +9,24 @@ namespace RocksDbNet;
 /// </summary>
 public abstract class RocksDbHandle : IDisposable
 {
-    private IntPtr _handle;
+    private nint _handle;
     private int _disposed;
     private int _ownershipTransferred;
+    private int _owned;
 
     /// <summary>
     /// Gets the native handle associated with the underlying resource.
     /// </summary>
     /// <remarks>The handle is typically used for interoperability with unmanaged code or system APIs. The
     /// value may be IntPtr.Zero if the resource has not been initialized or has been released.</remarks>
-    public IntPtr Handle { get => _handle; protected set => _handle = value; }
+    public nint Handle { get => _handle; protected set => _handle = value; }
+
+    /// <summary>
+    /// Indicating whether this instance is owned or managed by the current object.
+    /// If true, the object is responsible for releasing the native handle during disposal;
+    /// if false, the handle is managed externally and should not be released by this instance.
+    /// </summary>
+    public bool Owned { get => _owned != 0; protected init => _owned = value ? 1 : 0; }
 
     /// <summary>
     /// Gets a value indicating whether the object has been disposed.
@@ -39,7 +47,7 @@ public abstract class RocksDbHandle : IDisposable
     /// </summary>
     internal void TransferOwnership()
     {
-        Interlocked.Exchange(ref _ownershipTransferred, 1);
+        Interlocked.Exchange(ref _owned, 0);
         GC.SuppressFinalize(this);
     }
 
@@ -76,25 +84,35 @@ public abstract class RocksDbHandle : IDisposable
             return;
         }
 
+        // Dispose managed resources if disposing is true
         if (disposing)
         {
             DisposeManagedResources();
         }
 
-        if (_ownershipTransferred == 0)
+        // Dispose unmanaged resources regardless of disposing value
+        DisposeUnmanagedResources();
+
+        // Dispose the native handle if this instance owns it
+        if (_owned != 0)
         {
-            DisposeUnmanagedResources();
+            DisposeHandle();
         }
 
         Handle = IntPtr.Zero;
     }
 
     /// <summary>
+    /// Releases the native handle associated with the underlying resource. This method is called during disposal to free unmanaged resources.
+    /// </summary>
+    public abstract void DisposeHandle();
+
+    /// <summary>
     /// Releases unmanaged resources used by the current instance.
     /// </summary>
-    public abstract void DisposeUnmanagedResources();
-
-    //public abstract void DisposeHandle();
+    public virtual void DisposeUnmanagedResources()
+    {
+    }
 
     /// <summary>
     /// Releases managed resources used by the current instance.

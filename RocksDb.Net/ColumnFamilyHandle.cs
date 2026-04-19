@@ -8,7 +8,7 @@ namespace RocksDbNet;
 /// </summary>
 public class ColumnFamilyHandle : RocksDbHandle
 {
-    private readonly bool _owned;
+    //private readonly bool _owned;
 
     /// <param name="handle">Native CF handle pointer.</param>
     /// <param name="owned">
@@ -20,7 +20,7 @@ public class ColumnFamilyHandle : RocksDbHandle
     internal ColumnFamilyHandle(nint handle, bool owned = true)
     {
         Handle = handle;
-        _owned = owned;
+        Owned = owned;
     }
 
     /// <summary>Numeric identifier for this column family.</summary>
@@ -38,11 +38,8 @@ public class ColumnFamilyHandle : RocksDbHandle
 
     public override string ToString() => Name;
 
-    public override void DisposeUnmanagedResources()
+    public override void DisposeHandle()
     {
-        if (_owned)
-        {
-            NativeMethods.rocksdb_column_family_handle_destroy(Handle);
-        }
+        NativeMethods.rocksdb_column_family_handle_destroy(Handle);
     }
 }
