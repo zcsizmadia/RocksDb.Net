@@ -48,7 +48,7 @@ jobs:
           echo "Validating version: $TAG_VERSION"
 
           # Extract version from csproj
-          PROJECT_VERSION="$(dotnet msbuild RocksDb.Net.Runtimes/ -getProperty:Version -nologo -v:q | tr -d '\r' | xargs)"
+          PROJECT_VERSION="$(dotnet msbuild RocksDb.Net/ -getProperty:Version -nologo -v:q | tr -d '\r' | xargs)"
 
           # Check if the tag version matches the project version
           if [[ "$TAG_VERSION" != "$PROJECT_VERSION" ]]; then
@@ -57,7 +57,7 @@ jobs:
           fi
 
           # Path to the specific nupkg we want
-          TARGET_NUPKG="./nupkgs/RocksDb.Net.Runtimes.$TAG_VERSION.nupkg"
+          TARGET_NUPKG="./nupkgs/RocksDb.Net.$TAG_VERSION.nupkg"
 
           # Verify the file exists with that version
           if [[ ! -f "$TARGET_NUPKG" ]]; then

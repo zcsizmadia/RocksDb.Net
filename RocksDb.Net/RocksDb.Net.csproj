@@ -5,14 +5,40 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyName>RocksDb.Net</AssemblyName>
     <RootNamespace>RocksDbNet</RootNamespace>
-    <PackageId>RocksDb.Net</PackageId>
-    <Description>C# wrapper for the RocksDB embedded key-value store</Description>
     <IsPackable>true</IsPackable>
 
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <!-- Suppress CS1591: library is documented on public API surface; Dispose/ToString are self-evident -->
     <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
+
+  <PropertyGroup>
+    <Authors>Zoltan Csizmadia</Authors>
+    <Owners>Zoltan Csizmadia</Owners>
+    <PackageId>RocksDb.Net</PackageId>
+    <PackageVersion>$(Version)</PackageVersion>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <PackageTags>rocksdb;leveldb;embedded;database;key-value;cache</PackageTags>
+    <RepositoryType>git</RepositoryType>
+    <RepositoryUrl>https://github.com/zcsizmadia/RocksDb.Net</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/zcsizmadia/RocksDb.Net</PackageProjectUrl>
+    <PackageIcon>logo-128.png</PackageIcon>
+    <PackageReleaseNotes>
+      <a href="https://github.com/zcsizmadia/RocksDb.Net/releases">Release Notes</a>
+    </PackageReleaseNotes>
+    <Description>C# wrapper for the RocksDb embedded key-value store</Description>
+    <Copyright>Copyright © 2026 Zoltan Csizmadia</Copyright>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="../LICENSE" Pack="true" PackagePath="" />
+    <None Include="../README.md" Pack="true" PackagePath="" />
+    <None Include="../logo-128.png" Pack="true" PackagePath="" />
+  </ItemGroup>
+
 
   <ItemGroup>
     <PackageReference Include="RocksDb.Net.Runtimes" />
