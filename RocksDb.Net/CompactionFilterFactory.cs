@@ -1,4 +1,3 @@
-using RocksDbNet.Native;
 using System.Runtime.InteropServices;
 
 namespace RocksDbNet;
@@ -100,7 +99,7 @@ public abstract class CompactionFilterFactory : RocksDbHandle
     /// <summary>
     /// Creates a new <see cref="CompactionFilter"/> for the given compaction job.
     /// Return a <em>freshly constructed</em> instance on every call; do not
-    /// share instances between jobs. RocksDB owns the returned filter's
+    /// share instances between jobs. RocksDb owns the returned filter's
     /// lifetime — <b>do not dispose the returned filter</b>.
     /// </summary>
     protected abstract CompactionFilter CreateFilter(CompactionFilterContext context);

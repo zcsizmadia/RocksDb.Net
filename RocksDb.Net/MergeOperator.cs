@@ -1,11 +1,10 @@
-using RocksDbNet.Native;
 using System.Runtime.InteropServices;
 
 namespace RocksDbNet;
 
 /// <summary>
 /// User-defined merge operator that enables read-modify-write semantics
-/// on values stored in RocksDB. Override <see cref="FullMerge"/> (and
+/// on values stored in RocksDb. Override <see cref="FullMerge"/> (and
 /// optionally <see cref="PartialMerge"/>) to implement custom merge logic.
 /// </summary>
 /// <remarks>
@@ -99,7 +98,7 @@ public abstract class MergeOperator : RocksDbHandle
         if (!self.FullMerge(keySpan, hasExistingValue, existingValueSpan, operandsList, out byte[] newVal))
         {
             // If no success, return a null pointer and set newValLen to 0
-            // This indicates to RocksDB that the merge operation failed, and in that case RocksDB will not use the returned value,
+            // This indicates to RocksDb that the merge operation failed, and in that case RocksDb will not use the returned value,
             // and the delete_value callback will not be called.
             *newValLen = 0;
             *success = 0;
@@ -131,7 +130,7 @@ public abstract class MergeOperator : RocksDbHandle
         if (!self.PartialMerge(keySpan, operandsList, out byte[] newVal))
         {
             // If no success, return a null pointer and set newValLen to 0
-            // This indicates to RocksDB that the merge operation failed, and in that case RocksDB will not use the returned value,
+            // This indicates to RocksDb that the merge operation failed, and in that case RocksDb will not use the returned value,
             // and the delete_value callback will not be called.
 
             *newValLen = 0;

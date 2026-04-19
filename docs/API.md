@@ -361,7 +361,7 @@ Per-operation option overrides.
 
 ## Ownership Rules
 
-Some RocksDB C API calls transfer ownership of native handles. After calling these setters, the managed wrapper will not attempt to free the native handle:
+Some RocksDb C API calls transfer ownership of native handles. After calling these setters, the managed wrapper will not attempt to free the native handle:
 
 | Setter | Object Transferred |
 |--------|--------------------|

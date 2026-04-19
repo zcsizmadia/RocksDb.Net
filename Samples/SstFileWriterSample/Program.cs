@@ -2,7 +2,7 @@ using System.Text;
 using RocksDbNet;
 
 // ─── SstFileWriter & IngestExternalFile: bulk loading ─────────────────────────
-// SstFileWriter creates pre-sorted SST files outside RocksDB. These files can
+// SstFileWriter creates pre-sorted SST files outside RocksDb. These files can
 // then be ingested directly into the database, bypassing the memtable and WAL
 // for maximum bulk-load performance.
 

@@ -1,5 +1,3 @@
-using RocksDbNet.Native;
-
 namespace RocksDbNet;
 
 /// <summary>
@@ -8,19 +6,10 @@ namespace RocksDbNet;
 /// </summary>
 public class ColumnFamilyHandle : RocksDbHandle
 {
-    //private readonly bool _owned;
-
     /// <param name="handle">Native CF handle pointer.</param>
-    /// <param name="owned">
-    /// When <c>true</c> (default), Dispose calls
-    /// <c>rocksdb_column_familyHandle_destroy</c>. Set to <c>false</c>
-    /// for handles returned by the DB itself (e.g. the default CF) whose
-    /// lifetime is managed by the database.
-    /// </param>
-    internal ColumnFamilyHandle(nint handle, bool owned = true)
+    internal ColumnFamilyHandle(nint handle)
+        : base(handle)
     {
-        Handle = handle;
-        Owned = owned;
     }
 
     /// <summary>Numeric identifier for this column family.</summary>

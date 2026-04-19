@@ -1,11 +1,10 @@
-using RocksDbNet.Native;
 using System.Runtime.InteropServices;
 using System.Text;
 
 namespace RocksDbNet;
 
 /// <summary>
-/// A RocksDB embedded key-value database.
+/// A RocksDb embedded key-value database.
 /// Thread-safe: all operations may be called concurrently from multiple threads.
 /// </summary>
 public sealed class RocksDb : RocksDbHandle
@@ -603,7 +602,9 @@ public sealed class RocksDb : RocksDbHandle
     public ColumnFamilyHandle GetDefaultColumnFamily()
     {
         nint h = NativeMethods.rocksdb_get_default_column_family_handle(Handle);
-        return new ColumnFamilyHandle(h, owned: false);
+        ColumnFamilyHandle cf = new ColumnFamilyHandle(h);
+        cf.TransferOwnership(); // Prevent double-free since the DB owns this handle.
+        return cf;
     }
 
     /// <summary>Returns the column family handle for <paramref name="name"/> opened at database creation.</summary>

@@ -1,4 +1,3 @@
-using RocksDbNet.Native;
 using System.Runtime.InteropServices;
 
 namespace RocksDbNet;
@@ -37,7 +36,7 @@ public enum InfoLogLevel : int
 }
 
 /// <summary>
-/// User-defined info logger for RocksDB. Override <see cref="Log"/> to
+/// User-defined info logger for RocksDb. Override <see cref="Log"/> to
 /// receive log messages from the database engine.
 /// </summary>
 public abstract class Logger : RocksDbHandle
@@ -93,7 +92,7 @@ public abstract class Logger : RocksDbHandle
     // ── Abstract methods ───────────────────────────────────────────────
 
     /// <summary>
-    /// Called by RocksDB to log a message at the specified level.
+    /// Called by RocksDb to log a message at the specified level.
     /// </summary>
     /// <param name="logLevel">The severity level of the message.</param>
     /// <param name="message">The log message text.</param>

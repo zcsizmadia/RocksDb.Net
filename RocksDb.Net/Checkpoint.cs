@@ -1,9 +1,7 @@
-using RocksDbNet.Native;
-
 namespace RocksDbNet;
 
 /// <summary>
-/// Creates on-disk checkpoints (hard-link-based snapshots) of a RocksDB database.
+/// Creates on-disk checkpoints (hard-link-based snapshots) of a RocksDb database.
 /// Maps to <c>rocksdb_checkpoint_t</c>.
 /// </summary>
 public sealed class Checkpoint : RocksDbHandle

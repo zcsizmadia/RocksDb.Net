@@ -1,5 +1,3 @@
-using RocksDbNet.Native;
-
 namespace RocksDbNet;
 
 /// <summary>Options for <see cref="RocksDb.Flush(FlushOptions?)"/> operations.</summary>

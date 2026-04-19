@@ -1,12 +1,8 @@
 using System.Text;
 
-using RocksDbNet.Native;
-
-using static System.Net.WebRequestMethods;
-
 namespace RocksDbNet;
 
-/// <summary>Compression algorithm used by RocksDB.</summary>
+/// <summary>Compression algorithm used by RocksDb.</summary>
 public enum Compression
 {
     None    = 0,
@@ -248,7 +244,7 @@ public sealed class DbOptions : RocksDbHandle
         set => NativeMethods.rocksdb_options_set_max_bytes_for_level_multiplier(Handle, value);
     }
 
-    /// <summary>If true, RocksDB dynamically adjusts the files sizes in each level.</summary>
+    /// <summary>If true, RocksDb dynamically adjusts the files sizes in each level.</summary>
     public bool LevelCompactionDynamicLevelBytes
     {
         get => NativeMethods.rocksdb_options_get_level_compaction_dynamic_level_bytes(Handle) != 0;
@@ -373,7 +369,7 @@ public sealed class DbOptions : RocksDbHandle
         set => NativeMethods.rocksdb_options_set_wal_compression(Handle, (int)value);
     }
 
-    /// <summary>Sets the directory where RocksDB writes log files. Defaults to the DB path.</summary>
+    /// <summary>Sets the directory where RocksDb writes log files. Defaults to the DB path.</summary>
 
     public string DbLogDir
     {
@@ -570,7 +566,7 @@ public sealed class DbOptions : RocksDbHandle
     }
 
     /// <summary>
-    /// Attaches a compaction filter factory. RocksDB calls
+    /// Attaches a compaction filter factory. RocksDb calls
     /// <see cref="CompactionFilterFactory.CreateFilter"/> at the start of
     /// each compaction or flush job and owns the returned filter.
     /// </summary>

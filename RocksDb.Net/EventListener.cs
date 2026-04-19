@@ -1,9 +1,4 @@
-using System.Reflection.Metadata;
 using System.Runtime.InteropServices;
-using System.Text;
-using System.Xml.Linq;
-
-using RocksDbNet.Native;
 
 namespace RocksDbNet;
 
@@ -439,7 +434,7 @@ public abstract class EventListener : RocksDbHandle
         nint errptr = default;
         NativeMethods.rocksdb_status_ptr_get_error(statusPtr, ref errptr);
 
-        // Standard RocksDB C error strings are allocated via strdup and must be freed,
+        // Standard RocksDb C error strings are allocated via strdup and must be freed,
         // but in this specific callback context, check if your NativeMethods.PtrToStringUTF8 
         // handles the lifecycle or if you need Marshal.PtrToStringAnsi.
         var message = errptr != nint.Zero ? Marshal.PtrToStringAnsi(errptr) : null;

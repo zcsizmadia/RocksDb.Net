@@ -1,5 +1,3 @@
-using RocksDbNet.Native;
-
 namespace RocksDbNet;
 
 /// <summary>
@@ -12,7 +10,7 @@ public sealed record BackupInfo(
     uint NumberFiles);
 
 /// <summary>
-/// Manages backups of a RocksDB database.
+/// Manages backups of a RocksDb database.
 /// Maps to <c>rocksdb_backup_engine_t</c>.
 /// </summary>
 public sealed class BackupEngine : RocksDbHandle

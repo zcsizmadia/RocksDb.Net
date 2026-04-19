@@ -2,6 +2,8 @@
 
   <PropertyGroup>
     <TargetFrameworks>$(DefaultClassLibTargetFrameworks)</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyName>RocksDb.Net</AssemblyName>
     <RootNamespace>RocksDbNet</RootNamespace>
@@ -42,6 +44,10 @@
 
   <ItemGroup>
     <PackageReference Include="RocksDb.Net.Runtimes" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="RocksDbNet.Native" />
   </ItemGroup>
 
 </Project>

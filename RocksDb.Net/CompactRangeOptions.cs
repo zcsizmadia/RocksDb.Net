@@ -1,5 +1,3 @@
-using RocksDbNet.Native;
-
 namespace RocksDbNet;
 
 /// <summary>Options for <c>CompactRange</c> operations.</summary>
