@@ -13,7 +13,7 @@ jobs:
     steps:
     - uses: actions/checkout@v6
 
-    - name: Setup .NET
+    - name: Setup .NET SDKs
       uses: actions/setup-dotnet@v5
       with:
         dotnet-version: |
@@ -38,7 +38,7 @@ jobs:
         dotnet pack -c Release -o nupkgs
 
     - name: Upload NuGet package artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: nuget-package
-          path: nupkgs/*.nupkg
+      uses: actions/upload-artifact@v7
+      with:
+        name: nuget-package
+        path: nupkgs/*.nupkg
