@@ -56,7 +56,7 @@ jobs:
 
     - name: Build
       shell: bash
-      run: dotnet build Samples -c Release
+      run: dotnet build -c Release
 
     - name: Run BasicSample
       shell: bash
