@@ -55,10 +55,6 @@ public abstract class MergeOperator : RocksDbHandle
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate nint NameDelegate(nint state);
 
-    // ── Instance state ───────────────────────────────────────────────────────
-    private readonly nint _namePtr;   // CoTaskMem UTF-8 name string
-    private GCHandle _gcHandle;       // strong root → object stays alive while native holds it
-    
     // Delegate instances kept as fields to prevent GC from collecting the
     // objects while the native side still holds function pointers into them.
     private readonly DestructorDelegate _destructorDelegate;
@@ -72,10 +68,9 @@ public abstract class MergeOperator : RocksDbHandle
 
     private static void DestructorCallback(nint state)
     {
-        var handle = GCHandle.FromIntPtr(state);
-        var self = (MergeOperator)handle.Target!;
+        var self = GetSelfFromPinnedIntPtr<MergeOperator>(state);
         self.TransferOwnership();
-        handle.Free();
+        self.UnpinGarbageCollector();
     }
 
     private static unsafe nint FullMergeCallback(
@@ -154,9 +149,9 @@ public abstract class MergeOperator : RocksDbHandle
         Marshal.FreeHGlobal(value);
     }
 
-    private static nint NameCallback(nint state) => SelfFromState(state)._namePtr;
+    private static nint NameCallback(nint state) => GetNameFromPinnedIntPtr(state);
 
-    private static MergeOperator SelfFromState(nint state) => (MergeOperator)GCHandle.FromIntPtr(state).Target!;
+    private static MergeOperator SelfFromState(nint state) => GetSelfFromPinnedIntPtr<MergeOperator>(state);
 
     // ── Construction ─────────────────────────────────────────────────────────
 
@@ -164,11 +159,7 @@ public abstract class MergeOperator : RocksDbHandle
     {
         ArgumentException.ThrowIfNullOrEmpty(name);
 
-        // Allocate unmanaged memory for the name string
-        _namePtr = Marshal.StringToCoTaskMemUTF8(name);
-
-        // Pin this instance so that the C++ callbacks can access it via the state pointer
-        _gcHandle = GCHandle.Alloc(this);
+        PinGarbageCollector(name);
 
         _destructorDelegate = DestructorCallback;
         _fullMergeDelegate = FullMergeCallback;
@@ -177,7 +168,7 @@ public abstract class MergeOperator : RocksDbHandle
         _nameDelegate = NameCallback;
 
         Handle = NativeMethods.rocksdb_mergeoperator_create(
-            GCHandle.ToIntPtr(_gcHandle),
+            GetPinnedIntPtr(),
             Marshal.GetFunctionPointerForDelegate(_destructorDelegate),
             Marshal.GetFunctionPointerForDelegate(_fullMergeDelegate),
             enablePartialMerge ? Marshal.GetFunctionPointerForDelegate(_partialMergeDelegate) : IntPtr.Zero,
@@ -231,11 +222,5 @@ public abstract class MergeOperator : RocksDbHandle
     public override void DisposeHandle()
     {
         NativeMethods.rocksdb_mergeoperator_destroy(Handle);
-    }
-
-    public override void DisposeUnmanagedResources()
-    {
-        // Free name
-        Marshal.FreeCoTaskMem(_namePtr);
     }
 }

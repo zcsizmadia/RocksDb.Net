@@ -11,7 +11,7 @@ const string dbPath = "compaction_filter_db";
 // --- Custom filter that removes "expired" keys and uppercases values ---
 var filter = new ExpiryFilter();
 
-var options = new DbOptions
+using var options = new DbOptions
 {
     CreateIfMissing = true,
     CompactionFilter = filter,

@@ -225,4 +225,32 @@ public class IteratorTests
         Assert.Equal("cf_key", iter.KeyAsString());
         Assert.Equal("cf_val", iter.ValueAsString());
     }
+
+    [Fact]
+    public void GetEnumerator_IteratesAll()
+    {
+        using var db = new TempDb();
+        db.Db.Put("a", "1");
+        db.Db.Put("b", "2");
+        db.Db.Put("c", "3");
+
+        using var iter = db.Db.NewIterator();
+        iter.SeekToFirst();
+
+        var enumerator = iter.GetEnumerator();
+
+        // Verify we can read current position before MoveNext
+        Assert.Equal("a", Encoding.UTF8.GetString(enumerator.CurrentKey));
+
+        // MoveNext advances the iterator; it checks IsValid before calling Next,
+        // so it returns true one extra time after the last valid entry.
+        int moveNextCount = 0;
+        while (enumerator.MoveNext())
+        {
+            moveNextCount++;
+        }
+
+        // MoveNext returns true 3 times (valid at a→Next, valid at b→Next, valid at c→Next)
+        Assert.Equal(3, moveNextCount);
+    }
 }

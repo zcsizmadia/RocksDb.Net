@@ -9,7 +9,7 @@ namespace RocksDbNet;
 public sealed class Snapshot : RocksDbHandle
 {
     private readonly RocksDb _db;
-    
+
     internal Snapshot(nint handle, RocksDb db)
         : base(handle)
     {

@@ -2,12 +2,32 @@ using System.Text;
 
 namespace RocksDbNet.Tests;
 
-public class WriteBatchTests
+public class WriteBatchWithIndexTests
 {
+    [Fact]
+    public void Constructor_Default_CreatesEmptyBatch()
+    {
+        using var batch = new WriteBatchWithIndex();
+        Assert.Equal(0, batch.Count);
+    }
+
+    [Fact]
+    public void Constructor_WithReservedBytes()
+    {
+        using var batch = new WriteBatchWithIndex(reservedBytes: 1024);
+        Assert.Equal(0, batch.Count);
+    }
+
+    [Fact]
+    public void Constructor_NegativeReservedBytes_Throws()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new WriteBatchWithIndex(reservedBytes: -1));
+    }
+
     [Fact]
     public void Put_String_IncreasesCount()
     {
-        using var batch = new WriteBatch();
+        using var batch = new WriteBatchWithIndex();
 
         batch.Put("key1", "val1");
         batch.Put("key2", "val2");
@@ -18,7 +38,7 @@ public class WriteBatchTests
     [Fact]
     public void Put_Bytes_IncreasesCount()
     {
-        using var batch = new WriteBatch();
+        using var batch = new WriteBatchWithIndex();
         byte[] key = [1, 2, 3];
         byte[] val = [4, 5, 6];
 
@@ -28,20 +48,9 @@ public class WriteBatchTests
     }
 
     [Fact]
-    public void Delete_IncreasesCount()
-    {
-        using var batch = new WriteBatch();
-
-        batch.Put("key1", "val1");
-        batch.Delete("key1");
-
-        Assert.Equal(2, batch.Count);
-    }
-
-    [Fact]
     public void Clear_ResetsCount()
     {
-        using var batch = new WriteBatch();
+        using var batch = new WriteBatchWithIndex();
 
         batch.Put("key1", "val1");
         batch.Put("key2", "val2");
@@ -51,27 +60,30 @@ public class WriteBatchTests
     }
 
     [Fact]
-    public void Write_AppliesAll()
+    public void Delete_String_IncreasesCount()
     {
-        using var db = new TempDb();
+        using var batch = new WriteBatchWithIndex();
 
-        using var batch = new WriteBatch();
-        batch.Put("a", "1");
-        batch.Put("b", "2");
-        batch.Put("c", "3");
-        batch.Delete("b");
+        batch.Put("key1", "val1");
+        batch.Delete("key1");
 
-        db.Db.Write(batch);
-
-        Assert.Equal("1", db.Db.GetString("a"));
-        Assert.Null(db.Db.GetString("b"));
-        Assert.Equal("3", db.Db.GetString("c"));
+        Assert.Equal(2, batch.Count);
     }
 
     [Fact]
-    public void Merge_String_IncreasesCount()
+    public void Delete_Bytes_IncreasesCount()
     {
-        using var batch = new WriteBatch();
+        using var batch = new WriteBatchWithIndex();
+
+        batch.Delete(Encoding.UTF8.GetBytes("key1"));
+
+        Assert.Equal(1, batch.Count);
+    }
+
+    [Fact]
+    public void Merge_IncreasesCount()
+    {
+        using var batch = new WriteBatchWithIndex();
 
         batch.Merge(Encoding.UTF8.GetBytes("key"), Encoding.UTF8.GetBytes("val"));
 
@@ -81,7 +93,7 @@ public class WriteBatchTests
     [Fact]
     public void SingleDelete_IncreasesCount()
     {
-        using var batch = new WriteBatch();
+        using var batch = new WriteBatchWithIndex();
 
         batch.SingleDelete(Encoding.UTF8.GetBytes("key"));
 
@@ -89,21 +101,19 @@ public class WriteBatchTests
     }
 
     [Fact]
-    public void DeleteRange_IncreasesCount()
+    public void DeleteRange_DoesNotThrow()
     {
-        using var batch = new WriteBatch();
+        using var batch = new WriteBatchWithIndex();
 
         batch.DeleteRange(
             Encoding.UTF8.GetBytes("a"),
             Encoding.UTF8.GetBytes("z"));
-
-        Assert.Equal(1, batch.Count);
     }
 
     [Fact]
     public void PutLogData_DoesNotChangeCount()
     {
-        using var batch = new WriteBatch();
+        using var batch = new WriteBatchWithIndex();
 
         batch.PutLogData(Encoding.UTF8.GetBytes("log entry"));
 
@@ -113,34 +123,21 @@ public class WriteBatchTests
     [Fact]
     public void SavePoint_RollbackToSavePoint()
     {
-        using var db = new TempDb();
-        using var batch = new WriteBatch();
+        using var batch = new WriteBatchWithIndex();
 
         batch.Put("a", "1");
         batch.SetSavePoint();
         batch.Put("b", "2");
+        Assert.Equal(2, batch.Count);
+
         batch.RollbackToSavePoint();
-
-        db.Db.Write(batch);
-
-        Assert.Equal("1", db.Db.GetString("a"));
-        Assert.Null(db.Db.GetString("b"));
-    }
-
-    [Fact]
-    public void PopSavePoint_DoesNotThrow()
-    {
-        using var batch = new WriteBatch();
-
-        batch.SetSavePoint();
-        batch.Put("a", "1");
-        batch.PopSavePoint();
+        Assert.Equal(1, batch.Count);
     }
 
     [Fact]
     public void GetData_ReturnsNonEmpty()
     {
-        using var batch = new WriteBatch();
+        using var batch = new WriteBatchWithIndex();
         batch.Put("key", "val");
 
         byte[] data = batch.GetData();
@@ -151,7 +148,7 @@ public class WriteBatchTests
     [Fact]
     public void Fluent_Chaining_Works()
     {
-        using var batch = new WriteBatch();
+        using var batch = new WriteBatchWithIndex();
 
         var result = batch
             .Put("a", "1")
@@ -178,16 +175,15 @@ public class WriteBatchTests
         using var db = RocksDb.Open(opts, dir.Path, cfDescs);
         var cf1 = db.GetColumnFamily("cf1");
 
-        using var batch = new WriteBatch();
+        using var batch = new WriteBatchWithIndex();
         batch.Put("key1", "val1", cf1);
         batch.Delete("key1", cf1);
-        db.Write(batch);
 
-        Assert.Null(db.GetString("key1", cf1));
+        Assert.Equal(2, batch.Count);
     }
 
     [Fact]
-    public void DeleteRange_ColumnFamily()
+    public void Merge_ColumnFamily()
     {
         using var dir = new TempDir();
         using var opts = new DbOptions { CreateIfMissing = true, CreateMissingColumnFamilies = true };
@@ -200,48 +196,10 @@ public class WriteBatchTests
         using var db = RocksDb.Open(opts, dir.Path, cfDescs);
         var cf1 = db.GetColumnFamily("cf1");
 
-        using var batch = new WriteBatch();
-        batch.Put(Encoding.UTF8.GetBytes("a"), Encoding.UTF8.GetBytes("1"), cf1);
-        batch.Put(Encoding.UTF8.GetBytes("b"), Encoding.UTF8.GetBytes("2"), cf1);
-        batch.Put(Encoding.UTF8.GetBytes("c"), Encoding.UTF8.GetBytes("3"), cf1);
-        db.Write(batch);
+        using var batch = new WriteBatchWithIndex();
+        batch.Merge(Encoding.UTF8.GetBytes("key"), Encoding.UTF8.GetBytes("val"), cf1);
 
-        using var batch2 = new WriteBatch();
-        batch2.DeleteRange(
-            Encoding.UTF8.GetBytes("a"),
-            Encoding.UTF8.GetBytes("c"),
-            cf1);
-        db.Write(batch2);
-
-        Assert.Null(db.GetString("a", cf1));
-        Assert.Null(db.GetString("b", cf1));
-        Assert.Equal("3", db.GetString("c", cf1));
-    }
-
-    [Fact]
-    public void Merge_ColumnFamily()
-    {
-        using var dir = new TempDir();
-        using var opts = new DbOptions { CreateIfMissing = true, CreateMissingColumnFamilies = true };
-        opts.SetUInt64AddMergeOperator();
-        using var cfOpts = opts.Clone();
-        var cfDescs = new List<ColumnFamilyDescriptor>
-        {
-            new("default"),
-            new("cf1", cfOpts),
-        };
-
-        using var db = RocksDb.Open(opts, dir.Path, cfDescs);
-        var cf1 = db.GetColumnFamily("cf1");
-
-        using var batch = new WriteBatch();
-        batch.Merge(Encoding.UTF8.GetBytes("counter"), BitConverter.GetBytes(1UL), cf1);
-        batch.Merge(Encoding.UTF8.GetBytes("counter"), BitConverter.GetBytes(2UL), cf1);
-        db.Write(batch);
-
-        byte[]? result = db.Get(Encoding.UTF8.GetBytes("counter").AsSpan(), cf1);
-        Assert.NotNull(result);
-        Assert.Equal(3UL, BitConverter.ToUInt64(result));
+        Assert.Equal(1, batch.Count);
     }
 
     [Fact]
@@ -258,16 +216,27 @@ public class WriteBatchTests
         using var db = RocksDb.Open(opts, dir.Path, cfDescs);
         var cf1 = db.GetColumnFamily("cf1");
 
-        using var batch = new WriteBatch();
-        batch.Put("key", "val", cf1);
-        db.Write(batch);
+        using var batch = new WriteBatchWithIndex();
+        batch.SingleDelete(Encoding.UTF8.GetBytes("key"), cf1);
 
-        Assert.Equal("val", db.GetString("key", cf1));
+        Assert.Equal(1, batch.Count);
+    }
 
-        using var batch2 = new WriteBatch();
-        batch2.SingleDelete(Encoding.UTF8.GetBytes("key"), cf1);
-        db.Write(batch2);
+    [Fact]
+    public void DeleteRange_ColumnFamily()
+    {
+        using var dir = new TempDir();
+        using var opts = new DbOptions { CreateIfMissing = true, CreateMissingColumnFamilies = true };
+        var cfDescs = new List<ColumnFamilyDescriptor>
+        {
+            new("default"),
+            new("cf1"),
+        };
 
-        Assert.Null(db.GetString("key", cf1));
+        using var db = RocksDb.Open(opts, dir.Path, cfDescs);
+        var cf1 = db.GetColumnFamily("cf1");
+
+        using var batch = new WriteBatchWithIndex();
+        batch.DeleteRange(Encoding.UTF8.GetBytes("a"), Encoding.UTF8.GetBytes("z"), cf1);
     }
 }

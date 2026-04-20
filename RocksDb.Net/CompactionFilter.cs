@@ -73,7 +73,7 @@ public abstract class CompactionFilter : RocksDbHandle
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private unsafe delegate byte FilterCb(
         nint state, int level,
-        byte* key,   nuint keyLen,
+        byte* key, nuint keyLen,
         byte* value, nuint valLen,
         byte** newValue, nuint* newValueLen,
         byte* valueChanged);
@@ -81,25 +81,19 @@ public abstract class CompactionFilter : RocksDbHandle
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate nint NameCb(nint state);
 
-    // ── Instance state ───────────────────────────────────────────────────────
-    private readonly nint _namePtr;   // CoTaskMem UTF-8 name string
-    private GCHandle   _gcHandle;     // strong root → object stays alive while native holds it
-    
     // Delegate instances kept as fields to prevent GC from collecting the
     // objects while the native side still holds function pointers into them.
     private readonly DestructorCb _destructorCb;
-    private readonly FilterCb     _filterCb;
-    private readonly NameCb       _nameCb;
+    private readonly FilterCb _filterCb;
+    private readonly NameCb _nameCb;
 
     // Per-thread scratch space for the new-value buffer.
     // The C++ rocksdb_compactionfilter_t::Filter() method immediately copies
     // *new_value via std::string::assign after the callback returns — there is
-    // no matching free() in the C layer. We therefore allocate with
-    // Marshal.AllocHGlobal and free it at the start of the NEXT call on the
-    // same thread, accepting a maximum of one outstanding buffer per thread.
-    [ThreadStatic]
-    private static nint t_lastNewValueBuf;
-
+    // no matching free() in the C layer. We therefore keep at most one
+    // outstanding buffer per managed thread and release the previous one on the
+    // next callback from that same thread.
+    private readonly ConcurrentDictionary<int, nint> _lastNewValueBufsByThread = new();
     private readonly ConcurrentDictionary<nint, byte> _newValueBufs = new();
 
     // ── Static callbacks ─────────────────────────────────────────────────────
@@ -107,10 +101,9 @@ public abstract class CompactionFilter : RocksDbHandle
 
     private static void CB_Destructor(nint state)
     {
-        var handle = GCHandle.FromIntPtr(state);
-        var self = (CompactionFilter)handle.Target!;
+        var self = GetSelfFromPinnedIntPtr<CompactionFilter>(state);
         self.TransferOwnership();
-        handle.Free();
+        self.UnpinGarbageCollector();
     }
 
     private static unsafe byte CB_Filter(
@@ -120,14 +113,15 @@ public abstract class CompactionFilter : RocksDbHandle
         byte** newValue, nuint* newValueLen,
         byte* valueChanged)
     {
-        var self = SelfFromState(state);
+        //var self = SelfFromState(state);
+        var self = GetSelfFromPinnedIntPtr<CompactionFilter>(state);
         var keySpan = new ReadOnlySpan<byte>(key, checked((int)keyLen));
         var valSpan = new ReadOnlySpan<byte>(val, checked((int)valLen));
 
-        // Release the buffer returned to C++ on the previous call.
-        // C++ has already called std::string::assign on it by now.
-        nint lastNewValueBuf = Interlocked.Exchange(ref t_lastNewValueBuf, IntPtr.Zero);
-        if (lastNewValueBuf != IntPtr.Zero)
+        // Release the buffer returned to C++ on the previous call from this
+        // managed thread. C++ has already copied it via std::string::assign.
+        int threadId = Environment.CurrentManagedThreadId;
+        if (self._lastNewValueBufsByThread.TryRemove(threadId, out nint lastNewValueBuf) && lastNewValueBuf != IntPtr.Zero)
         {
             Marshal.FreeHGlobal(lastNewValueBuf);
             self._newValueBufs.TryRemove(lastNewValueBuf, out _);
@@ -138,10 +132,10 @@ public abstract class CompactionFilter : RocksDbHandle
         if (decision == FilterDecision.ChangeValue && newVal is { Length: > 0 })
         {
             nint buf = Marshal.AllocHGlobal(newVal.Length);
-            t_lastNewValueBuf = buf;
-            self._newValueBufs.TryAdd(t_lastNewValueBuf, 0);
+            self._lastNewValueBufsByThread[threadId] = buf;
+            self._newValueBufs.TryAdd(buf, 0);
             Marshal.Copy(newVal, 0, buf, newVal.Length);
-            *newValue    = (byte*)buf;
+            *newValue = (byte*)buf;
             *newValueLen = (nuint)newVal.Length;
             *valueChanged = 1;
         }
@@ -155,29 +149,21 @@ public abstract class CompactionFilter : RocksDbHandle
         return decision == FilterDecision.Remove ? (byte)1 : (byte)0;
     }
 
-    private static nint CB_Name(nint state) => SelfFromState(state)._namePtr;
-
-    private static CompactionFilter SelfFromState(nint state) => (CompactionFilter)GCHandle.FromIntPtr(state).Target!;
-
     // ── Construction ─────────────────────────────────────────────────────────
-
 
     protected unsafe CompactionFilter(string name)
     {
         ArgumentException.ThrowIfNullOrEmpty(name);
 
-        // Allocate unmanaged memory for the name string
-        _namePtr = Marshal.StringToCoTaskMemUTF8(name);
-
         // Pin this instance so that the C++ callbacks can access it via the state pointer
-        _gcHandle = GCHandle.Alloc(this);
+        PinGarbageCollector(name);
 
         _destructorCb = CB_Destructor;
         _filterCb = CB_Filter;
-        _nameCb = CB_Name;
+        _nameCb = GetNameFromPinnedIntPtr;
 
         Handle = NativeMethods.rocksdb_compactionfilter_create(
-            GCHandle.ToIntPtr(_gcHandle),
+            GetPinnedIntPtr(),
             Marshal.GetFunctionPointerForDelegate(_destructorCb),
             Marshal.GetFunctionPointerForDelegate(_filterCb),
             Marshal.GetFunctionPointerForDelegate(_nameCb));
@@ -225,15 +211,25 @@ public abstract class CompactionFilter : RocksDbHandle
 
     public override void DisposeHandle()
     {
-        NativeMethods.rocksdb_compactionfilter_destroy(Handle);
+        try
+        {
+            NativeMethods.rocksdb_compactionfilter_destroy(Handle);
+        }
+        catch(Exception)
+        {
+            // Ignore exceptions during handle disposal to avoid unhandled exceptions in finalizer.
+        }
     }
 
     public override void DisposeUnmanagedResources()
     {
-        // Free name
-        Marshal.FreeCoTaskMem(_namePtr);
+        base.DisposeUnmanagedResources();
 
-        // Free new var buffers
+        // Free up all the newValue allocations which were not freed yet.
+        // This is a safety net in case the filter was disposed before all threads finished using it.
+
+        _lastNewValueBufsByThread.Clear();
+
         foreach (var buf in _newValueBufs.Keys)
         {
             Marshal.FreeHGlobal(buf);
