@@ -13,18 +13,17 @@ const string restorePath = "backup_checkpoint_restored";
 foreach (var dir in new[] { dbPath, backupPath, checkpointPath, restorePath })
     if (Directory.Exists(dir)) Directory.Delete(dir, true);
 
-var options = new DbOptions { CreateIfMissing = true };
-
 // ── BackupEngine ───────────────────────────────────────────────────────────
 Console.WriteLine("=== BackupEngine ===");
 
-using (var db = RocksDb.Open(options, dbPath))
+using (var db = RocksDb.Open(new DbOptions { CreateIfMissing = true }, dbPath))
 {
     db.Put("version", "1");
     db.Put("data", "first version");
 
     // Create first backup
-    using var backup = BackupEngine.Open(new DbOptions(), backupPath);
+    using var backupOpts = new DbOptions();
+    using var backup = BackupEngine.Open(backupOpts, backupPath);
     backup.CreateNewBackup(db);
     Console.WriteLine("  Created backup #1");
 
@@ -45,14 +44,15 @@ using (var db = RocksDb.Open(options, dbPath))
 }
 
 // Restore from latest backup
-using (var backup = BackupEngine.Open(new DbOptions(), backupPath))
+using (var backupOpts = new DbOptions())
+using (var backup = BackupEngine.Open(backupOpts, backupPath))
 {
     backup.RestoreDbFromLatestBackup(restorePath, restorePath);
     Console.WriteLine($"  Restored to: {restorePath}");
 }
 
 // Verify restored data
-using (var restored = RocksDb.Open(options, restorePath))
+using (var restored = RocksDb.Open(new DbOptions { CreateIfMissing = false }, restorePath))
 {
     Console.WriteLine($"  Restored version: {restored.GetString("version")}");
     Console.WriteLine($"  Restored data:    {restored.GetString("data")}");
@@ -62,7 +62,7 @@ using (var restored = RocksDb.Open(options, restorePath))
 // ── Checkpoint ─────────────────────────────────────────────────────────────
 Console.WriteLine("\n=== Checkpoint ===");
 
-using (var db = RocksDb.Open(options, dbPath))
+using (var db = RocksDb.Open(new DbOptions { CreateIfMissing = false }, dbPath))
 {
     db.Put("checkpoint_marker", "present");
 
