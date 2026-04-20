@@ -35,16 +35,11 @@ jobs:
       run: |
         for dir in Samples/*/; do
           if [ -d "$dir" ]; then
-            # Extract directory name for the group title
-            dirname=$(basename "$dir")
-            
-            echo "::group::Running project in $dirname"
-            
-            # Navigate into the directory and run the project
-            # --project ensures it targets the specific file if multiple exist
-            dotnet run --project "$dir" --no-build
-            
+            pushd "$dir"
+            echo "::group::Running $(basename "$dir") sample"
+            dotnet run --no-build
             echo "::endgroup::"
+            popd
           fi
         done
 
