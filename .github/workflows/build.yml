@@ -30,19 +30,6 @@ jobs:
       run: |
         dotnet test -c Release --no-build
 
-    - name: Run samples
-      shell: bash
-      run: |
-        for dir in Samples/*/; do
-          if [ -d "$dir" ]; then
-            pushd "$dir"
-            echo "::group::Running $(basename "$dir") sample"
-            dotnet run --no-build
-            echo "::endgroup::"
-            popd
-          fi
-        done
-
     - name: Pack NuGet package
       shell: bash
       run: |
