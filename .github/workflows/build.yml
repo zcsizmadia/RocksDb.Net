@@ -33,7 +33,7 @@ jobs:
     - name: Run samples
       shell: bash
       run: |
-        for dir in */; do
+        for dir in Samples/*/; do
           if [ -d "$dir" ]; then
             # Extract directory name for the group title
             dirname=$(basename "$dir")
