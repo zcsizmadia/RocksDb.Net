@@ -35,7 +35,7 @@ public sealed class Cache : RocksDbHandle
 
     /// <summary>Current pinned memory usage of the cache in bytes.</summary>
     public ulong PinnedUsage => (ulong)NativeMethods.rocksdb_cache_get_pinned_usage(Handle);
-    
+
     public override void DisposeHandle()
     {
         NativeMethods.rocksdb_cache_destroy(Handle);

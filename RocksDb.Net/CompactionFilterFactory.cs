@@ -27,10 +27,6 @@ public abstract class CompactionFilterFactory : RocksDbHandle
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate nint NameCallback(nint state);
 
-    // ── Instance state ───────────────────────────────────────────────────────
-    private readonly nint _namePtr;
-    private GCHandle _gcHandle;
-
     private readonly DestructorCallback _destructorCallback;
     private readonly CreateFilterCallback _createFilterCallback;
     private readonly NameCallback _nameCallback;
@@ -39,19 +35,15 @@ public abstract class CompactionFilterFactory : RocksDbHandle
     protected CompactionFilterFactory(string name)
     {
         ArgumentException.ThrowIfNullOrEmpty(name);
-        
-        // Allocate unmanaged memory for the name string
-        _namePtr = Marshal.StringToCoTaskMemUTF8(name);
 
-        // Pin this instance so that the C++ callbacks can access it via the state pointer
-        _gcHandle = GCHandle.Alloc(this);
+        PinGarbageCollector(name);
 
         _destructorCallback = FCB_Destructor;
         _createFilterCallback = FCB_CreateFilter;
-        _nameCallback = FCB_Name;
+        _nameCallback = GetNameFromPinnedIntPtr;
 
         Handle = NativeMethods.rocksdb_compactionfilterfactory_create(
-            GCHandle.ToIntPtr(_gcHandle),
+            GetPinnedIntPtr(),
             Marshal.GetFunctionPointerForDelegate(_destructorCallback),
             Marshal.GetFunctionPointerForDelegate(_createFilterCallback),
             Marshal.GetFunctionPointerForDelegate(_nameCallback));
@@ -61,10 +53,9 @@ public abstract class CompactionFilterFactory : RocksDbHandle
 
     private static void FCB_Destructor(nint state)
     {
-        var handle = GCHandle.FromIntPtr(state);
-        var self = (CompactionFilterFactory)handle.Target!;
+        var self = GetSelfFromPinnedIntPtr<CompactionFilterFactory>(state);
         self.TransferOwnership();
-        handle.Free();
+        self.UnpinGarbageCollector();
     }
 
     // Called by C++ for each compaction job. The returned filter handle is
@@ -72,7 +63,7 @@ public abstract class CompactionFilterFactory : RocksDbHandle
     // job finishes, which triggers the filter's own destructor callback.
     private static nint FCB_CreateFilter(nint state, nint contextPtr)
     {
-        var self = SelfFromState(state);
+        var self = GetSelfFromPinnedIntPtr<CompactionFilterFactory>(state);
 
         var ctx = new CompactionFilterContext
         {
@@ -88,13 +79,6 @@ public abstract class CompactionFilterFactory : RocksDbHandle
         return filter.Handle;
     }
 
-    private static nint FCB_Name(nint state)
-    {
-        return SelfFromState(state)._namePtr;
-    }
-
-    private static CompactionFilterFactory SelfFromState(nint state) => (CompactionFilterFactory)GCHandle.FromIntPtr(state).Target!;
-
     // ── Abstract factory method ──────────────────────────────────────────────
     /// <summary>
     /// Creates a new <see cref="CompactionFilter"/> for the given compaction job.
@@ -107,10 +91,5 @@ public abstract class CompactionFilterFactory : RocksDbHandle
     public override void DisposeHandle()
     {
         NativeMethods.rocksdb_compactionfilterfactory_destroy(Handle);
-    }
-
-    public override void DisposeUnmanagedResources()
-    {
-        Marshal.FreeCoTaskMem(_namePtr);
     }
 }

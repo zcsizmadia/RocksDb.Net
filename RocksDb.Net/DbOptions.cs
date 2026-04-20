@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text;
 
 namespace RocksDbNet;
@@ -5,31 +6,31 @@ namespace RocksDbNet;
 /// <summary>Compression algorithm used by RocksDb.</summary>
 public enum Compression
 {
-    None    = 0,
-    Snappy  = 1,
-    Zlib    = 2,
-    Bz2     = 3,
-    Lz4     = 4,
-    Lz4Hc   = 5,
-    Xpress  = 6,
-    Zstd    = 7,
+    None = 0,
+    Snappy = 1,
+    Zlib = 2,
+    Bz2 = 3,
+    Lz4 = 4,
+    Lz4Hc = 5,
+    Xpress = 6,
+    Zstd = 7,
 }
 
 /// <summary>Compaction style.</summary>
 public enum CompactionStyle
 {
-    Level     = 0,
+    Level = 0,
     Universal = 1,
-    Fifo      = 2,
+    Fifo = 2,
 }
 
 /// <summary>WAL recovery mode.</summary>
 public enum WalRecoveryMode
 {
     TolerateCorruptedTailRecords = 0,
-    AbsoluteConsistency          = 1,
-    PointInTime                  = 2,
-    SkipAnyCorruptedRecords      = 3,
+    AbsoluteConsistency = 1,
+    PointInTime = 2,
+    SkipAnyCorruptedRecords = 3,
 }
 
 /// <summary>
@@ -38,6 +39,8 @@ public enum WalRecoveryMode
 /// </summary>
 public sealed class DbOptions : RocksDbHandle
 {
+    private readonly ConcurrentBag<RocksDbHandle> _ownedHandles = new();
+
     public DbOptions()
         : base(NativeMethods.rocksdb_options_create())
     {
@@ -528,7 +531,7 @@ public sealed class DbOptions : RocksDbHandle
         {
             ArgumentNullException.ThrowIfNull(value);
             NativeMethods.rocksdb_options_set_ratelimiter(Handle, value.Handle);
-            value.TransferOwnership();
+            _ownedHandles.Add(value);
         }
     }
 
@@ -562,6 +565,7 @@ public sealed class DbOptions : RocksDbHandle
         {
             ArgumentNullException.ThrowIfNull(value);
             NativeMethods.rocksdb_options_set_compaction_filter(Handle, value.Handle);
+            _ownedHandles.Add(value);
         }
     }
 
@@ -582,6 +586,7 @@ public sealed class DbOptions : RocksDbHandle
         {
             ArgumentNullException.ThrowIfNull(value);
             NativeMethods.rocksdb_options_set_compaction_filter_factory(Handle, value.Handle);
+            value.TransferOwnership();
         }
     }
 
@@ -594,6 +599,7 @@ public sealed class DbOptions : RocksDbHandle
         {
             ArgumentNullException.ThrowIfNull(value);
             NativeMethods.rocksdb_options_set_merge_operator(Handle, value.Handle);
+            value.TransferOwnership();
         }
     }
 
@@ -606,6 +612,7 @@ public sealed class DbOptions : RocksDbHandle
         {
             ArgumentNullException.ThrowIfNull(value);
             NativeMethods.rocksdb_options_set_comparator(Handle, value.Handle);
+            _ownedHandles.Add(value);
         }
     }
 
@@ -618,6 +625,7 @@ public sealed class DbOptions : RocksDbHandle
         {
             ArgumentNullException.ThrowIfNull(value);
             NativeMethods.rocksdb_options_set_info_log(Handle, value.Handle);
+            _ownedHandles.Add(value);
         }
     }
 
@@ -630,6 +638,7 @@ public sealed class DbOptions : RocksDbHandle
         {
             ArgumentNullException.ThrowIfNull(value);
             NativeMethods.rocksdb_options_add_eventlistener(Handle, value.Handle);
+            value.TransferOwnership();
         }
     }
 
@@ -642,6 +651,7 @@ public sealed class DbOptions : RocksDbHandle
             foreach (var listener in value)
             {
                 NativeMethods.rocksdb_options_add_eventlistener(Handle, listener.Handle);
+                listener.TransferOwnership();
             }
         }
     }
@@ -754,7 +764,7 @@ public sealed class DbOptions : RocksDbHandle
         WalDir = path;
         return this;
     }
-    
+
     [Obsolete("Use DbLogDir property instead.")]
     public DbOptions SetDbLogDir(string path)
     {
@@ -767,5 +777,17 @@ public sealed class DbOptions : RocksDbHandle
     public override void DisposeHandle()
     {
         NativeMethods.rocksdb_options_destroy(Handle);
+    }
+
+    public override void DisposeUnmanagedResources()
+    {
+        base.DisposeUnmanagedResources();
+
+        // Dispose all owned handles (e.g., RateLimiter, CompactionFilter, etc.)
+        foreach (var handle in _ownedHandles)
+        {
+            handle.Dispose();
+        }
+        _ownedHandles.Clear();
     }
 }

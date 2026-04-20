@@ -49,6 +49,13 @@ Console.WriteLine(value); // "world"
 db.Delete("hello");
 ```
 
+Important lifetime note:
+- `RocksDb.Open*` takes ownership of the `DbOptions` instance you pass in.
+- After opening, do not reuse that same `DbOptions` instance for other operations (for example `Destroy`, `Repair`, or `ListColumnFamilies`).
+- If you need options again, create a new `DbOptions` (or `Clone()` before passing ownership).
+
+For static utilities that do not open a DB handle (`Destroy`, `Repair`, `ListColumnFamilies`), ownership is not transferred; dispose those options yourself.
+
 ### Iteration
 
 ```csharp
@@ -119,6 +126,11 @@ db.Merge("visits", BitConverter.GetBytes(5UL));
 ulong total = BitConverter.ToUInt64(db.Get("visits"));
 // total == 6
 ```
+
+Nested handle lifetime note:
+- `MergeOperator`, `CompactionFilterFactory`, and `EventListener` are transferred to native shared ownership when assigned to `DbOptions`.
+- `Comparator`, `CompactionFilter`, `Logger`, and `RateLimiter` are disposed with `DbOptions`.
+- In all cases, these objects must outlive the open `RocksDb` instance that uses them.
 
 ### Backup & Restore
 

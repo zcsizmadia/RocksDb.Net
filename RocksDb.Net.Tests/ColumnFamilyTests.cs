@@ -203,15 +203,14 @@ public class ColumnFamilyTests
     public void ListColumnFamilies_AfterCreate()
     {
         using var dir = new TempDir();
-        using var opts = new DbOptions { CreateIfMissing = true };
 
-        using (var db = RocksDb.Open(opts, dir.Path))
+        using (var db = RocksDb.Open(new DbOptions { CreateIfMissing = true }, dir.Path))
         {
             using var cfOpts = new DbOptions();
             using var cf = db.CreateColumnFamily(cfOpts, "new_cf");
         }
 
-        var families = RocksDb.ListColumnFamilies(opts, dir.Path);
+        var families = RocksDb.ListColumnFamilies(new DbOptions(), dir.Path);
         Assert.Contains("default", families);
         Assert.Contains("new_cf", families);
     }

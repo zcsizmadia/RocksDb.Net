@@ -53,8 +53,7 @@ public abstract class Logger : RocksDbHandle
         uint msg_len);
 
     // ── Instance state ───────────────────────────────────────────────────────
-    private GCHandle _gcHandle;       // strong root → object stays alive while native holds it
-    
+
     private readonly LoggerDelegate _loggerDelegate;
 
     // ── Static callbacks ─────────────────────────────────────────────────────
@@ -66,27 +65,24 @@ public abstract class Logger : RocksDbHandle
         nint msg,
         uint msg_len)
     {
-        var self = SelfFromState(state);
+        var self = GetSelfFromPinnedIntPtr<Logger>(state);
         var message = Marshal.PtrToStringUTF8(msg, (int)msg_len) ?? string.Empty;
 
         self.Log((InfoLogLevel)level, message);
     }
 
-    private static Logger SelfFromState(nint state) => (Logger)GCHandle.FromIntPtr(state).Target!;
-
     // ── Construction ─────────────────────────────────────────────────────────
 
     protected Logger(InfoLogLevel logLevel)
     {
-        // Pin this instance so that the C++ callbacks can access it via the state pointer
-        _gcHandle = GCHandle.Alloc(this);
+        PinGarbageCollector();
 
         _loggerDelegate = LoggerCallback;
 
         Handle = NativeMethods.rocksdb_logger_create_callback_logger(
             (int)logLevel,
             Marshal.GetFunctionPointerForDelegate(_loggerDelegate),
-            GCHandle.ToIntPtr(_gcHandle));
+            GetPinnedIntPtr());
     }
 
     // ── Abstract methods ───────────────────────────────────────────────
@@ -108,6 +104,9 @@ public abstract class Logger : RocksDbHandle
 
     public override void DisposeUnmanagedResources()
     {
-        _gcHandle.Free();
+        base.DisposeUnmanagedResources();
+
+        // Logger has no destructor callback, so we must unpin here. 
+        UnpinGarbageCollector();
     }
 }

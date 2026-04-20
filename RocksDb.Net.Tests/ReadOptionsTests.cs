@@ -102,4 +102,49 @@ public class ReadOptionsTests
 
         opts.SetSnapshot(null);
     }
+
+    [Fact]
+    public void SetIterateUpperBound_DoesNotThrow()
+    {
+        using var opts = new ReadOptions();
+
+        opts.SetIterateUpperBound("z"u8);
+    }
+
+    [Fact]
+    public void SetIterateLowerBound_DoesNotThrow()
+    {
+        using var opts = new ReadOptions();
+
+        opts.SetIterateLowerBound("a"u8);
+    }
+
+    [Fact]
+    public void SetIterateBounds_WithIterator()
+    {
+        using var db = new TempDb();
+        db.Db.Put("a", "1");
+        db.Db.Put("b", "2");
+        db.Db.Put("c", "3");
+        db.Db.Put("d", "4");
+
+        byte[] lowerBound = [.. "b"u8];
+        byte[] upperBound = [.. "d"u8];
+
+        using var readOpts = new ReadOptions();
+        readOpts.SetIterateLowerBound(lowerBound);
+        readOpts.SetIterateUpperBound(upperBound);
+
+        using var iter = db.Db.NewIterator(readOpts);
+        iter.SeekToFirst();
+
+        var keys = new List<string>();
+        while (iter.IsValid())
+        {
+            keys.Add(iter.KeyAsString());
+            iter.Next();
+        }
+
+        Assert.Equal(["b", "c"], keys);
+    }
 }

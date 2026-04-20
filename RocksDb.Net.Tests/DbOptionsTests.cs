@@ -437,4 +437,380 @@ public class DbOptionsTests
         opts.MemtablePrefixBloomSizeRatio = 0.05;
         Assert.Equal(0.05, opts.MemtablePrefixBloomSizeRatio, 0.001);
     }
+
+    [Fact]
+    public void DbWriteBufferSize_GetSet()
+    {
+        using var opts = new DbOptions();
+
+        opts.DbWriteBufferSize = 128 * 1024 * 1024;
+        Assert.Equal(128UL * 1024 * 1024, opts.DbWriteBufferSize);
+    }
+
+    [Fact]
+    public void MaxTotalWalSize_GetSet()
+    {
+        using var opts = new DbOptions();
+
+        opts.MaxTotalWalSize = 512 * 1024 * 1024;
+        Assert.Equal(512UL * 1024 * 1024, opts.MaxTotalWalSize);
+    }
+
+    [Fact]
+    public void MaxBackgroundCompactions_GetSet()
+    {
+        using var opts = new DbOptions();
+
+        opts.MaxBackgroundCompactions = 2;
+        Assert.Equal(2, opts.MaxBackgroundCompactions);
+    }
+
+    [Fact]
+    public void MaxBackgroundFlushes_GetSet()
+    {
+        using var opts = new DbOptions();
+
+        opts.MaxBackgroundFlushes = 2;
+        Assert.Equal(2, opts.MaxBackgroundFlushes);
+    }
+
+    [Fact]
+    public void MaxSubcompactions_GetSet()
+    {
+        using var opts = new DbOptions();
+
+        opts.MaxSubcompactions = 4;
+        Assert.Equal(4u, opts.MaxSubcompactions);
+    }
+
+    [Fact]
+    public void UseDirectIoForFlushAndCompaction_GetSet()
+    {
+        using var opts = new DbOptions();
+
+        opts.UseDirectIoForFlushAndCompaction = true;
+        Assert.True(opts.UseDirectIoForFlushAndCompaction);
+    }
+
+    [Fact]
+    public void AllowMmapWrites_GetSet()
+    {
+        using var opts = new DbOptions();
+
+        opts.AllowMmapWrites = true;
+        Assert.True(opts.AllowMmapWrites);
+    }
+
+    [Fact]
+    public void UseFsync_GetSet()
+    {
+        using var opts = new DbOptions();
+
+        opts.UseFsync = true;
+        Assert.True(opts.UseFsync);
+    }
+
+    [Fact]
+    public void AllowConcurrentMemtableWrite_GetSet()
+    {
+        using var opts = new DbOptions();
+
+        opts.AllowConcurrentMemtableWrite = false;
+        Assert.False(opts.AllowConcurrentMemtableWrite);
+    }
+
+    [Fact]
+    public void WalSizeLimitMb_GetSet()
+    {
+        using var opts = new DbOptions();
+
+        opts.WalSizeLimitMb = 100;
+        Assert.Equal(100UL, opts.WalSizeLimitMb);
+    }
+
+    [Fact]
+    public void WalBytesPerSync_GetSet()
+    {
+        using var opts = new DbOptions();
+
+        opts.WalBytesPerSync = 2 * 1024 * 1024;
+        Assert.Equal(2UL * 1024 * 1024, opts.WalBytesPerSync);
+    }
+
+    [Fact]
+    public void WalCompression_GetSet()
+    {
+        using var opts = new DbOptions();
+
+        opts.WalCompression = Compression.Zstd;
+        Assert.Equal(Compression.Zstd, opts.WalCompression);
+    }
+
+    [Fact]
+    public void KeepLogFileNum_GetSet()
+    {
+        using var opts = new DbOptions();
+
+        opts.KeepLogFileNum = 10;
+        Assert.Equal(10UL, opts.KeepLogFileNum);
+    }
+
+    [Fact]
+    public void MaxLogFileSize_GetSet()
+    {
+        using var opts = new DbOptions();
+
+        opts.MaxLogFileSize = 1024 * 1024;
+        Assert.Equal(1024UL * 1024, opts.MaxLogFileSize);
+    }
+
+    [Fact]
+    public void BlobFileSize_GetSet()
+    {
+        using var opts = new DbOptions();
+
+        opts.BlobFileSize = 256 * 1024 * 1024;
+        Assert.Equal(256UL * 1024 * 1024, opts.BlobFileSize);
+    }
+
+    [Fact]
+    public void GetStatisticsString_WithoutEnabled_ReturnsNull()
+    {
+        using var opts = new DbOptions();
+
+        string? stats = opts.GetStatisticsString();
+        Assert.Null(stats);
+    }
+
+    [Fact]
+    public void Comparator_Set()
+    {
+        using var opts = new DbOptions();
+        var comparator = new TestReverseBytewiseComparator();
+
+        opts.Comparator = comparator;
+    }
+
+    [Fact]
+    public void MergeOperator_Set()
+    {
+        using var opts = new DbOptions();
+        var mergeOp = new TestAppendMerge();
+
+        opts.MergeOperator = mergeOp;
+    }
+
+    [Fact]
+    public void CompactionFilterFactory_Set()
+    {
+        using var opts = new DbOptions();
+        var factory = new TestCompactionFilterFactory();
+
+        opts.CompactionFilterFactory = factory;
+    }
+
+    [Fact]
+    public void EventListener_Set()
+    {
+        using var opts = new DbOptions();
+        var listener = new TestEventListenerForOptions();
+
+        opts.EventListener = listener;
+    }
+
+    [Fact]
+    public void EventListeners_Set()
+    {
+        using var opts = new DbOptions();
+        var listener1 = new TestEventListenerForOptions();
+        var listener2 = new TestEventListenerForOptions();
+
+        opts.EventListeners = [listener1, listener2];
+    }
+
+    [Fact]
+    public void InfoLog_Set()
+    {
+        using var opts = new DbOptions();
+        var logger = new TestLoggerForOptions(InfoLogLevel.Info);
+
+        opts.InfoLog = logger;
+    }
+
+    // Helper classes for setter-only property tests
+    private sealed class TestReverseBytewiseComparator : Comparator
+    {
+        public TestReverseBytewiseComparator() : base("TestReverse") { }
+        public override int Compare(ReadOnlySpan<byte> keyA, ReadOnlySpan<byte> keyB) => keyB.SequenceCompareTo(keyA);
+    }
+
+    private sealed class TestAppendMerge : MergeOperator
+    {
+        public TestAppendMerge() : base("TestAppend") { }
+        public override bool FullMerge(ReadOnlySpan<byte> key, bool hasExistingValue, ReadOnlySpan<byte> existingValue, IEnumerable<byte[]> operands, out byte[] newValue)
+        {
+            newValue = Array.Empty<byte>();
+            return true;
+        }
+    }
+
+    private sealed class TestCompactionFilterFactory : CompactionFilterFactory
+    {
+        public TestCompactionFilterFactory() : base("TestFactory") { }
+        protected override CompactionFilter CreateFilter(CompactionFilterContext context) => new NoOpFilter();
+
+        private sealed class NoOpFilter : CompactionFilter
+        {
+            public NoOpFilter() : base("NoOp") { }
+            protected override FilterDecision Filter(int level, ReadOnlySpan<byte> key, ReadOnlySpan<byte> existingValue, out byte[]? newValue)
+            {
+                newValue = null;
+                return FilterDecision.Keep;
+            }
+        }
+    }
+
+    private sealed class TestEventListenerForOptions : EventListener { }
+
+    private sealed class TestLoggerForOptions : Logger
+    {
+        public TestLoggerForOptions(InfoLogLevel logLevel) : base(logLevel) { }
+        public override void Log(InfoLogLevel logLevel, string message) { }
+    }
+
+    // ── Deprecated method tests ──────────────────────────────────────────────
+
+#pragma warning disable CS0618 // Type or member is obsolete
+
+    [Fact]
+    public void SetBlockBasedTableFactory_Deprecated()
+    {
+        using var opts = new DbOptions();
+        using var bbto = new BlockBasedTableOptions();
+
+        var result = opts.SetBlockBasedTableFactory(bbto);
+        Assert.Same(opts, result);
+    }
+
+    [Fact]
+    public void SetRowCache_Deprecated()
+    {
+        using var opts = new DbOptions();
+        using var cache = Cache.CreateLru(1024 * 1024);
+
+        var result = opts.SetRowCache(cache);
+        Assert.Same(opts, result);
+    }
+
+    [Fact]
+    public void SetRateLimiter_Deprecated()
+    {
+        using var opts = new DbOptions();
+        var limiter = new RateLimiter(1024 * 1024);
+
+        var result = opts.SetRateLimiter(limiter);
+        Assert.Same(opts, result);
+    }
+
+    [Fact]
+    public void SetPrefixExtractor_Deprecated()
+    {
+        using var opts = new DbOptions();
+        var st = SliceTransform.CreateFixedPrefix(4);
+
+        var result = opts.SetPrefixExtractor(st);
+        Assert.Same(opts, result);
+    }
+
+    [Fact]
+    public void SetCompactionFilter_Deprecated()
+    {
+        using var opts = new DbOptions();
+        var filter = new NoOpCompactionFilter();
+
+        var result = opts.SetCompactionFilter(filter);
+        Assert.Same(opts, result);
+    }
+
+    [Fact]
+    public void SetCompactionFilterFactory_Deprecated()
+    {
+        using var opts = new DbOptions();
+        var factory = new TestCompactionFilterFactory();
+
+        var result = opts.SetCompactionFilterFactory(factory);
+        Assert.Same(opts, result);
+    }
+
+    [Fact]
+    public void SetMergeOperator_Deprecated()
+    {
+        using var opts = new DbOptions();
+        var mergeOp = new TestAppendMerge();
+
+        var result = opts.SetMergeOperator(mergeOp);
+        Assert.Same(opts, result);
+    }
+
+    [Fact]
+    public void SetComparator_Deprecated()
+    {
+        using var opts = new DbOptions();
+        var comparator = new TestReverseBytewiseComparator();
+
+        var result = opts.SetComparator(comparator);
+        Assert.Same(opts, result);
+    }
+
+    [Fact]
+    public void SetInfoLog_Deprecated()
+    {
+        using var opts = new DbOptions();
+        var logger = new TestLoggerForOptions(InfoLogLevel.Info);
+
+        var result = opts.SetInfoLog(logger);
+        Assert.Same(opts, result);
+    }
+
+    [Fact]
+    public void AddEventListener_Deprecated()
+    {
+        using var opts = new DbOptions();
+        var listener = new TestEventListenerForOptions();
+
+        var result = opts.AddEventListener(listener);
+        Assert.Same(opts, result);
+    }
+
+    [Fact]
+    public void SetWalDir_Deprecated()
+    {
+        using var opts = new DbOptions();
+        using var dir = new TempDir();
+
+        var result = opts.SetWalDir(dir.Path);
+        Assert.Same(opts, result);
+    }
+
+    [Fact]
+    public void SetDbLogDir_Deprecated()
+    {
+        using var opts = new DbOptions();
+        using var dir = new TempDir();
+
+        var result = opts.SetDbLogDir(dir.Path);
+        Assert.Same(opts, result);
+    }
+
+#pragma warning restore CS0618
+
+    private sealed class NoOpCompactionFilter : CompactionFilter
+    {
+        public NoOpCompactionFilter() : base("NoOp") { }
+        protected override FilterDecision Filter(int level, ReadOnlySpan<byte> key, ReadOnlySpan<byte> existingValue, out byte[]? newValue)
+        {
+            newValue = null;
+            return FilterDecision.Keep;
+        }
+    }
 }

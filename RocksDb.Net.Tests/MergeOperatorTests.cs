@@ -4,6 +4,34 @@ namespace RocksDbNet.Tests;
 
 public class MergeOperatorTests
 {
+    private sealed class NameValidatingMergeOperator : MergeOperator
+    {
+        public NameValidatingMergeOperator(string name) : base(name)
+        {
+        }
+
+        public override bool FullMerge(ReadOnlySpan<byte> key, bool hasExistingValue,
+            ReadOnlySpan<byte> existingValue, IEnumerable<byte[]> operands, out byte[] newValue)
+        {
+            newValue = [];
+            return true;
+        }
+    }
+
+    private sealed class NoPartialOverrideMergeOperator : MergeOperator
+    {
+        public NoPartialOverrideMergeOperator() : base("NoPartialOverride")
+        {
+        }
+
+        public override bool FullMerge(ReadOnlySpan<byte> key, bool hasExistingValue,
+            ReadOnlySpan<byte> existingValue, IEnumerable<byte[]> operands, out byte[] newValue)
+        {
+            newValue = [];
+            return true;
+        }
+    }
+
     [Fact]
     public void UInt64AddMergeOperator_Works()
     {
@@ -121,5 +149,88 @@ public class MergeOperatorTests
 
         byte[]? result = db.Get("k");
         Assert.NotNull(result);
+    }
+
+    private sealed class PartialMergeOperator : MergeOperator
+    {
+        public PartialMergeOperator() : base("PartialAppendMerge", enablePartialMerge: true) { }
+
+        public override bool FullMerge(ReadOnlySpan<byte> key, bool hasExistingValue,
+            ReadOnlySpan<byte> existingValue, IEnumerable<byte[]> operands, out byte[] newValue)
+        {
+            var sb = new StringBuilder();
+            if (hasExistingValue)
+                sb.Append(Encoding.UTF8.GetString(existingValue));
+
+            foreach (var op in operands)
+            {
+                if (sb.Length > 0) sb.Append(',');
+                sb.Append(Encoding.UTF8.GetString(op));
+            }
+
+            newValue = Encoding.UTF8.GetBytes(sb.ToString());
+            return true;
+        }
+
+        public override bool PartialMerge(ReadOnlySpan<byte> key, IEnumerable<byte[]> operands, out byte[] newValue)
+        {
+            var sb = new StringBuilder();
+            foreach (var op in operands)
+            {
+                if (sb.Length > 0) sb.Append(',');
+                sb.Append(Encoding.UTF8.GetString(op));
+            }
+
+            newValue = Encoding.UTF8.GetBytes(sb.ToString());
+            return true;
+        }
+    }
+
+    [Fact]
+    public void PartialMerge_IsCalledDuringCompaction()
+    {
+        using var dir = new TempDir();
+        var mergeOp = new PartialMergeOperator();
+
+        using var opts = new DbOptions { CreateIfMissing = true };
+        opts.MergeOperator = mergeOp;
+
+        using var db = RocksDb.Open(opts, dir.Path);
+
+        db.Merge("list", "a");
+        db.Merge("list", "b");
+        db.Merge("list", "c");
+
+        // Force compaction to trigger partial merge
+        db.Flush();
+        db.CompactRange();
+
+        string? result = db.GetString("list");
+        Assert.NotNull(result);
+        // The result should contain all operands
+        Assert.Contains("a", result);
+        Assert.Contains("b", result);
+        Assert.Contains("c", result);
+    }
+
+    [Fact]
+    public void MergeOperator_Ctor_ThrowsOnNullOrEmptyName()
+    {
+        Assert.Throws<ArgumentException>(() => new NameValidatingMergeOperator(""));
+        Assert.Throws<ArgumentNullException>(() => new NameValidatingMergeOperator(null!));
+    }
+
+    [Fact]
+    public void MergeOperator_DefaultPartialMerge_ReturnsFalseAndEmpty()
+    {
+        using var mergeOp = new NoPartialOverrideMergeOperator();
+
+        bool ok = mergeOp.PartialMerge(
+            key: "k"u8,
+            operands: [Encoding.UTF8.GetBytes("a"), Encoding.UTF8.GetBytes("b")],
+            out byte[] value);
+
+        Assert.False(ok);
+        Assert.Empty(value);
     }
 }

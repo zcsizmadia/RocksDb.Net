@@ -8,6 +8,11 @@ All types are in the `RocksDbNet` namespace.
 
 The main database class. All instances must be disposed when no longer needed.
 
+Ownership notes:
+- `Open`, `OpenReadOnly`, `OpenAsSecondary`, and `OpenWithTtl` transfer ownership of the provided `DbOptions` to the returned `RocksDb` instance.
+- Do not reuse the same `DbOptions` instance after a successful open call.
+- `Destroy`, `Repair`, and `ListColumnFamilies` do not take ownership of `DbOptions`.
+
 ### Opening / Closing
 
 | Method | Description |
@@ -80,6 +85,13 @@ The main database class. All instances must be disposed when no longer needed.
 
 Configuration for opening a database. Supports both get and set for most properties.
 
+Lifetime and ownership:
+- A `DbOptions` passed to `RocksDb.Open*` is owned and disposed by that `RocksDb` instance.
+- Create a fresh `DbOptions` (or call `Clone()`) if you need to use options for additional operations.
+- Nested handle ownership differs by API kind:
+    - Shared ownership transfer: `MergeOperator`, `CompactionFilterFactory`, `EventListener`
+    - Disposed with `DbOptions`: `Comparator`, `CompactionFilter`, `Logger`, `RateLimiter`
+
 ### Key Properties
 
 | Property | Type | Description |
@@ -100,7 +112,7 @@ Configuration for opening a database. Supports both get and set for most propert
 |----------|------|-------------|
 | `BlockBasedTableFactory` | `BlockBasedTableOptions` | Block-based table configuration |
 | `RowCache` | `Cache` | Row-level cache (shared ownership) |
-| `RateLimiter` | `RateLimiter` | I/O rate limiter (ownership transferred) |
+| `RateLimiter` | `RateLimiter` | I/O rate limiter (disposed with `DbOptions`) |
 | `PrefixExtractor` | `SliceTransform` | Prefix bloom extractor (ownership transferred) |
 
 ### Compaction / Merge
@@ -108,8 +120,8 @@ Configuration for opening a database. Supports both get and set for most propert
 | Property | Type | Description |
 |----------|------|-------------|
 | `CompactionFilter` | `CompactionFilter` | Per-key compaction filter |
-| `CompactionFilterFactory` | `CompactionFilterFactory` | Per-job compaction filter factory |
-| `MergeOperator` | `MergeOperator` | Custom merge operator |
+| `CompactionFilterFactory` | `CompactionFilterFactory` | Per-job factory (shared ownership transfer) |
+| `MergeOperator` | `MergeOperator` | Custom merge operator (shared ownership transfer) |
 | `Comparator` | `Comparator` | Custom key comparator |
 
 ### Methods

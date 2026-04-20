@@ -4,20 +4,25 @@
     <File Path="LICENSE" />
     <File Path="README.md" />
   </Folder>
+  <Folder Name="/GitHub/" />
+  <Folder Name="/GitHub/Workflows/">
+    <File Path=".github/workflows/build.yml" />
+    <File Path=".github/workflows/release.yml" />
+  </Folder>
   <Folder Name="/Samples/">
-    <Project Path="Samples/WriteBatchSample/WriteBatchSample.csproj" />
-    <Project Path="Samples/IteratorSample/IteratorSample.csproj" />
-    <Project Path="Samples/ColumnFamilySample/ColumnFamilySample.csproj" />
-    <Project Path="Samples/CheckpointAndBackupSample/CheckpointAndBackupSample.csproj" />
     <Project Path="Samples/BasicSample/BasicSample.csproj" />
+    <Project Path="Samples/BloomFilterSample/BloomFilterSample.csproj" />
+    <Project Path="Samples/CheckpointAndBackupSample/CheckpointAndBackupSample.csproj" />
+    <Project Path="Samples/ColumnFamilySample/ColumnFamilySample.csproj" />
+    <Project Path="Samples/CompactionFilterSample/CompactionFilterSample.csproj" />
+    <Project Path="Samples/EventListenerSample/EventListenerSample.csproj" />
+    <Project Path="Samples/IteratorSample/IteratorSample.csproj" />
+    <Project Path="Samples/MergeOperatorSample/MergeOperatorSample.csproj" />
+    <Project Path="Samples/ReadOnlyAndSecondarySample/ReadOnlyAndSecondarySample.csproj" />
     <Project Path="Samples/SnapshotSample/SnapshotSample.csproj" />
     <Project Path="Samples/SstFileWriterSample/SstFileWriterSample.csproj" />
-    <Project Path="Samples/CompactionFilterSample/CompactionFilterSample.csproj" />
-    <Project Path="Samples/MergeOperatorSample/MergeOperatorSample.csproj" />
-    <Project Path="Samples/BloomFilterSample/BloomFilterSample.csproj" />
-    <Project Path="Samples/ReadOnlyAndSecondarySample/ReadOnlyAndSecondarySample.csproj" />
     <Project Path="Samples/TuningAndStatsSample/TuningAndStatsSample.csproj" />
-    <Project Path="Samples/EventListenerSample/EventListenerSample.csproj" />
+    <Project Path="Samples/WriteBatchSample/WriteBatchSample.csproj" />
   </Folder>
   <Folder Name="/Solution Files/">
     <File Path=".editorconfig" />

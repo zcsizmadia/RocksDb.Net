@@ -10,23 +10,21 @@ public class BackupEngineTests
         string backupPath = dir.Sub("backup");
         string restorePath = dir.Sub("restore");
 
-        using var opts = new DbOptions { CreateIfMissing = true };
-
         // Create DB and write data
-        using (var db = RocksDb.Open(opts, dbPath))
+        using (var db = RocksDb.Open(new DbOptions { CreateIfMissing = true }, dbPath))
         {
             db.Put("key", "value");
 
-            using var backup = BackupEngine.Open(opts, backupPath);
+            using var backup = BackupEngine.Open(new DbOptions(), backupPath);
             backup.CreateNewBackup(db, flushBeforeBackup: true);
         }
 
         // Restore
-        using var backup2 = BackupEngine.Open(opts, backupPath);
+        using var backup2 = BackupEngine.Open(new DbOptions(), backupPath);
         backup2.RestoreDbFromLatestBackup(restorePath, restorePath);
 
         // Verify restored data
-        using var restored = RocksDb.Open(opts, restorePath);
+        using var restored = RocksDb.Open(new DbOptions(), restorePath);
         Assert.Equal("value", restored.GetString("key"));
     }
 

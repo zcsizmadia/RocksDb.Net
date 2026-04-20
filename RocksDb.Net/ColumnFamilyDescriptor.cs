@@ -11,13 +11,30 @@ public sealed class ColumnFamilyDescriptor
     /// <summary>Options specific to this column family.</summary>
     public DbOptions Options { get; }
 
+    internal bool OwnsOptions { get; }
+
+    ~ColumnFamilyDescriptor()
+    {
+        if (OwnsOptions)
+        {
+            Options.Dispose();
+        }
+    }
+
     public ColumnFamilyDescriptor(string name, DbOptions options)
     {
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(options);
         Name = name;
         Options = options;
+        OwnsOptions = false;
     }
 
-    public ColumnFamilyDescriptor(string name) : this(name, new DbOptions()) { }
+    public ColumnFamilyDescriptor(string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        Name = name;
+        Options = new DbOptions();
+        OwnsOptions = true;
+    }
 }

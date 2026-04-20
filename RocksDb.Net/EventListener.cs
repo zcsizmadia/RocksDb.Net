@@ -147,9 +147,6 @@ public abstract class EventListener : RocksDbHandle
     public delegate void OnMemTableSealedDelegate(
         nint state, nint info);
 
-    // ── Instance state ───────────────────────────────────────────────────────
-    private GCHandle _gcHandle;       // strong root → object stays alive while native holds it
-    
     // Delegate instances kept as fields to prevent GC from collecting the
     // objects while the native side still holds function pointers into them.
     private readonly DestructorDelegate _destructorDelegate;
@@ -169,8 +166,12 @@ public abstract class EventListener : RocksDbHandle
 
     private static void DestructorCallback(nint state)
     {
-        // Unpin self
-        GCHandle.FromIntPtr(state).Free();
+        // RocksDB called this via shared_ptr deleter — the native handle is now freed.
+        // Transfer ownership so that our Dispose() won't call rocksdb_eventlistener_destroy again,
+        // then release the GC root created for native callbacks.
+        var self = GetSelfFromPinnedIntPtr<EventListener>(state);
+        self.TransferOwnership();
+        self.UnpinGarbageCollector();
     }
 
     private static void OnFlushBeginCallback(nint state, nint db, nint info)
@@ -243,14 +244,14 @@ public abstract class EventListener : RocksDbHandle
         self.OnMemTableSealed(CreateMemTableInfo(info));
     }
 
-    private static EventListener SelfFromState(nint state) => (EventListener)GCHandle.FromIntPtr(state).Target!;
+    private static EventListener SelfFromState(nint state) => GetSelfFromPinnedIntPtr<EventListener>(state);
 
     // ── Construction ─────────────────────────────────────────────────────────
 
     protected EventListener()
     {
         // Pin this instance so that the C++ callbacks can access it via the state pointer
-        _gcHandle = GCHandle.Alloc(this);
+        PinGarbageCollector();
 
         _destructorDelegate = DestructorCallback;
         _onFlushBeginDelegate = OnFlushBeginCallback;
@@ -265,7 +266,7 @@ public abstract class EventListener : RocksDbHandle
         _onMemTableSealedDelegate = OnMemTableSealedCallback;
 
         Handle = NativeMethods.rocksdb_eventlistener_create(
-            GCHandle.ToIntPtr(_gcHandle),
+            GetPinnedIntPtr(),
             Marshal.GetFunctionPointerForDelegate(_destructorDelegate),
             Marshal.GetFunctionPointerForDelegate(_onFlushBeginDelegate),
             Marshal.GetFunctionPointerForDelegate(_onFlushCompletedDelegate),
@@ -490,6 +491,6 @@ public abstract class EventListener : RocksDbHandle
 
     public override void DisposeHandle()
     {
-        NativeMethods.rocksdb_mergeoperator_destroy(Handle);
+        NativeMethods.rocksdb_eventlistener_destroy(Handle);
     }
 }

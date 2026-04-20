@@ -12,6 +12,9 @@ public abstract class RocksDbHandle : IDisposable
     private nint _handle;
     private int _owned = 1; // Default to owned, meaning this instance is responsible for releasing the native handle.
 
+    private GCHandle _gcHandle; // Keep the object alive while native code holds a reference to it, if pinned
+    private nint _namePtr; // Pointer to the name string in unmanaged memory. Used only when object is pinned for native callbacks.
+
     protected RocksDbHandle()
     {
     }
@@ -56,6 +59,74 @@ public abstract class RocksDbHandle : IDisposable
     /// </summary>
     internal void TransferOwnership() => Interlocked.Exchange(ref _owned, 0);
 
+    public GCHandle PinGarbageCollector(string? name = null)
+    {
+        if (_gcHandle.IsAllocated)
+        {
+            return _gcHandle;
+        }
+
+        _gcHandle = GCHandle.Alloc(this);
+
+        _namePtr = name is not null ? Marshal.StringToCoTaskMemUTF8(name) : IntPtr.Zero;
+
+        return _gcHandle;
+    }
+
+    public nint GetPinnedIntPtr()
+    {
+        if (!_gcHandle.IsAllocated)
+        {
+            throw new InvalidOperationException("The object is not pinned. Call PinGarbageCollector() first.");
+        }
+        return GCHandle.ToIntPtr(_gcHandle);
+    }
+
+    public nint GetPinnedNameIntPtr()
+    {
+        if (!_gcHandle.IsAllocated)
+        {
+            throw new InvalidOperationException("The object is not pinned. Call PinGarbageCollector() first.");
+        }
+        return _namePtr;
+    }
+
+    public void UnpinGarbageCollector()
+    {
+        if (!_gcHandle.IsAllocated)
+        {
+            throw new InvalidOperationException("The object is not pinned. Call PinGarbageCollector() first.");
+        }
+
+        _gcHandle.Free();
+
+        if (_namePtr != IntPtr.Zero)
+        {
+            Marshal.FreeCoTaskMem(_namePtr);
+            _namePtr = IntPtr.Zero;
+        }
+    }
+
+    public static T GetSelfFromPinnedIntPtr<T>(nint state) where T : RocksDbHandle
+    {
+        if (state == IntPtr.Zero)
+        {
+            throw new ArgumentNullException(nameof(state), "The pinned state pointer cannot be null.");
+        }
+        GCHandle handle = GCHandle.FromIntPtr(state);
+        if (!handle.IsAllocated || handle.Target is not T self)
+        {
+            throw new InvalidOperationException("The pinned state does not reference a valid instance of the expected type.");
+        }
+        return self;
+    }
+
+    public static nint GetNameFromPinnedIntPtr(nint state)
+    {
+        var self = GetSelfFromPinnedIntPtr<RocksDbHandle>(state);
+        return self._namePtr;
+    }
+
     /// <summary>
     /// Throws an exception if the object has been disposed.
     /// </summary>
@@ -63,7 +134,7 @@ public abstract class RocksDbHandle : IDisposable
     /// non-disposed state. This helps prevent accessing resources that have already been released.</remarks>
     /// <exception cref="ObjectDisposedException">Thrown if the object has already been disposed.</exception>
     public void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(IsDisposed, this);
-    
+
     /// <summary>
     /// Releases all resources used by the current instance.
     /// </summary>
@@ -83,22 +154,8 @@ public abstract class RocksDbHandle : IDisposable
             return;
         }
 
-        // Dispose managed resources if disposing is true
-        if (disposing)
-        {
-            DisposeManagedResources();
-        }
-
         // Dispose unmanaged resources regardless of disposing value
         DisposeUnmanagedResources();
-
-        // Dispose the native handle if this instance owns it
-        if (_owned != 0)
-        {
-            DisposeHandle();
-        }
-
-        Handle = IntPtr.Zero;
     }
 
     /// <summary>
@@ -111,12 +168,12 @@ public abstract class RocksDbHandle : IDisposable
     /// </summary>
     public virtual void DisposeUnmanagedResources()
     {
-    }
+        // Dispose the native handle if this instance owns it
+        if (_owned != 0 && _handle != IntPtr.Zero)
+        {
+            DisposeHandle();
+        }
 
-    /// <summary>
-    /// Releases managed resources used by the current instance.
-    /// </summary>
-    public virtual void DisposeManagedResources()
-    {
+        Handle = IntPtr.Zero;
     }
 }

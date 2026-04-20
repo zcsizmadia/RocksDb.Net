@@ -17,8 +17,6 @@ jobs:
       uses: actions/setup-dotnet@v5
       with:
         dotnet-version: |
-          8.0.x
-          9.0.x
           10.0.x
 
     - name: Build
@@ -27,7 +25,7 @@ jobs:
         dotnet restore
         dotnet build -c Release --no-restore
 
-    - name: Test
+    - name: Test with Coverage
       shell: bash
       run: |
         dotnet test -c Release --no-build
@@ -42,3 +40,72 @@ jobs:
       with:
         name: nuget-package
         path: nupkgs/*.nupkg
+
+  samples:
+    name: Samples
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Setup .NET SDKs
+      uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: |
+          10.0.x
+
+    - name: Build
+      shell: bash
+      run: dotnet build Samples -c Release
+
+    - name: Run BasicSample
+      shell: bash
+      run: dotnet run --project Samples/BasicSample/BasicSample.csproj -c Release --no-build
+
+    - name: Run BloomFilterSample
+      shell: bash
+      run: dotnet run --project Samples/BloomFilterSample/BloomFilterSample.csproj -c Release --no-build
+
+    - name: Run CheckpointAndBackupSample
+      shell: bash
+      run: dotnet run --project Samples/CheckpointAndBackupSample/CheckpointAndBackupSample.csproj -c Release --no-build
+
+    - name: Run ColumnFamilySample
+      shell: bash
+      run: dotnet run --project Samples/ColumnFamilySample/ColumnFamilySample.csproj -c Release --no-build
+
+    - name: Run CompactionFilterSample
+      shell: bash
+      run: dotnet run --project Samples/CompactionFilterSample/CompactionFilterSample.csproj -c Release --no-build
+
+    - name: Run EventListenerSample
+      shell: bash
+      run: dotnet run --project Samples/EventListenerSample/EventListenerSample.csproj -c Release --no-build
+
+    - name: Run IteratorSample
+      shell: bash
+      run: dotnet run --project Samples/IteratorSample/IteratorSample.csproj -c Release --no-build
+
+    - name: Run MergeOperatorSample
+      shell: bash
+      run: dotnet run --project Samples/MergeOperatorSample/MergeOperatorSample.csproj -c Release --no-build
+
+    - name: Run ReadOnlyAndSecondarySample
+      shell: bash
+      run: dotnet run --project Samples/ReadOnlyAndSecondarySample/ReadOnlyAndSecondarySample.csproj -c Release --no-build
+
+    - name: Run SnapshotSample
+      shell: bash
+      run: dotnet run --project Samples/SnapshotSample/SnapshotSample.csproj -c Release --no-build
+
+    - name: Run SstFileWriterSample
+      shell: bash
+      run: dotnet run --project Samples/SstFileWriterSample/SstFileWriterSample.csproj -c Release --no-build
+
+    - name: Run TuningAndStatsSample
+      shell: bash
+      run: dotnet run --project Samples/TuningAndStatsSample/TuningAndStatsSample.csproj -c Release --no-build
+
+    - name: Run WriteBatchSample
+      shell: bash
+      run: dotnet run --project Samples/WriteBatchSample/WriteBatchSample.csproj -c Release --no-build

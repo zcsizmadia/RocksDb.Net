@@ -16,23 +16,26 @@ public sealed class RocksDb : RocksDbHandle
     private static readonly FlushOptions _defaultFlushOptions = new();
 
     private readonly Dictionary<string, ColumnFamilyHandle>? _columnFamilyHandles;
+    private readonly DbOptions _ownedOptions;
 
-    private RocksDb(nint handle)
+    private RocksDb(nint handle, DbOptions options)
         : base(handle)
     {
+        _ownedOptions = options;
     }
 
-    private RocksDb(nint handle, nint[] cfHandles)
+    private RocksDb(nint handle, nint[] cfHandles, DbOptions options)
         : base(handle)
     {
+        _ownedOptions = options;
         _columnFamilyHandles = [];
         foreach (var cf in cfHandles)
         {
-            ColumnFamilyHandle cfh =  new(cf);
+            ColumnFamilyHandle cfh = new(cf);
             _columnFamilyHandles[cfh.Name] = cfh;
         }
     }
-    
+
     // ─────────────────────────────────────────────────────────────────────────
     // Open / static management
     // ─────────────────────────────────────────────────────────────────────────
@@ -47,7 +50,7 @@ public sealed class RocksDb : RocksDbHandle
         nint handle = NativeMethods.rocksdb_open(options.Handle, path, ref err);
         NativeMethods.ThrowOnError(err);
 
-        return new RocksDb(handle);
+        return new RocksDb(handle, options);
     }
 
     /// <summary>
@@ -92,7 +95,7 @@ public sealed class RocksDb : RocksDbHandle
         }
         NativeMethods.ThrowOnError(err);
 
-        return new RocksDb(handle, cfHandles);
+        return new RocksDb(handle, cfHandles, options);
     }
 
     /// <summary>Opens an existing database in read-only mode.</summary>
@@ -106,7 +109,7 @@ public sealed class RocksDb : RocksDbHandle
             options.Handle, path, errorIfWalExists ? (byte)1 : (byte)0, ref err);
         NativeMethods.ThrowOnError(err);
 
-        return new RocksDb(handle);
+        return new RocksDb(handle, options);
     }
 
     /// <summary>Opens an existing database in read-only mode.</summary>
@@ -148,7 +151,7 @@ public sealed class RocksDb : RocksDbHandle
         }
         NativeMethods.ThrowOnError(err);
 
-        return new RocksDb(handle, cfHandles);
+        return new RocksDb(handle, cfHandles, options);
     }
 
     /// <summary>
@@ -164,7 +167,7 @@ public sealed class RocksDb : RocksDbHandle
         nint handle = NativeMethods.rocksdb_open_as_secondary(options.Handle, path, secondaryPath, ref err);
         NativeMethods.ThrowOnError(err);
 
-        return new RocksDb(handle);
+        return new RocksDb(handle, options);
     }
 
     /// <summary>Opens the database with a TTL (time-to-live) compaction filter.</summary>
@@ -177,7 +180,7 @@ public sealed class RocksDb : RocksDbHandle
         nint handle = NativeMethods.rocksdb_open_with_ttl(options.Handle, path, ttlSeconds, ref err);
         NativeMethods.ThrowOnError(err);
 
-        return new RocksDb(handle);
+        return new RocksDb(handle, options);
     }
 
     /// <summary>Destroys the database files at <paramref name="path"/>. Irreversible.</summary>
@@ -458,11 +461,11 @@ public sealed class RocksDb : RocksDbHandle
         }
 
         // Stack-allocate pointer arrays for small batches to avoid heap pressure.
-        byte*[] keyPtrs  = new byte*[n];
+        byte*[] keyPtrs = new byte*[n];
         nuint[] keySizes = new nuint[n];
-        byte*[] valPtrs  = new byte*[n];
+        byte*[] valPtrs = new byte*[n];
         nuint[] valSizes = new nuint[n];
-        nint[]  errs     = new nint[n];
+        nint[] errs = new nint[n];
 
         // Pin all key arrays and populate pointer arrays.
         var handles = new GCHandle[n];
@@ -479,7 +482,7 @@ public sealed class RocksDb : RocksDbHandle
             fixed (nuint* ks = keySizes)
             fixed (byte** vp = valPtrs)
             fixed (nuint* vs = valSizes)
-            fixed (nint*  ep = errs)
+            fixed (nint* ep = errs)
                 NativeMethods.rocksdb_multi_get(Handle, (options ?? _defaultReadOptions).Handle,
                     (nuint)n, kp, ks, vp, vs, (byte**)ep);
         }
@@ -848,6 +851,7 @@ public sealed class RocksDb : RocksDbHandle
 
     public override void DisposeUnmanagedResources()
     {
+        // All column family handles must be destroyed before primary database handle is closed
         if (_columnFamilyHandles != null)
         {
             foreach (var cfh in _columnFamilyHandles.Values)
@@ -855,5 +859,11 @@ public sealed class RocksDb : RocksDbHandle
                 cfh.Dispose();
             }
         }
+
+        base.DisposeUnmanagedResources();
+
+        // Dispose the options after rocksdb_close — sub-objects (CompactionFilter,
+        // Comparator, MergeOperator, etc.) must outlive the DB handle.
+        _ownedOptions.Dispose();
     }
 }

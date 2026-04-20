@@ -3,8 +3,8 @@ namespace RocksDbNet;
 /// <summary>Index type for block-based table.</summary>
 public enum BlockBasedTableIndexType
 {
-    BinarySearch       = 0,
-    HashSearch         = 1,
+    BinarySearch = 0,
+    HashSearch = 1,
     TwoLevelIndexSearch = 2,
 }
 

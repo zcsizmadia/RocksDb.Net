@@ -7,7 +7,7 @@ namespace RocksDbNet;
 public sealed class WriteOptions : RocksDbHandle
 {
     public WriteOptions()
-        : base(NativeMethods.rocksdb_writeoptions_create()) 
+        : base(NativeMethods.rocksdb_writeoptions_create())
     {
     }
 

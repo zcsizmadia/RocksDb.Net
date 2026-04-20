@@ -119,4 +119,34 @@ public class SstFileWriterTests
         opts.AllowGlobalSeqno = true;
         opts.AllowBlockingFlush = true;
     }
+
+    [Fact]
+    public void SstFileWriter_Merge()
+    {
+        using var dir = new TempDir();
+        string dbPath = dir.Sub("db");
+        string sstPath = Path.Combine(dir.Path, "merge.sst");
+
+        using var opts = new DbOptions { CreateIfMissing = true };
+        opts.SetUInt64AddMergeOperator();
+
+        // First put the initial value
+        using var db = RocksDb.Open(opts, dbPath);
+        db.Put(Encoding.UTF8.GetBytes("counter"), BitConverter.GetBytes(10UL));
+
+        // Write merge SST file
+        using (var writer = SstFileWriter.Create(opts))
+        {
+            writer.Open(sstPath);
+            writer.Merge(Encoding.UTF8.GetBytes("counter"), BitConverter.GetBytes(5UL));
+            writer.Finish();
+        }
+
+        using var ingestOpts = new IngestExternalFileOptions();
+        db.IngestExternalFile(new[] { sstPath }, ingestOpts);
+
+        byte[]? result = db.Get(Encoding.UTF8.GetBytes("counter").AsSpan());
+        Assert.NotNull(result);
+        Assert.Equal(15UL, BitConverter.ToUInt64(result));
+    }
 }
