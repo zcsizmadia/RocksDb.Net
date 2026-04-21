@@ -20,7 +20,7 @@ A modern C# wrapper for [RocksDb](https://rocksdb.org/), the high-performance em
 ## Requirements
 
 - .NET 10 SDK (or later)
-- RocksDb native binaries (provided by the `RocksDb.Net.Runtimes` NuGet package)
+- [RocksDb native binaries](https://github.com/zcsizmadia/RocksDb.Net.Runtimes) (provided by the `RocksDb.Net.Runtimes` [NuGet package](https://www.nuget.org/packages/RocksDb.Net.Runtimes))
 
 ## Quick Start
 
