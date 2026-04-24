@@ -62,7 +62,7 @@ Console.WriteLine("\nMergeOperator sample completed.");
 
 class CounterMergeOperator : MergeOperator
 {
-    public CounterMergeOperator() : base("CounterMerge", enablePartialMerge: true) { }
+    public CounterMergeOperator() : base("CounterMerge") { }
 
     public override bool FullMerge(
         ReadOnlySpan<byte> key,

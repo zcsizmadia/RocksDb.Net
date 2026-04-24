@@ -1,21 +1,19 @@
 using System.Text;
 
+using RocksDbNet.Extensions;
+
 namespace RocksDbNet.Tests;
 
 public class EventListenerTests
 {
-    private sealed class PassiveEventListener : EventListener
-    {
-    }
-
     private sealed class TestEventListener : EventListener
     {
-        public List<FlushJobInfo> FlushBeginEvents { get; } = new();
-        public List<FlushJobInfo> FlushCompletedEvents { get; } = new();
-        public List<CompactionJobInfo> CompactionBeginEvents { get; } = new();
-        public List<CompactionJobInfo> CompactionCompletedEvents { get; } = new();
-        public List<MemTableInfo> MemTableSealedEvents { get; } = new();
-        public List<ExternalFileIngestionInfo> ExternalFileIngestedEvents { get; } = new();
+        public List<FlushJobInfo> FlushBeginEvents { get; } = [];
+        public List<FlushJobInfo> FlushCompletedEvents { get; } = [];
+        public List<CompactionJobInfo> CompactionBeginEvents { get; } = [];
+        public List<CompactionJobInfo> CompactionCompletedEvents { get; } = [];
+        public List<MemTableInfo> MemTableSealedEvents { get; } = [];
+        public List<ExternalFileIngestionInfo> ExternalFileIngestedEvents { get; } = [];
 
         public override void OnFlushBegin(FlushJobInfo info)
         {
@@ -48,6 +46,68 @@ public class EventListenerTests
         }
     }
 
+    private sealed class PassiveEventListener : EventListener
+    {
+    }
+
+    private sealed class CompletedEventListener : EventListener
+    {
+        public override void OnFlushCompleted(FlushJobInfo info)
+        {
+        }
+
+        public override void OnSubCompactionCompleted(SubCompactionJobInfo info)
+        {
+        }
+
+        public override void OnCompactionCompleted(CompactionJobInfo info)
+        {
+        }
+    }
+
+    private sealed class AllEventListener : EventListener
+    {
+        public override void OnFlushBegin(FlushJobInfo info)
+        {
+        }
+
+        public override void OnFlushCompleted(FlushJobInfo info)
+        {
+        }
+
+        public override void OnCompactionBegin(CompactionJobInfo info)
+        {
+        }
+
+        public override void OnCompactionCompleted(CompactionJobInfo info)
+        {
+        }
+
+        public override void OnSubCompactionBegin(SubCompactionJobInfo info)
+        {
+        }
+
+        public override void OnSubCompactionCompleted(SubCompactionJobInfo info)
+        {
+        }
+
+        public override void OnExternalFileIngested(ExternalFileIngestionInfo info)
+        {
+        }
+
+        public override void OnBackgroundError(BackgroundErrorInfo info)
+        {
+        }
+
+        public override void OnStallConditionsChanged(WriteStallInfo info)
+        {
+        }
+
+        public override void OnMemTableSealed(MemTableInfo info)
+        {
+        }
+    }
+
     [Fact]
     public void EventListener_ReceivesFlushEvents()
     {
@@ -63,11 +123,15 @@ public class EventListenerTests
         db.Put("key2", "value2");
         db.Flush();
 
-        Assert.NotEmpty(listener.FlushCompletedEvents);
+        Assert.NotEmpty(listener.FlushBeginEvents);
+        var beginInfo = listener.FlushBeginEvents[0];
+        Assert.NotNull(beginInfo.ColumnFamilyName);
+        Assert.NotNull(beginInfo.FilePath);
 
-        var info = listener.FlushCompletedEvents[0];
-        Assert.NotNull(info.ColumnFamilyName);
-        Assert.NotNull(info.FilePath);
+        Assert.NotEmpty(listener.FlushCompletedEvents);
+        var completedInfo = listener.FlushCompletedEvents[0];
+        Assert.NotNull(completedInfo.ColumnFamilyName);
+        Assert.NotNull(completedInfo.FilePath);
     }
 
     [Fact]
@@ -261,7 +325,9 @@ public class EventListenerTests
             TotalOutputBytes: 90,
             InputRecords: 10,
             OutputRecords: 9,
-            ElapsedMicros: 250,
+            Elapsed: TimeSpan.FromMicroseconds(250),
+            NumOfCorruptKeys: 0,
+            BaseInputLevel: 0,
             CompactionReason: CompactionReason.LevelL0FilesNum,
             Status: "OK"));
 
@@ -273,7 +339,9 @@ public class EventListenerTests
             TotalOutputBytes: 180,
             InputRecords: 20,
             OutputRecords: 18,
-            ElapsedMicros: 500,
+            Elapsed: TimeSpan.FromMicroseconds(500),
+            NumOfCorruptKeys: 0,
+            BaseInputLevel: 0,
             CompactionReason: CompactionReason.ManualCompaction,
             Status: null));
 
@@ -304,5 +372,73 @@ public class EventListenerTests
             EarliestSeqno: 1,
             NumEntries: 2,
             NumDeletes: 0));
+    }
+
+    [Fact]
+    public void EventListener_DetectOverrides_All()
+    {
+        var listener = new AllEventListener();
+
+        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnFlushBegin)));
+        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnFlushCompleted)));
+        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnCompactionBegin)));
+        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnCompactionCompleted)));
+        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnSubCompactionBegin)));
+        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnSubCompactionCompleted)));
+        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnExternalFileIngested)));
+        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnBackgroundError)));
+        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnStallConditionsChanged)));
+        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnMemTableSealed)));
+    }
+
+    [Fact]
+    public void EventListener_DetectOverrides_Some()
+    {
+        var listener = new TestEventListener();
+
+        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnFlushBegin)));
+        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnFlushCompleted)));
+        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnCompactionBegin)));
+        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnCompactionCompleted)));
+        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnSubCompactionBegin)));
+        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnSubCompactionCompleted)));
+        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnExternalFileIngested)));
+        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnBackgroundError)));
+        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnStallConditionsChanged)));
+        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnMemTableSealed)));
+    }
+
+    [Fact]
+    public void EventListener_DetectOverrides_None()
+    {
+        var listener = new PassiveEventListener();
+
+        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnFlushBegin)));
+        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnFlushCompleted)));
+        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnCompactionBegin)));
+        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnCompactionCompleted)));
+        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnSubCompactionBegin)));
+        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnSubCompactionCompleted)));
+        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnExternalFileIngested)));
+        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnBackgroundError)));
+        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnStallConditionsChanged)));
+        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnMemTableSealed)));
+    }
+
+    [Fact]
+    public void EventListener_DetectOverrides_Completed()
+    {
+        var listener = new CompletedEventListener();
+        
+        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnFlushBegin)));
+        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnFlushCompleted)));
+        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnCompactionBegin)));
+        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnCompactionCompleted)));
+        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnSubCompactionBegin)));
+        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnSubCompactionCompleted)));
+        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnExternalFileIngested)));
+        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnBackgroundError)));
+        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnStallConditionsChanged)));
+        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnMemTableSealed)));
     }
 }

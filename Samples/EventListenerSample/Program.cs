@@ -75,7 +75,7 @@ class MetricsListener : EventListener
     {
         Interlocked.Increment(ref CompactionsCompleted);
         Console.WriteLine($"  [COMPACT DONE]    CF={info.ColumnFamilyName}, reason={info.CompactionReason}, " +
-            $"in={info.TotalInputBytes}B, out={info.TotalOutputBytes}B, elapsed={info.ElapsedMicros}us");
+            $"in={info.TotalInputBytes}B, out={info.TotalOutputBytes}B, elapsed={info.Elapsed.TotalMicroseconds}us");
     }
 
     public override void OnSubCompactionBegin(SubCompactionJobInfo info)

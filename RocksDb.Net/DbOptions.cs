@@ -39,7 +39,7 @@ public enum WalRecoveryMode
 /// </summary>
 public sealed class DbOptions : RocksDbHandle
 {
-    private readonly ConcurrentBag<RocksDbHandle> _ownedHandles = new();
+    private readonly ConcurrentBag<RocksDbHandle> _ownedHandles = [];
 
     public DbOptions()
         : base(NativeMethods.rocksdb_options_create())
@@ -326,6 +326,19 @@ public sealed class DbOptions : RocksDbHandle
     {
         get => NativeMethods.rocksdb_options_get_allow_concurrent_memtable_write(Handle) != 0;
         set => NativeMethods.rocksdb_options_set_allow_concurrent_memtable_write(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    // ── Env ─────────────────────────────────────────────────────────
+
+    /// <summary>Sets the environment for the database options.</summary>
+    public Env Env
+    {
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            NativeMethods.rocksdb_options_set_env(Handle, value.Handle);
+            _ownedHandles.Add(value);
+        }
     }
 
     // ── WAL / logging ─────────────────────────────────────────────────────────

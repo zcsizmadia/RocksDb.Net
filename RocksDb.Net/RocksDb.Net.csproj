@@ -50,4 +50,8 @@
     <Using Include="RocksDbNet.Native" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="RocksDb.Net.Tests" />
+  </ItemGroup>
+
 </Project>
