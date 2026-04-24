@@ -583,6 +583,36 @@ public class DbOptionsTests
     }
 
     [Fact]
+    public void Env_SetDisposed()
+    {
+        var env = new Env()
+        {
+            BackgroundThreads = 1,
+            HighPriorityBackgroundThreads = 2,
+            LowPriorityBackgroundThreads = 2,
+            BottomPriorityBackgroundThreads = 4
+        };
+        using (var opts = new DbOptions())
+        {
+            opts.Env = env;
+        }
+
+        Assert.True(env.IsDisposed);
+    }
+
+    [Fact]
+    public void Env_InMemory_SetDisposed()
+    {
+        var env = Env.CreateInMemory();
+        using (var opts = new DbOptions())
+        {
+            opts.Env = env;
+        }
+
+        Assert.True(env.IsDisposed);
+    }
+
+    [Fact]
     public void Comparator_Set()
     {
         using var opts = new DbOptions();
@@ -649,7 +679,7 @@ public class DbOptionsTests
         public TestAppendMerge() : base("TestAppend") { }
         public override bool FullMerge(ReadOnlySpan<byte> key, bool hasExistingValue, ReadOnlySpan<byte> existingValue, IEnumerable<byte[]> operands, out byte[] newValue)
         {
-            newValue = Array.Empty<byte>();
+            newValue = [];
             return true;
         }
     }
@@ -672,9 +702,8 @@ public class DbOptionsTests
 
     private sealed class TestEventListenerForOptions : EventListener { }
 
-    private sealed class TestLoggerForOptions : Logger
+    private sealed class TestLoggerForOptions(InfoLogLevel logLevel) : Logger(logLevel)
     {
-        public TestLoggerForOptions(InfoLogLevel logLevel) : base(logLevel) { }
         public override void Log(InfoLogLevel logLevel, string message) { }
     }
 

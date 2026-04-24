@@ -1,5 +1,7 @@
 using System.Runtime.InteropServices;
 
+using RocksDbNet.Extensions;
+
 namespace RocksDbNet;
 
 /// <summary>
@@ -86,7 +88,7 @@ public abstract class MergeOperator : RocksDbHandle
     {
         var self = SelfFromState(state);
         var keySpan = new ReadOnlySpan<byte>(key, checked((int)keyLen));
-        var operandsList = self.CreateOperands(operands, operandsLen, numOperands);
+        var operandsList = CreateOperands(operands, operandsLen, numOperands);
         bool hasExistingValue = existingVal != null;
         var existingValueSpan = hasExistingValue ? new ReadOnlySpan<byte>(existingVal, checked((int)existingValLen)) : default;
 
@@ -120,7 +122,7 @@ public abstract class MergeOperator : RocksDbHandle
     {
         var self = SelfFromState(state);
         var keySpan = new ReadOnlySpan<byte>(key, checked((int)keyLen));
-        var operandsList = self.CreateOperands(operands, operandsLen, numOperands);
+        var operandsList = CreateOperands(operands, operandsLen, numOperands);
 
         if (!self.PartialMerge(keySpan, operandsList, out byte[] newVal))
         {
@@ -155,7 +157,7 @@ public abstract class MergeOperator : RocksDbHandle
 
     // ── Construction ─────────────────────────────────────────────────────────
 
-    protected unsafe MergeOperator(string name, bool enablePartialMerge = false)
+    protected unsafe MergeOperator(string name)
     {
         ArgumentException.ThrowIfNullOrEmpty(name);
 
@@ -171,15 +173,13 @@ public abstract class MergeOperator : RocksDbHandle
             GetPinnedIntPtr(),
             Marshal.GetFunctionPointerForDelegate(_destructorDelegate),
             Marshal.GetFunctionPointerForDelegate(_fullMergeDelegate),
-            enablePartialMerge ? Marshal.GetFunctionPointerForDelegate(_partialMergeDelegate) : IntPtr.Zero,
+            this.CheckIfMethodOverridden<MergeOperator>(nameof(PartialMerge)) ? Marshal.GetFunctionPointerForDelegate(_partialMergeDelegate) : IntPtr.Zero,
             Marshal.GetFunctionPointerForDelegate(_deleteValueDelegate),
             Marshal.GetFunctionPointerForDelegate(_nameDelegate));
     }
 
-    private IEnumerable<byte[]> CreateOperands(nint operands, nint operandsLen, int numOperands)
+    private static IEnumerable<byte[]> CreateOperands(nint operands, nint operandsLen, int numOperands)
     {
-        var result = new List<byte[]>(numOperands);
-
         for (int i = 0; i < numOperands; i++)
         {
             // Get the pointer to the operand
@@ -215,7 +215,7 @@ public abstract class MergeOperator : RocksDbHandle
     /// </summary>
     public virtual bool PartialMerge(ReadOnlySpan<byte> key, IEnumerable<byte[]> operands, out byte[] newValue)
     {
-        newValue = Array.Empty<byte>();
+        newValue = [];
         return false;
     }
 

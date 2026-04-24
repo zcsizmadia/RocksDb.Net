@@ -1,15 +1,13 @@
 using System.Text;
 
+using RocksDbNet.Extensions;
+
 namespace RocksDbNet.Tests;
 
 public class MergeOperatorTests
 {
-    private sealed class NameValidatingMergeOperator : MergeOperator
+    private sealed class NameValidatingMergeOperator(string name) : MergeOperator(name)
     {
-        public NameValidatingMergeOperator(string name) : base(name)
-        {
-        }
-
         public override bool FullMerge(ReadOnlySpan<byte> key, bool hasExistingValue,
             ReadOnlySpan<byte> existingValue, IEnumerable<byte[]> operands, out byte[] newValue)
         {
@@ -18,12 +16,8 @@ public class MergeOperatorTests
         }
     }
 
-    private sealed class NoPartialOverrideMergeOperator : MergeOperator
+    private sealed class NoPartialOverrideMergeOperator() : MergeOperator("NoPartialOverride")
     {
-        public NoPartialOverrideMergeOperator() : base("NoPartialOverride")
-        {
-        }
-
         public override bool FullMerge(ReadOnlySpan<byte> key, bool hasExistingValue,
             ReadOnlySpan<byte> existingValue, IEnumerable<byte[]> operands, out byte[] newValue)
         {
@@ -153,7 +147,7 @@ public class MergeOperatorTests
 
     private sealed class PartialMergeOperator : MergeOperator
     {
-        public PartialMergeOperator() : base("PartialAppendMerge", enablePartialMerge: true) { }
+        public PartialMergeOperator() : base("PartialAppendMerge") { }
 
         public override bool FullMerge(ReadOnlySpan<byte> key, bool hasExistingValue,
             ReadOnlySpan<byte> existingValue, IEnumerable<byte[]> operands, out byte[] newValue)
@@ -184,6 +178,13 @@ public class MergeOperatorTests
             newValue = Encoding.UTF8.GetBytes(sb.ToString());
             return true;
         }
+    }
+
+    [Fact]
+    public void PartialMerge_OverrideDetected()
+    {
+        var mergeOp = new PartialMergeOperator();
+        Assert.True(mergeOp.CheckIfMethodOverridden<MergeOperator>(nameof(MergeOperator.PartialMerge)));
     }
 
     [Fact]
@@ -232,5 +233,12 @@ public class MergeOperatorTests
 
         Assert.False(ok);
         Assert.Empty(value);
+    }
+
+    [Fact]
+    public void MergeOperator_NoPartialOverrideDetected()
+    {
+        var mergeOp = new NoPartialOverrideMergeOperator();
+        Assert.False(mergeOp.CheckIfMethodOverridden<MergeOperator>(nameof(MergeOperator.PartialMerge)));
     }
 }

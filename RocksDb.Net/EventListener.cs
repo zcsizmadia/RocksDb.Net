@@ -1,5 +1,7 @@
 using System.Runtime.InteropServices;
 
+using RocksDbNet.Extensions;
+
 namespace RocksDbNet;
 
 /// <summary>
@@ -63,7 +65,9 @@ public sealed record CompactionJobInfo(
     ulong TotalOutputBytes,
     uint InputRecords,
     uint OutputRecords,
-    ulong ElapsedMicros,
+    TimeSpan Elapsed,
+    ulong NumOfCorruptKeys,
+    int BaseInputLevel,
     CompactionReason CompactionReason,
     string? Status);
 
@@ -265,19 +269,37 @@ public abstract class EventListener : RocksDbHandle
         _onStallConditionsChangedDelegate = OnStallConditionsChangedCallback;
         _onMemTableSealedDelegate = OnMemTableSealedCallback;
 
+        // Only expose callbacks for methods that are actually overridden
+        // in the derived class, to avoid unnecessary native-to-managed
+        // transitions and generating info objects for events the user doesn't care about.
+        // Note:
+        // Checking if methods are override is using reflection to see if the declaring type is not this base class.
+        // Since it is done only once during construction, and this object is created infrequently,
+        // the performance impact is negligible.
+
         Handle = NativeMethods.rocksdb_eventlistener_create(
             GetPinnedIntPtr(),
             Marshal.GetFunctionPointerForDelegate(_destructorDelegate),
-            Marshal.GetFunctionPointerForDelegate(_onFlushBeginDelegate),
-            Marshal.GetFunctionPointerForDelegate(_onFlushCompletedDelegate),
-            Marshal.GetFunctionPointerForDelegate(_onCompactionBeginDelegate),
-            Marshal.GetFunctionPointerForDelegate(_onCompactionCompletedDelegate),
-            Marshal.GetFunctionPointerForDelegate(_onSubCompactionBeginDelegate),
-            Marshal.GetFunctionPointerForDelegate(_onSubCompactionCompletedDelegate),
-            Marshal.GetFunctionPointerForDelegate(_onExternalFileIngestedDelegate),
-            Marshal.GetFunctionPointerForDelegate(_onBackgroundErrorDelegate),
-            Marshal.GetFunctionPointerForDelegate(_onStallConditionsChangedDelegate),
-            Marshal.GetFunctionPointerForDelegate(_onMemTableSealedDelegate));
+            this.CheckIfMethodOverridden<EventListener>(nameof(OnFlushBegin)) ?
+                Marshal.GetFunctionPointerForDelegate(_onFlushBeginDelegate) : IntPtr.Zero,
+            this.CheckIfMethodOverridden<EventListener>(nameof(OnFlushCompleted)) ?
+                Marshal.GetFunctionPointerForDelegate(_onFlushCompletedDelegate) : IntPtr.Zero,
+            this.CheckIfMethodOverridden<EventListener>(nameof(OnCompactionBegin)) ?
+                Marshal.GetFunctionPointerForDelegate(_onCompactionBeginDelegate) : IntPtr.Zero,
+            this.CheckIfMethodOverridden<EventListener>(nameof(OnCompactionCompleted)) ?
+                Marshal.GetFunctionPointerForDelegate(_onCompactionCompletedDelegate) : IntPtr.Zero,
+            this.CheckIfMethodOverridden<EventListener>(nameof(OnSubCompactionBegin)) ?
+                Marshal.GetFunctionPointerForDelegate(_onSubCompactionBeginDelegate) : IntPtr.Zero,
+            this.CheckIfMethodOverridden<EventListener>(nameof(OnSubCompactionCompleted)) ?
+                Marshal.GetFunctionPointerForDelegate(_onSubCompactionCompletedDelegate) : IntPtr.Zero,
+            this.CheckIfMethodOverridden<EventListener>(nameof(OnExternalFileIngested)) ?
+                Marshal.GetFunctionPointerForDelegate(_onExternalFileIngestedDelegate) : IntPtr.Zero,
+            this.CheckIfMethodOverridden<EventListener>(nameof(OnBackgroundError)) ?
+                Marshal.GetFunctionPointerForDelegate(_onBackgroundErrorDelegate) : IntPtr.Zero,
+            this.CheckIfMethodOverridden<EventListener>(nameof(OnStallConditionsChanged)) ?
+                Marshal.GetFunctionPointerForDelegate(_onStallConditionsChangedDelegate) : IntPtr.Zero,
+            this.CheckIfMethodOverridden<EventListener>(nameof(OnMemTableSealed)) ?
+                Marshal.GetFunctionPointerForDelegate(_onMemTableSealedDelegate) : IntPtr.Zero);
     }
 
     // ── Virtual methods ───────────────────────────────────────────────
@@ -391,7 +413,9 @@ public abstract class EventListener : RocksDbHandle
             TotalOutputBytes: NativeMethods.rocksdb_compactionjobinfo_total_output_bytes(info),
             InputRecords: (uint)NativeMethods.rocksdb_compactionjobinfo_input_records(info),
             OutputRecords: (uint)NativeMethods.rocksdb_compactionjobinfo_output_records(info),
-            ElapsedMicros: NativeMethods.rocksdb_compactionjobinfo_elapsed_micros(info),
+            Elapsed: TimeSpan.FromMicroseconds(NativeMethods.rocksdb_compactionjobinfo_elapsed_micros(info)),
+            NumOfCorruptKeys: NativeMethods.rocksdb_compactionjobinfo_num_corrupt_keys(info),
+            BaseInputLevel: NativeMethods.rocksdb_compactionjobinfo_base_input_level(info),
             CompactionReason: (CompactionReason)NativeMethods.rocksdb_compactionjobinfo_compaction_reason(info),
             Status: status);
     }
@@ -487,7 +511,7 @@ public abstract class EventListener : RocksDbHandle
             NumDeletes: NativeMethods.rocksdb_memtableinfo_num_deletes(info));
     }
 
-    // --
+    // ── Disposal ───────────────────────────────────────────────────────────
 
     public override void DisposeHandle()
     {
