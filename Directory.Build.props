@@ -10,8 +10,8 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <RocksDbVersion>11.0.4</RocksDbVersion>
-    <Version>$(RocksDbVersion).2</Version>
+    <RocksDbVersion>11.1.2</RocksDbVersion>
+    <Version>$(RocksDbVersion).1</Version>
     <PackageVersion>$(Version)</PackageVersion>
     <Authors>Zoltan Csizmadia</Authors>
   </PropertyGroup>

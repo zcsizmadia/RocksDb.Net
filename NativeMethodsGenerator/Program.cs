@@ -25,7 +25,7 @@ for (int i = 0; i < args.Length; i++)
 if (string.IsNullOrEmpty(version))
 {
     Console.Error.WriteLine("Error: --version <rocksdb-version> is required.");
-    Console.Error.WriteLine("Usage: NativeMethodsGenerator --version 11.0.4 [--output path/NativeMethods.g.cs]");
+    Console.Error.WriteLine("Usage: NativeMethodsGenerator --version 11.1.2 [--output path/NativeMethods.g.cs]");
     return 1;
 }
 
