@@ -335,6 +335,14 @@ public class RocksDbBasicTests
     }
 
     [Fact]
+    public void KeyMayExist_ReturnsFalseForMissingKey()
+    {
+        using var db = new TempDb();
+        bool mayExist = db.Db.KeyMayExist(Encoding.UTF8.GetBytes("missing"));
+        Assert.False(mayExist);
+    }
+
+    [Fact]
     public void Repair_DoesNotThrowOnValidDb()
     {
         using var dir = new TempDir();

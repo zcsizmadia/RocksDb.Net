@@ -35,6 +35,7 @@ Ownership notes:
 | `TryGet(string, out string?)` | Try-pattern for string reads |
 | `MultiGet(string[])` | Batch get for multiple keys |
 | `KeyMayExist(string, ...)` | Fast probabilistic existence check |
+| `KeyMayExist(ReadOnlySpan<byte>, ColumnFamilyHandle, ...)` | Fast probabilistic existence check in a column family |
 
 ### Write Operations
 

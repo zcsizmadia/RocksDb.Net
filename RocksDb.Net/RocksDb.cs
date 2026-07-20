@@ -525,6 +525,19 @@ public sealed class RocksDb : RocksDbHandle
                 k, (nuint)key.Length, (byte**)null, out nuint dummyValLen, (byte*)null, 0, (byte*)null) != 0;
     }
 
+    /// <summary>
+    /// Returns <c>true</c> if the key <em>may</em> exist in <paramref name="cf"/>
+    /// (Bloom-filter optimized). A <c>false</c> result guarantees the key is absent;
+    /// a <c>true</c> result requires a real Get to confirm existence.
+    /// </summary>
+    public unsafe bool KeyMayExist(ReadOnlySpan<byte> key, ColumnFamilyHandle cf, ReadOptions? options = null)
+    {
+        fixed (byte* k = key)
+            return NativeMethods.rocksdb_key_may_exist_cf(Handle, (options ?? _defaultReadOptions).Handle,
+                cf.Handle, k, (nuint)key.Length, (byte**)null, out nuint dummyValLen,
+                (byte*)null, 0, (byte*)null) != 0;
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Iterator
     // ─────────────────────────────────────────────────────────────────────────

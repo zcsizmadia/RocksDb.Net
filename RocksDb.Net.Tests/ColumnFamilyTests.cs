@@ -73,6 +73,29 @@ public class ColumnFamilyTests
     }
 
     [Fact]
+    public void KeyMayExist_ColumnFamily_ReturnsTrueForExistingKey()
+    {
+        using var dir = new TempDir();
+        using var opts = new DbOptions { CreateIfMissing = true, CreateMissingColumnFamilies = true };
+
+        var cfDescs = new List<ColumnFamilyDescriptor>
+        {
+            new("default"),
+            new("data"),
+        };
+
+        using var db = RocksDb.Open(opts, dir.Path, cfDescs);
+        var dataCf = db.GetColumnFamily("data");
+
+        db.Put("key", "value", dataCf);
+        db.Flush(dataCf);
+
+        bool mayExist = db.KeyMayExist(Encoding.UTF8.GetBytes("key"), dataCf);
+
+        Assert.True(mayExist);
+    }
+
+    [Fact]
     public void ColumnFamilies_AreIsolated()
     {
         using var dir = new TempDir();
