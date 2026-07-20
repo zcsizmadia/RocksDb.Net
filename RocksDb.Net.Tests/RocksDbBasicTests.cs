@@ -343,6 +343,26 @@ public class RocksDbBasicTests
     }
 
     [Fact]
+    public void KeyMayExist_StringKey_ReturnsTrueForExistingKey()
+    {
+        using var db = new TempDb();
+        db.Db.Put("key", "value");
+        db.Db.Flush();
+
+        bool mayExist = db.Db.KeyMayExist("key");
+
+        Assert.True(mayExist);
+    }
+
+    [Fact]
+    public void KeyMayExist_StringKey_ReturnsFalseForMissingKey()
+    {
+        using var db = new TempDb();
+        bool mayExist = db.Db.KeyMayExist("missing");
+        Assert.False(mayExist);
+    }
+
+    [Fact]
     public void Repair_DoesNotThrowOnValidDb()
     {
         using var dir = new TempDir();

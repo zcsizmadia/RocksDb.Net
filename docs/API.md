@@ -34,8 +34,10 @@ Ownership notes:
 | `GetString(string, ...)` | Returns value as `string?` |
 | `TryGet(string, out string?)` | Try-pattern for string reads |
 | `MultiGet(string[])` | Batch get for multiple keys |
-| `KeyMayExist(string, ...)` | Fast probabilistic existence check |
+| `KeyMayExist(ReadOnlySpan<byte>, ...)` | Fast probabilistic existence check |
+| `KeyMayExist(string, ...)` | Fast probabilistic existence check with a UTF-8 string key |
 | `KeyMayExist(ReadOnlySpan<byte>, ColumnFamilyHandle, ...)` | Fast probabilistic existence check in a column family |
+| `KeyMayExist(string, ColumnFamilyHandle, ...)` | Fast probabilistic existence check in a column family with a UTF-8 string key |
 
 ### Write Operations
 

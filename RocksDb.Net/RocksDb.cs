@@ -538,6 +538,18 @@ public sealed class RocksDb : RocksDbHandle
                 (byte*)null, 0, (byte*)null) != 0;
     }
 
+    /// <summary>
+    /// Returns <c>true</c> if the UTF-8 encoded key <em>may</em> exist.
+    /// </summary>
+    public bool KeyMayExist(string key, ReadOptions? options = null)
+        => KeyMayExist(Encoding.UTF8.GetBytes(key), options);
+
+    /// <summary>
+    /// Returns <c>true</c> if the UTF-8 encoded key <em>may</em> exist in <paramref name="cf"/>.
+    /// </summary>
+    public bool KeyMayExist(string key, ColumnFamilyHandle cf, ReadOptions? options = null)
+        => KeyMayExist(Encoding.UTF8.GetBytes(key), cf, options);
+
     // ─────────────────────────────────────────────────────────────────────────
     // Iterator
     // ─────────────────────────────────────────────────────────────────────────
