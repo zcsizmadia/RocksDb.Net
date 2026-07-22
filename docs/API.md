@@ -62,9 +62,11 @@ Ownership notes:
 | Method | Description |
 |--------|-------------|
 | `CreateColumnFamily(DbOptions, string)` | Creates a new column family |
+| `CreateColumnFamilyWithTtl(DbOptions, string, int)` | Creates a new column family with TTL |
 | `DropColumnFamily(ColumnFamilyHandle)` | Removes a column family |
 | `GetDefaultColumnFamily()` | Returns the default column family handle |
 | `GetColumnFamily(string)` | Returns a named column family handle |
+| `GetColumnFamilyMetadata()` / `GetColumnFamilyMetadata(ColumnFamilyHandle)` | Returns column-family metadata and level/SST file details |
 | `ListColumnFamilies(DbOptions, string)` | Lists all column families in a database |
 
 ### Maintenance
@@ -138,6 +140,8 @@ Lifetime and ownership:
 | `PrepareForBulkLoad()` | Tunes for bulk loading |
 | `EnableStatistics()` | Enables internal statistics collection |
 | `GetStatisticsString()` | Returns collected statistics |
+| `GetTickerCount(uint)` | Returns a ticker value from the statistics subsystem |
+| `GetHistogramData(uint)` | Returns histogram statistics as a managed wrapper |
 | `SetUInt64AddMergeOperator()` | Uses the built-in uint64 addition merge operator |
 
 ---

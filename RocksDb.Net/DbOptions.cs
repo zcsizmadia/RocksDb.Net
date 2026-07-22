@@ -690,6 +690,39 @@ public sealed class DbOptions : RocksDbHandle
         return result;
     }
 
+    /// <summary>Returns the current value of a ticker from the statistics subsystem.</summary>
+    public ulong GetTickerCount(uint tickerType)
+        => NativeMethods.rocksdb_options_statistics_get_ticker_count(Handle, tickerType);
+
+    /// <summary>Returns histogram data for a statistics histogram type.</summary>
+    public HistogramData? GetHistogramData(uint histogramType)
+    {
+        nint dataHandle = NativeMethods.rocksdb_statistics_histogram_data_create();
+        if (dataHandle == nint.Zero)
+        {
+            return null;
+        }
+
+        try
+        {
+            NativeMethods.rocksdb_options_statistics_get_histogram_data(Handle, histogramType, dataHandle);
+            return new HistogramData(
+                NativeMethods.rocksdb_statistics_histogram_data_get_median(dataHandle),
+                NativeMethods.rocksdb_statistics_histogram_data_get_p95(dataHandle),
+                NativeMethods.rocksdb_statistics_histogram_data_get_p99(dataHandle),
+                NativeMethods.rocksdb_statistics_histogram_data_get_average(dataHandle),
+                NativeMethods.rocksdb_statistics_histogram_data_get_std_dev(dataHandle),
+                NativeMethods.rocksdb_statistics_histogram_data_get_max(dataHandle),
+                NativeMethods.rocksdb_statistics_histogram_data_get_count(dataHandle),
+                NativeMethods.rocksdb_statistics_histogram_data_get_sum(dataHandle),
+                NativeMethods.rocksdb_statistics_histogram_data_get_min(dataHandle));
+        }
+        finally
+        {
+            NativeMethods.rocksdb_statistics_histogram_data_destroy(dataHandle);
+        }
+    }
+
     // ── Merge operator ──────────────────────────────────
 
     /// <summary>Sets the built-in UInt64Add merge operator, which treats values as little-endian 64-bit integers and adds them.</summary>

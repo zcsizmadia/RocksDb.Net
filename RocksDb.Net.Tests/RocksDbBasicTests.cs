@@ -180,6 +180,51 @@ public class RocksDbBasicTests
     }
 
     [Fact]
+    public void GetColumnFamilyMetadata_ReturnsMetadataForDefaultAndNamedFamilies()
+    {
+        using var dir = new TempDir();
+        using var opts = new DbOptions { CreateIfMissing = true, CreateMissingColumnFamilies = true };
+        var cfDescs = new List<ColumnFamilyDescriptor> { new("default"), new("cf1") };
+
+        using var db = RocksDb.Open(opts, dir.Path, cfDescs);
+        var cf1 = db.GetColumnFamily("cf1");
+
+        db.Put("a", "1", cf1);
+        db.Flush(cf1);
+
+        ColumnFamilyMetadata? defaultMetadata = db.GetColumnFamilyMetadata();
+        ColumnFamilyMetadata? cfMetadata = db.GetColumnFamilyMetadata(cf1);
+
+        Assert.NotNull(defaultMetadata);
+        Assert.NotNull(cfMetadata);
+        Assert.Equal("default", defaultMetadata!.Name);
+        Assert.Equal("cf1", cfMetadata!.Name);
+        Assert.True(cfMetadata.LevelCount >= 0);
+        Assert.True(cfMetadata.Levels.Count >= 0);
+        Assert.True(cfMetadata.FileCount >= 0);
+    }
+
+    [Fact]
+    public void DbOptions_GetTickerCountAndHistogramData_ReturnsValues()
+    {
+        using var dir = new TempDir();
+        using var opts = new DbOptions { CreateIfMissing = true };
+        opts.EnableStatistics();
+
+        using var db = RocksDb.Open(opts, dir.Path);
+        db.Put("key", "value");
+        db.Flush();
+
+        ulong tickerCount = opts.GetTickerCount(0);
+        HistogramData? histogram = opts.GetHistogramData(0);
+
+        Assert.True(tickerCount >= 0);
+        Assert.NotNull(histogram);
+        Assert.True(histogram!.Count >= 0);
+        Assert.True(histogram.Min >= 0);
+    }
+
+    [Fact]
     public void LatestSequenceNumber_IncrementsOnWrite()
     {
         using var db = new TempDb();

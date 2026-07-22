@@ -641,6 +641,21 @@ public sealed class RocksDb : RocksDbHandle
         return _columnFamilyHandles != null && _columnFamilyHandles.TryGetValue(name, out ColumnFamilyHandle? cfh) ? cfh : null!;
     }
 
+    /// <summary>Returns metadata for the default column family.</summary>
+    public ColumnFamilyMetadata? GetColumnFamilyMetadata()
+    {
+        nint meta = NativeMethods.rocksdb_get_column_family_metadata(Handle);
+        return meta == nint.Zero ? null : new ColumnFamilyMetadata(meta);
+    }
+
+    /// <summary>Returns metadata for <paramref name="cf"/>.</summary>
+    public ColumnFamilyMetadata? GetColumnFamilyMetadata(ColumnFamilyHandle cf)
+    {
+        ArgumentNullException.ThrowIfNull(cf);
+        nint meta = NativeMethods.rocksdb_get_column_family_metadata_cf(Handle, cf.Handle);
+        return meta == nint.Zero ? null : new ColumnFamilyMetadata(meta);
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Flush / Compact
     // ─────────────────────────────────────────────────────────────────────────
