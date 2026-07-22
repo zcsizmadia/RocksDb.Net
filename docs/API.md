@@ -62,9 +62,11 @@ Ownership notes:
 | Method | Description |
 |--------|-------------|
 | `CreateColumnFamily(DbOptions, string)` | Creates a new column family |
+| `CreateColumnFamilyWithTtl(DbOptions, string, int)` | Creates a new column family with TTL |
 | `DropColumnFamily(ColumnFamilyHandle)` | Removes a column family |
 | `GetDefaultColumnFamily()` | Returns the default column family handle |
 | `GetColumnFamily(string)` | Returns a named column family handle |
+| `GetColumnFamilyMetadata()` / `GetColumnFamilyMetadata(ColumnFamilyHandle)` | Returns column-family metadata and level/SST file details |
 | `ListColumnFamilies(DbOptions, string)` | Lists all column families in a database |
 
 ### Maintenance
@@ -72,15 +74,24 @@ Ownership notes:
 | Method | Description |
 |--------|-------------|
 | `Flush(FlushOptions?)` | Flushes memtables to storage |
+| `Flush(IReadOnlyList<ColumnFamilyHandle>, FlushOptions?)` | Flushes multiple column families |
 | `FlushWal(bool)` | Syncs the write-ahead log |
 | `CompactRange(...)` | Triggers manual compaction |
+| `SuggestCompactRange(...)` | Suggests compaction for a key range |
+| `CancelAllBackgroundWork(bool)` | Cancels or waits on background work |
+| `WaitForCompact(WaitForCompactOptions?)` | Waits for pending compaction work |
+| `SetOptions(IEnumerable<KeyValuePair<string, string>>)` | Applies runtime DB options |
+| `SetOptions(ColumnFamilyHandle, IEnumerable<KeyValuePair<string, string>>)` | Applies runtime CF options |
 | `GetProperty(string, ...)` | Reads a database property |
 | `GetPropertyInt(string, ...)` | Reads an integer property |
 | `IngestExternalFile(string[], ...)` | Ingests SST files into the database |
 | `DisableFileDeletions()` / `EnableFileDeletions()` | Controls SST file deletion |
+| `DeleteFilesInRange(string, string)` / `DeleteFilesInRange(ColumnFamilyHandle, string, string)` | Deletes files in a key range for maintenance |
 | `TryCatchUpWithPrimary()` | Catches up a secondary instance |
 | `LatestSequenceNumber` | Current sequence number (property) |
 | `GetDbIdentity()` | Returns the unique database identity string |
+| `GetLiveFiles()` | Returns metadata for the currently live SST files |
+| `ApproximateSizes(IEnumerable<(string Start, string Limit)>)` | Returns approximate sizes for one or more key ranges |
 
 ---
 
@@ -107,6 +118,10 @@ Lifetime and ownership:
 | `MaxOpenFiles` | `int` | Maximum number of open file descriptors |
 | `Compression` | `Compression` | Default compression algorithm |
 | `CompactionStyle` | `CompactionStyle` | Compaction strategy |
+| `AllowIngestBehind` | `bool` | Allows ingesting files behind the database |
+| `CompactionReadaheadSize` | `ulong` | Size of the compaction readahead buffer |
+| `MaxWriteBufferSizeToMaintain` | `long` | Size of the write-buffer maintenance cap |
+| `MaxCompactionBytes` | `ulong` | Maximum size of a single compaction |
 | `MaxBackgroundJobs` | `int` | Total background threads |
 
 ### Table / Cache / Filter
@@ -138,6 +153,8 @@ Lifetime and ownership:
 | `PrepareForBulkLoad()` | Tunes for bulk loading |
 | `EnableStatistics()` | Enables internal statistics collection |
 | `GetStatisticsString()` | Returns collected statistics |
+| `GetTickerCount(uint)` | Returns a ticker value from the statistics subsystem |
+| `GetHistogramData(uint)` | Returns histogram statistics as a managed wrapper |
 | `SetUInt64AddMergeOperator()` | Uses the built-in uint64 addition merge operator |
 
 ---

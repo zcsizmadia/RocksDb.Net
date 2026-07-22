@@ -7,7 +7,7 @@ A modern C# wrapper for [RocksDb](https://rocksdb.org/), the high-performance em
 - **Full RocksDb C API coverage** — 1,000+ auto-generated P/Invoke bindings from the official `rocksdb/c.h` header
 - **Modern .NET** — targets .NET 10, uses `LibraryImport`, `ReadOnlySpan<byte>`, and `ref struct` iterators
 - **Idiomatic C# API** — `IDisposable` handles, properties, string overloads, LINQ-compatible iterators
-- **Column families** — create, drop, and operate on multiple column families
+- **Column families** — create, drop, and operate on multiple column families, with metadata inspection
 - **Merge operators** — built-in `UInt64Add` and custom merge operator support
 - **Compaction filters** — filter or transform key-value pairs during compaction
 - **Transactions** — `WriteBatch` and `WriteBatchWithIndex` for atomic multi-key operations
@@ -131,6 +131,48 @@ Nested handle lifetime note:
 - `MergeOperator`, `CompactionFilterFactory`, and `EventListener` are transferred to native shared ownership when assigned to `DbOptions`.
 - `Comparator`, `CompactionFilter`, `Logger`, and `RateLimiter` are disposed with `DbOptions`.
 - In all cases, these objects must outlive the open `RocksDb` instance that uses them.
+
+### Metadata and statistics
+
+```csharp
+using var db = RocksDb.Open(new DbOptions { CreateIfMissing = true }, "stats_db");
+
+var metadata = db.GetColumnFamilyMetadata();
+Console.WriteLine(metadata?.Name);
+
+using var options = new DbOptions { CreateIfMissing = true };
+options.EnableStatistics();
+var histogram = options.GetHistogramData(0);
+Console.WriteLine(histogram?.Count);
+```
+
+### Live files and approximate sizes
+
+```csharp
+using var db = RocksDb.Open(new DbOptions { CreateIfMissing = true }, "inspection_db");
+
+db.Put("a", "1");
+db.Put("z", "2");
+db.Flush();
+
+using var liveFiles = db.GetLiveFiles();
+Console.WriteLine(liveFiles?.Files.Count);
+
+ulong[] sizes = db.ApproximateSizes(new[] { ("a", "z") });
+Console.WriteLine(sizes[0]);
+```
+
+### Advanced maintenance helpers
+
+```csharp
+using var db = RocksDb.Open(new DbOptions { CreateIfMissing = true }, "maintenance_db");
+
+using var compactOpts = new WaitForCompactOptions { Flush = true, TimeoutMicros = 5_000_000 };
+db.SuggestCompactRange(Encoding.UTF8.GetBytes("a"), Encoding.UTF8.GetBytes("z"));
+db.DeleteFilesInRange("a", "z");
+db.CancelAllBackgroundWork(wait: false);
+db.WaitForCompact(compactOpts);
+```
 
 ### Backup & Restore
 

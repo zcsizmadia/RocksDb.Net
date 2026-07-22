@@ -641,6 +641,21 @@ public sealed class RocksDb : RocksDbHandle
         return _columnFamilyHandles != null && _columnFamilyHandles.TryGetValue(name, out ColumnFamilyHandle? cfh) ? cfh : null!;
     }
 
+    /// <summary>Returns metadata for the default column family.</summary>
+    public ColumnFamilyMetadata? GetColumnFamilyMetadata()
+    {
+        nint meta = NativeMethods.rocksdb_get_column_family_metadata(Handle);
+        return meta == nint.Zero ? null : new ColumnFamilyMetadata(meta);
+    }
+
+    /// <summary>Returns metadata for <paramref name="cf"/>.</summary>
+    public ColumnFamilyMetadata? GetColumnFamilyMetadata(ColumnFamilyHandle cf)
+    {
+        ArgumentNullException.ThrowIfNull(cf);
+        nint meta = NativeMethods.rocksdb_get_column_family_metadata_cf(Handle, cf.Handle);
+        return meta == nint.Zero ? null : new ColumnFamilyMetadata(meta);
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Flush / Compact
     // ─────────────────────────────────────────────────────────────────────────
@@ -658,6 +673,34 @@ public sealed class RocksDb : RocksDbHandle
     {
         nint err = default;
         NativeMethods.rocksdb_flush_cf(Handle, (options ?? _defaultFlushOptions).Handle, cf.Handle, ref err);
+        NativeMethods.ThrowOnError(err);
+    }
+
+    /// <summary>Flushes the specified column families.</summary>
+    public unsafe void Flush(IReadOnlyList<ColumnFamilyHandle> columnFamilies, FlushOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(columnFamilies);
+        if (columnFamilies.Count == 0)
+        {
+            Flush(options);
+            return;
+        }
+
+        int count = columnFamilies.Count;
+        nint[] handles = new nint[count];
+        for (int i = 0; i < count; i++)
+        {
+            if (columnFamilies[i] is null)
+                throw new ArgumentException("Column family handles cannot be null.", nameof(columnFamilies));
+            handles[i] = columnFamilies[i].Handle;
+        }
+
+        nint err = default;
+        unsafe
+        {
+            fixed (nint* ptr = handles)
+                NativeMethods.rocksdb_flush_cfs(Handle, (options ?? _defaultFlushOptions).Handle, ptr, count, ref err);
+        }
         NativeMethods.ThrowOnError(err);
     }
 
@@ -699,6 +742,131 @@ public sealed class RocksDb : RocksDbHandle
             NativeMethods.rocksdb_compact_range_opt(Handle, options.Handle,
                 startKey.IsEmpty ? null : s, (nuint)startKey.Length,
                 limitKey.IsEmpty ? null : e, (nuint)limitKey.Length);
+    }
+
+    /// <summary>Suggests compaction for the specified key range.</summary>
+    public unsafe void SuggestCompactRange(ReadOnlySpan<byte> startKey, ReadOnlySpan<byte> limitKey)
+    {
+        nint err = default;
+        fixed (byte* s = startKey)
+        fixed (byte* e = limitKey)
+            NativeMethods.rocksdb_suggest_compact_range(Handle,
+                startKey.IsEmpty ? null : s, (nuint)startKey.Length,
+                limitKey.IsEmpty ? null : e, (nuint)limitKey.Length, ref err);
+        NativeMethods.ThrowOnError(err);
+    }
+
+    /// <summary>Suggests compaction for the specified column family and key range.</summary>
+    public unsafe void SuggestCompactRange(ColumnFamilyHandle cf, ReadOnlySpan<byte> startKey, ReadOnlySpan<byte> limitKey)
+    {
+        ArgumentNullException.ThrowIfNull(cf);
+        nint err = default;
+        fixed (byte* s = startKey)
+        fixed (byte* e = limitKey)
+            NativeMethods.rocksdb_suggest_compact_range_cf(Handle, cf.Handle,
+                startKey.IsEmpty ? null : s, (nuint)startKey.Length,
+                limitKey.IsEmpty ? null : e, (nuint)limitKey.Length, ref err);
+        NativeMethods.ThrowOnError(err);
+    }
+
+    /// <summary>Cancels or waits for all background work.</summary>
+    public void CancelAllBackgroundWork(bool wait = false)
+    {
+        NativeMethods.rocksdb_cancel_all_background_work(Handle, wait ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>Waits for pending compaction work, optionally using custom options.</summary>
+    public void WaitForCompact(WaitForCompactOptions? options = null)
+    {
+        nint err = default;
+        using var compactOptions = options ?? new WaitForCompactOptions();
+        NativeMethods.rocksdb_wait_for_compact(Handle, compactOptions.Handle, ref err);
+        NativeMethods.ThrowOnError(err);
+    }
+
+    /// <summary>Applies one or more runtime options to the database.</summary>
+    public unsafe void SetOptions(IEnumerable<KeyValuePair<string, string>> options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        var entries = options.ToList();
+        if (entries.Count == 0)
+            return;
+
+        var keys = new byte*[entries.Count];
+        var values = new byte*[entries.Count];
+        var keyPins = new GCHandle[entries.Count];
+        var valuePins = new GCHandle[entries.Count];
+
+        try
+        {
+            for (int i = 0; i < entries.Count; i++)
+            {
+                byte[] keyBytes = Encoding.UTF8.GetBytes(entries[i].Key + '\0');
+                byte[] valueBytes = Encoding.UTF8.GetBytes(entries[i].Value + '\0');
+                keyPins[i] = GCHandle.Alloc(keyBytes, GCHandleType.Pinned);
+                valuePins[i] = GCHandle.Alloc(valueBytes, GCHandleType.Pinned);
+                keys[i] = (byte*)keyPins[i].AddrOfPinnedObject();
+                values[i] = (byte*)valuePins[i].AddrOfPinnedObject();
+            }
+
+            nint err = default;
+            fixed (byte** k = keys)
+            fixed (byte** v = values)
+                NativeMethods.rocksdb_set_options(Handle, entries.Count, k, v, ref err);
+            NativeMethods.ThrowOnError(err);
+        }
+        finally
+        {
+            for (int i = 0; i < keyPins.Length; i++)
+            {
+                if (keyPins[i].IsAllocated) keyPins[i].Free();
+                if (valuePins[i].IsAllocated) valuePins[i].Free();
+            }
+        }
+    }
+
+    /// <summary>Applies one or more runtime options to a specific column family.</summary>
+    public unsafe void SetOptions(ColumnFamilyHandle cf, IEnumerable<KeyValuePair<string, string>> options)
+    {
+        ArgumentNullException.ThrowIfNull(cf);
+        ArgumentNullException.ThrowIfNull(options);
+
+        var entries = options.ToList();
+        if (entries.Count == 0)
+            return;
+
+        var keys = new byte*[entries.Count];
+        var values = new byte*[entries.Count];
+        var keyPins = new GCHandle[entries.Count];
+        var valuePins = new GCHandle[entries.Count];
+
+        try
+        {
+            for (int i = 0; i < entries.Count; i++)
+            {
+                byte[] keyBytes = Encoding.UTF8.GetBytes(entries[i].Key + '\0');
+                byte[] valueBytes = Encoding.UTF8.GetBytes(entries[i].Value + '\0');
+                keyPins[i] = GCHandle.Alloc(keyBytes, GCHandleType.Pinned);
+                valuePins[i] = GCHandle.Alloc(valueBytes, GCHandleType.Pinned);
+                keys[i] = (byte*)keyPins[i].AddrOfPinnedObject();
+                values[i] = (byte*)valuePins[i].AddrOfPinnedObject();
+            }
+
+            nint err = default;
+            fixed (byte** k = keys)
+            fixed (byte** v = values)
+                NativeMethods.rocksdb_set_options_cf(Handle, cf.Handle, entries.Count, k, v, ref err);
+            NativeMethods.ThrowOnError(err);
+        }
+        finally
+        {
+            for (int i = 0; i < keyPins.Length; i++)
+            {
+                if (keyPins[i].IsAllocated) keyPins[i].Free();
+                if (valuePins[i].IsAllocated) valuePins[i].Free();
+            }
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -768,6 +936,120 @@ public sealed class RocksDb : RocksDbHandle
         string id = NativeMethods.PtrToStringUTF8((byte*)ptr, len) ?? string.Empty;
         NativeMethods.rocksdb_free(ptr);
         return id;
+    }
+
+    /// <summary>Returns metadata about the currently live SST files in the database.</summary>
+    public LiveFiles? GetLiveFiles()
+    {
+        nint liveFilesHandle = NativeMethods.rocksdb_livefiles(Handle);
+        return liveFilesHandle == nint.Zero ? null : new LiveFiles(liveFilesHandle);
+    }
+
+    /// <summary>Returns approximate size information for one or more key ranges.</summary>
+    public unsafe ulong[] ApproximateSizes(IEnumerable<(string Start, string Limit)> ranges)
+    {
+        ArgumentNullException.ThrowIfNull(ranges);
+        var rangeList = ranges.ToList();
+        if (rangeList.Count == 0)
+        {
+            return [];
+        }
+
+        var startKeys = new byte*[rangeList.Count];
+        var startLengths = new nuint[rangeList.Count];
+        var limitKeys = new byte*[rangeList.Count];
+        var limitLengths = new nuint[rangeList.Count];
+        var sizes = new ulong[rangeList.Count];
+        var startPins = new GCHandle[rangeList.Count];
+        var limitPins = new GCHandle[rangeList.Count];
+
+        try
+        {
+            for (int i = 0; i < rangeList.Count; i++)
+            {
+                var (startKey, limitKey) = rangeList[i];
+                if (!string.IsNullOrEmpty(startKey))
+                {
+                    byte[] bytes = Encoding.UTF8.GetBytes(startKey);
+                    startPins[i] = GCHandle.Alloc(bytes, GCHandleType.Pinned);
+                    startKeys[i] = (byte*)startPins[i].AddrOfPinnedObject();
+                    startLengths[i] = (nuint)bytes.Length;
+                }
+
+                if (!string.IsNullOrEmpty(limitKey))
+                {
+                    byte[] bytes = Encoding.UTF8.GetBytes(limitKey);
+                    limitPins[i] = GCHandle.Alloc(bytes, GCHandleType.Pinned);
+                    limitKeys[i] = (byte*)limitPins[i].AddrOfPinnedObject();
+                    limitLengths[i] = (nuint)bytes.Length;
+                }
+            }
+
+            nint err = default;
+            fixed (byte** startKeyPtr = startKeys)
+            fixed (nuint* startLenPtr = startLengths)
+            fixed (byte** limitKeyPtr = limitKeys)
+            fixed (nuint* limitLenPtr = limitLengths)
+            {
+                fixed (ulong* sizePtr = sizes)
+                {
+                    NativeMethods.rocksdb_approximate_sizes(Handle, rangeList.Count, startKeyPtr, startLenPtr, limitKeyPtr, limitLenPtr, (nint)sizePtr, ref err);
+                }
+            }
+
+            NativeMethods.ThrowOnError(err);
+            return sizes;
+        }
+        finally
+        {
+            for (int i = 0; i < startPins.Length; i++)
+            {
+                if (startPins[i].IsAllocated) startPins[i].Free();
+                if (limitPins[i].IsAllocated) limitPins[i].Free();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Deletes files in the specified key range from the default column family.
+    /// This is a maintenance operation and does not remove the keys from the database.
+    /// </summary>
+    public unsafe void DeleteFilesInRange(string startKey, string limitKey)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(startKey);
+        ArgumentException.ThrowIfNullOrEmpty(limitKey);
+
+        byte[] startBytes = Encoding.UTF8.GetBytes(startKey + '\0');
+        byte[] limitBytes = Encoding.UTF8.GetBytes(limitKey + '\0');
+
+        fixed (byte* startPtr = startBytes)
+        fixed (byte* limitPtr = limitBytes)
+        {
+            nint err = default;
+            NativeMethods.rocksdb_delete_file_in_range(Handle, startPtr, (nuint)startBytes.Length - 1, limitPtr, (nuint)limitBytes.Length - 1, ref err);
+            NativeMethods.ThrowOnError(err);
+        }
+    }
+
+    /// <summary>
+    /// Deletes files in the specified key range from the given column family.
+    /// </summary>
+    public unsafe void DeleteFilesInRange(ColumnFamilyHandle cf, string startKey, string limitKey)
+    {
+        ArgumentNullException.ThrowIfNull(cf);
+        ArgumentException.ThrowIfNullOrEmpty(startKey);
+        ArgumentException.ThrowIfNullOrEmpty(limitKey);
+
+        byte[] startBytes = Encoding.UTF8.GetBytes(startKey + '\0');
+        byte[] limitBytes = Encoding.UTF8.GetBytes(limitKey + '\0');
+
+        fixed (byte* startPtr = startBytes)
+        fixed (byte* limitPtr = limitBytes)
+        {
+            nint err = default;
+            NativeMethods.rocksdb_delete_file_in_range_cf(Handle, cf.Handle, startPtr, (nuint)startBytes.Length - 1, limitPtr, (nuint)limitBytes.Length - 1, ref err);
+            NativeMethods.ThrowOnError(err);
+        }
     }
 
     /// <summary>

@@ -180,6 +180,134 @@ public class RocksDbBasicTests
     }
 
     [Fact]
+    public void AdvancedRuntimeHelpers_DoNotThrow()
+    {
+        using var dir = new TempDir();
+        using var opts = new DbOptions { CreateIfMissing = true, CreateMissingColumnFamilies = true };
+        var cfDescs = new List<ColumnFamilyDescriptor> { new("default"), new("cf1") };
+
+        using var db = RocksDb.Open(opts, dir.Path, cfDescs);
+        var cf1 = db.GetColumnFamily("cf1");
+
+        db.Put("key", "value", cf1);
+        db.Flush(new[] { cf1 });
+        db.SuggestCompactRange(cf1, Encoding.UTF8.GetBytes("a"), Encoding.UTF8.GetBytes("z"));
+        db.CancelAllBackgroundWork(wait: false);
+        db.SetOptions(new[] { new KeyValuePair<string, string>("disable_auto_compactions", "true") });
+    }
+
+    [Fact]
+    public void GetColumnFamilyMetadata_ReturnsMetadataForDefaultAndNamedFamilies()
+    {
+        using var dir = new TempDir();
+        using var opts = new DbOptions { CreateIfMissing = true, CreateMissingColumnFamilies = true };
+        var cfDescs = new List<ColumnFamilyDescriptor> { new("default"), new("cf1") };
+
+        using var db = RocksDb.Open(opts, dir.Path, cfDescs);
+        var cf1 = db.GetColumnFamily("cf1");
+
+        db.Put("a", "1", cf1);
+        db.Flush(cf1);
+
+        ColumnFamilyMetadata? defaultMetadata = db.GetColumnFamilyMetadata();
+        ColumnFamilyMetadata? cfMetadata = db.GetColumnFamilyMetadata(cf1);
+
+        Assert.NotNull(defaultMetadata);
+        Assert.NotNull(cfMetadata);
+        Assert.Equal("default", defaultMetadata!.Name);
+        Assert.Equal("cf1", cfMetadata!.Name);
+        Assert.True(cfMetadata.LevelCount >= 0);
+        Assert.True(cfMetadata.Levels.Count >= 0);
+        Assert.True(cfMetadata.FileCount >= 0);
+    }
+
+    [Fact]
+    public void DbOptions_GetTickerCountAndHistogramData_ReturnsValues()
+    {
+        using var dir = new TempDir();
+        using var opts = new DbOptions { CreateIfMissing = true };
+        opts.EnableStatistics();
+
+        using var db = RocksDb.Open(opts, dir.Path);
+        db.Put("key", "value");
+        db.Flush();
+
+        ulong tickerCount = opts.GetTickerCount(0);
+        HistogramData? histogram = opts.GetHistogramData(0);
+
+        Assert.True(tickerCount >= 0);
+        Assert.NotNull(histogram);
+        Assert.True(histogram!.Count >= 0);
+        Assert.True(histogram.Min >= 0);
+    }
+
+    [Fact]
+    public void GetLiveFiles_ReturnsLiveFileMetadata()
+    {
+        using var db = new TempDb();
+
+        db.Db.Put("a", "1");
+        db.Db.Flush();
+
+        using var liveFiles = db.Db.GetLiveFiles();
+
+        Assert.NotNull(liveFiles);
+        Assert.NotEmpty(liveFiles.Files);
+        Assert.All(liveFiles.Files, file => Assert.True(file.Size >= 0));
+        Assert.All(liveFiles.Files, file => Assert.True(file.Level >= 0));
+    }
+
+    [Fact]
+    public void ApproximateSizes_ReturnsOneValuePerRange()
+    {
+        using var db = new TempDb();
+
+        db.Db.Put("a", "1");
+        db.Db.Put("z", "2");
+        db.Db.Flush();
+
+        ulong[] sizes = db.Db.ApproximateSizes(new[] { ("a", "z") });
+
+        Assert.Single(sizes);
+        Assert.True(sizes[0] >= 0);
+    }
+
+    [Fact]
+    public void DeleteFilesInRange_DoesNotThrowAndPreservesData()
+    {
+        using var db = new TempDb();
+
+        db.Db.Put("a", "1");
+        db.Db.Put("z", "2");
+        db.Db.Flush();
+
+        db.Db.DeleteFilesInRange("a", "z");
+
+        Assert.Equal("1", db.Db.GetString("a"));
+        Assert.Equal("2", db.Db.GetString("z"));
+    }
+
+    [Fact]
+    public void DeleteFilesInRange_ColumnFamily_DoesNotThrow()
+    {
+        using var dir = new TempDir();
+        using var options = new DbOptions { CreateIfMissing = true, CreateMissingColumnFamilies = true };
+        var cfDescs = new List<ColumnFamilyDescriptor> { new("default"), new("cf1") };
+
+        using var db = RocksDb.Open(options, dir.Path, cfDescs);
+        var cf1 = db.GetColumnFamily("cf1");
+
+        db.Put("a", "1", cf1);
+        db.Put("z", "2", cf1);
+        db.Flush(cf1);
+
+        db.DeleteFilesInRange(cf1, "a", "z");
+
+        Assert.Equal("1", db.GetString("a", cf1));
+        Assert.Equal("2", db.GetString("z", cf1));
+    }
+
+    [Fact]
     public void LatestSequenceNumber_IncrementsOnWrite()
     {
         using var db = new TempDb();
