@@ -86,6 +86,7 @@ Ownership notes:
 | `GetPropertyInt(string, ...)` | Reads an integer property |
 | `IngestExternalFile(string[], ...)` | Ingests SST files into the database |
 | `DisableFileDeletions()` / `EnableFileDeletions()` | Controls SST file deletion |
+| `DeleteFilesInRange(string, string)` / `DeleteFilesInRange(ColumnFamilyHandle, string, string)` | Deletes files in a key range for maintenance |
 | `TryCatchUpWithPrimary()` | Catches up a secondary instance |
 | `LatestSequenceNumber` | Current sequence number (property) |
 | `GetDbIdentity()` | Returns the unique database identity string |

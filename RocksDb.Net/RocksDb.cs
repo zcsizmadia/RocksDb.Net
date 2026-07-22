@@ -1011,6 +1011,48 @@ public sealed class RocksDb : RocksDbHandle
     }
 
     /// <summary>
+    /// Deletes files in the specified key range from the default column family.
+    /// This is a maintenance operation and does not remove the keys from the database.
+    /// </summary>
+    public unsafe void DeleteFilesInRange(string startKey, string limitKey)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(startKey);
+        ArgumentException.ThrowIfNullOrEmpty(limitKey);
+
+        byte[] startBytes = Encoding.UTF8.GetBytes(startKey + '\0');
+        byte[] limitBytes = Encoding.UTF8.GetBytes(limitKey + '\0');
+
+        fixed (byte* startPtr = startBytes)
+        fixed (byte* limitPtr = limitBytes)
+        {
+            nint err = default;
+            NativeMethods.rocksdb_delete_file_in_range(Handle, startPtr, (nuint)startBytes.Length - 1, limitPtr, (nuint)limitBytes.Length - 1, ref err);
+            NativeMethods.ThrowOnError(err);
+        }
+    }
+
+    /// <summary>
+    /// Deletes files in the specified key range from the given column family.
+    /// </summary>
+    public unsafe void DeleteFilesInRange(ColumnFamilyHandle cf, string startKey, string limitKey)
+    {
+        ArgumentNullException.ThrowIfNull(cf);
+        ArgumentException.ThrowIfNullOrEmpty(startKey);
+        ArgumentException.ThrowIfNullOrEmpty(limitKey);
+
+        byte[] startBytes = Encoding.UTF8.GetBytes(startKey + '\0');
+        byte[] limitBytes = Encoding.UTF8.GetBytes(limitKey + '\0');
+
+        fixed (byte* startPtr = startBytes)
+        fixed (byte* limitPtr = limitBytes)
+        {
+            nint err = default;
+            NativeMethods.rocksdb_delete_file_in_range_cf(Handle, cf.Handle, startPtr, (nuint)startBytes.Length - 1, limitPtr, (nuint)limitBytes.Length - 1, ref err);
+            NativeMethods.ThrowOnError(err);
+        }
+    }
+
+    /// <summary>
     /// Disables file deletions. Call <see cref="EnableFileDeletions"/> to re-enable.
     /// </summary>
     public void DisableFileDeletions()

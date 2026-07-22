@@ -273,6 +273,41 @@ public class RocksDbBasicTests
     }
 
     [Fact]
+    public void DeleteFilesInRange_DoesNotThrowAndPreservesData()
+    {
+        using var db = new TempDb();
+
+        db.Db.Put("a", "1");
+        db.Db.Put("z", "2");
+        db.Db.Flush();
+
+        db.Db.DeleteFilesInRange("a", "z");
+
+        Assert.Equal("1", db.Db.GetString("a"));
+        Assert.Equal("2", db.Db.GetString("z"));
+    }
+
+    [Fact]
+    public void DeleteFilesInRange_ColumnFamily_DoesNotThrow()
+    {
+        using var dir = new TempDir();
+        using var options = new DbOptions { CreateIfMissing = true, CreateMissingColumnFamilies = true };
+        var cfDescs = new List<ColumnFamilyDescriptor> { new("default"), new("cf1") };
+
+        using var db = RocksDb.Open(options, dir.Path, cfDescs);
+        var cf1 = db.GetColumnFamily("cf1");
+
+        db.Put("a", "1", cf1);
+        db.Put("z", "2", cf1);
+        db.Flush(cf1);
+
+        db.DeleteFilesInRange(cf1, "a", "z");
+
+        Assert.Equal("1", db.GetString("a", cf1));
+        Assert.Equal("2", db.GetString("z", cf1));
+    }
+
+    [Fact]
     public void LatestSequenceNumber_IncrementsOnWrite()
     {
         using var db = new TempDb();

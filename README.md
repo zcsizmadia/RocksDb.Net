@@ -169,6 +169,7 @@ using var db = RocksDb.Open(new DbOptions { CreateIfMissing = true }, "maintenan
 
 using var compactOpts = new WaitForCompactOptions { Flush = true, TimeoutMicros = 5_000_000 };
 db.SuggestCompactRange(Encoding.UTF8.GetBytes("a"), Encoding.UTF8.GetBytes("z"));
+db.DeleteFilesInRange("a", "z");
 db.CancelAllBackgroundWork(wait: false);
 db.WaitForCompact(compactOpts);
 ```
