@@ -676,6 +676,34 @@ public sealed class RocksDb : RocksDbHandle
         NativeMethods.ThrowOnError(err);
     }
 
+    /// <summary>Flushes the specified column families.</summary>
+    public unsafe void Flush(IReadOnlyList<ColumnFamilyHandle> columnFamilies, FlushOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(columnFamilies);
+        if (columnFamilies.Count == 0)
+        {
+            Flush(options);
+            return;
+        }
+
+        int count = columnFamilies.Count;
+        nint[] handles = new nint[count];
+        for (int i = 0; i < count; i++)
+        {
+            if (columnFamilies[i] is null)
+                throw new ArgumentException("Column family handles cannot be null.", nameof(columnFamilies));
+            handles[i] = columnFamilies[i].Handle;
+        }
+
+        nint err = default;
+        unsafe
+        {
+            fixed (nint* ptr = handles)
+                NativeMethods.rocksdb_flush_cfs(Handle, (options ?? _defaultFlushOptions).Handle, ptr, count, ref err);
+        }
+        NativeMethods.ThrowOnError(err);
+    }
+
     /// <summary>Flushes the WAL buffer to disk.</summary>
     public void FlushWal(bool sync = false)
     {
@@ -714,6 +742,131 @@ public sealed class RocksDb : RocksDbHandle
             NativeMethods.rocksdb_compact_range_opt(Handle, options.Handle,
                 startKey.IsEmpty ? null : s, (nuint)startKey.Length,
                 limitKey.IsEmpty ? null : e, (nuint)limitKey.Length);
+    }
+
+    /// <summary>Suggests compaction for the specified key range.</summary>
+    public unsafe void SuggestCompactRange(ReadOnlySpan<byte> startKey, ReadOnlySpan<byte> limitKey)
+    {
+        nint err = default;
+        fixed (byte* s = startKey)
+        fixed (byte* e = limitKey)
+            NativeMethods.rocksdb_suggest_compact_range(Handle,
+                startKey.IsEmpty ? null : s, (nuint)startKey.Length,
+                limitKey.IsEmpty ? null : e, (nuint)limitKey.Length, ref err);
+        NativeMethods.ThrowOnError(err);
+    }
+
+    /// <summary>Suggests compaction for the specified column family and key range.</summary>
+    public unsafe void SuggestCompactRange(ColumnFamilyHandle cf, ReadOnlySpan<byte> startKey, ReadOnlySpan<byte> limitKey)
+    {
+        ArgumentNullException.ThrowIfNull(cf);
+        nint err = default;
+        fixed (byte* s = startKey)
+        fixed (byte* e = limitKey)
+            NativeMethods.rocksdb_suggest_compact_range_cf(Handle, cf.Handle,
+                startKey.IsEmpty ? null : s, (nuint)startKey.Length,
+                limitKey.IsEmpty ? null : e, (nuint)limitKey.Length, ref err);
+        NativeMethods.ThrowOnError(err);
+    }
+
+    /// <summary>Cancels or waits for all background work.</summary>
+    public void CancelAllBackgroundWork(bool wait = false)
+    {
+        NativeMethods.rocksdb_cancel_all_background_work(Handle, wait ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>Waits for pending compaction work, optionally using custom options.</summary>
+    public void WaitForCompact(WaitForCompactOptions? options = null)
+    {
+        nint err = default;
+        using var compactOptions = options ?? new WaitForCompactOptions();
+        NativeMethods.rocksdb_wait_for_compact(Handle, compactOptions.Handle, ref err);
+        NativeMethods.ThrowOnError(err);
+    }
+
+    /// <summary>Applies one or more runtime options to the database.</summary>
+    public unsafe void SetOptions(IEnumerable<KeyValuePair<string, string>> options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        var entries = options.ToList();
+        if (entries.Count == 0)
+            return;
+
+        var keys = new byte*[entries.Count];
+        var values = new byte*[entries.Count];
+        var keyPins = new GCHandle[entries.Count];
+        var valuePins = new GCHandle[entries.Count];
+
+        try
+        {
+            for (int i = 0; i < entries.Count; i++)
+            {
+                byte[] keyBytes = Encoding.UTF8.GetBytes(entries[i].Key + '\0');
+                byte[] valueBytes = Encoding.UTF8.GetBytes(entries[i].Value + '\0');
+                keyPins[i] = GCHandle.Alloc(keyBytes, GCHandleType.Pinned);
+                valuePins[i] = GCHandle.Alloc(valueBytes, GCHandleType.Pinned);
+                keys[i] = (byte*)keyPins[i].AddrOfPinnedObject();
+                values[i] = (byte*)valuePins[i].AddrOfPinnedObject();
+            }
+
+            nint err = default;
+            fixed (byte** k = keys)
+            fixed (byte** v = values)
+                NativeMethods.rocksdb_set_options(Handle, entries.Count, k, v, ref err);
+            NativeMethods.ThrowOnError(err);
+        }
+        finally
+        {
+            for (int i = 0; i < keyPins.Length; i++)
+            {
+                if (keyPins[i].IsAllocated) keyPins[i].Free();
+                if (valuePins[i].IsAllocated) valuePins[i].Free();
+            }
+        }
+    }
+
+    /// <summary>Applies one or more runtime options to a specific column family.</summary>
+    public unsafe void SetOptions(ColumnFamilyHandle cf, IEnumerable<KeyValuePair<string, string>> options)
+    {
+        ArgumentNullException.ThrowIfNull(cf);
+        ArgumentNullException.ThrowIfNull(options);
+
+        var entries = options.ToList();
+        if (entries.Count == 0)
+            return;
+
+        var keys = new byte*[entries.Count];
+        var values = new byte*[entries.Count];
+        var keyPins = new GCHandle[entries.Count];
+        var valuePins = new GCHandle[entries.Count];
+
+        try
+        {
+            for (int i = 0; i < entries.Count; i++)
+            {
+                byte[] keyBytes = Encoding.UTF8.GetBytes(entries[i].Key + '\0');
+                byte[] valueBytes = Encoding.UTF8.GetBytes(entries[i].Value + '\0');
+                keyPins[i] = GCHandle.Alloc(keyBytes, GCHandleType.Pinned);
+                valuePins[i] = GCHandle.Alloc(valueBytes, GCHandleType.Pinned);
+                keys[i] = (byte*)keyPins[i].AddrOfPinnedObject();
+                values[i] = (byte*)valuePins[i].AddrOfPinnedObject();
+            }
+
+            nint err = default;
+            fixed (byte** k = keys)
+            fixed (byte** v = values)
+                NativeMethods.rocksdb_set_options_cf(Handle, cf.Handle, entries.Count, k, v, ref err);
+            NativeMethods.ThrowOnError(err);
+        }
+        finally
+        {
+            for (int i = 0; i < keyPins.Length; i++)
+            {
+                if (keyPins[i].IsAllocated) keyPins[i].Free();
+                if (valuePins[i].IsAllocated) valuePins[i].Free();
+            }
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────

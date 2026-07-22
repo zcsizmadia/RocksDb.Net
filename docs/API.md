@@ -74,8 +74,14 @@ Ownership notes:
 | Method | Description |
 |--------|-------------|
 | `Flush(FlushOptions?)` | Flushes memtables to storage |
+| `Flush(IReadOnlyList<ColumnFamilyHandle>, FlushOptions?)` | Flushes multiple column families |
 | `FlushWal(bool)` | Syncs the write-ahead log |
 | `CompactRange(...)` | Triggers manual compaction |
+| `SuggestCompactRange(...)` | Suggests compaction for a key range |
+| `CancelAllBackgroundWork(bool)` | Cancels or waits on background work |
+| `WaitForCompact(WaitForCompactOptions?)` | Waits for pending compaction work |
+| `SetOptions(IEnumerable<KeyValuePair<string, string>>)` | Applies runtime DB options |
+| `SetOptions(ColumnFamilyHandle, IEnumerable<KeyValuePair<string, string>>)` | Applies runtime CF options |
 | `GetProperty(string, ...)` | Reads a database property |
 | `GetPropertyInt(string, ...)` | Reads an integer property |
 | `IngestExternalFile(string[], ...)` | Ingests SST files into the database |
@@ -109,6 +115,10 @@ Lifetime and ownership:
 | `MaxOpenFiles` | `int` | Maximum number of open file descriptors |
 | `Compression` | `Compression` | Default compression algorithm |
 | `CompactionStyle` | `CompactionStyle` | Compaction strategy |
+| `AllowIngestBehind` | `bool` | Allows ingesting files behind the database |
+| `CompactionReadaheadSize` | `ulong` | Size of the compaction readahead buffer |
+| `MaxWriteBufferSizeToMaintain` | `long` | Size of the write-buffer maintenance cap |
+| `MaxCompactionBytes` | `ulong` | Maximum size of a single compaction |
 | `MaxBackgroundJobs` | `int` | Total background threads |
 
 ### Table / Cache / Filter

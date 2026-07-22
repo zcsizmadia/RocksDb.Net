@@ -198,6 +198,34 @@ public sealed class DbOptions : RocksDbHandle
         set => NativeMethods.rocksdb_options_set_disable_auto_compactions(Handle, value ? 1 : 0);
     }
 
+    /// <summary>If true, allow ingesting behind the database.</summary>
+    public bool AllowIngestBehind
+    {
+        get => NativeMethods.rocksdb_options_get_allow_ingest_behind(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_allow_ingest_behind(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>Size of the readahead buffer used for compaction, in bytes.</summary>
+    public ulong CompactionReadaheadSize
+    {
+        get => NativeMethods.rocksdb_options_get_compaction_readahead_size(Handle);
+        set => NativeMethods.rocksdb_options_compaction_readahead_size(Handle, (nuint)value);
+    }
+
+    /// <summary>Maximum size of the write buffer to maintain, in bytes.</summary>
+    public long MaxWriteBufferSizeToMaintain
+    {
+        get => NativeMethods.rocksdb_options_get_max_write_buffer_size_to_maintain(Handle);
+        set => NativeMethods.rocksdb_options_set_max_write_buffer_size_to_maintain(Handle, value);
+    }
+
+    /// <summary>Maximum size of a single compaction, in bytes.</summary>
+    public ulong MaxCompactionBytes
+    {
+        get => NativeMethods.rocksdb_options_get_max_compaction_bytes(Handle);
+        set => NativeMethods.rocksdb_options_set_max_compaction_bytes(Handle, value);
+    }
+
     /// <summary>Number of levels used for level-style compaction.</summary>
     public int NumLevels
     {

@@ -146,6 +146,17 @@ var histogram = options.GetHistogramData(0);
 Console.WriteLine(histogram?.Count);
 ```
 
+### Advanced maintenance helpers
+
+```csharp
+using var db = RocksDb.Open(new DbOptions { CreateIfMissing = true }, "maintenance_db");
+
+using var compactOpts = new WaitForCompactOptions { Flush = true, TimeoutMicros = 5_000_000 };
+db.SuggestCompactRange(Encoding.UTF8.GetBytes("a"), Encoding.UTF8.GetBytes("z"));
+db.CancelAllBackgroundWork(wait: false);
+db.WaitForCompact(compactOpts);
+```
+
 ### Backup & Restore
 
 ```csharp

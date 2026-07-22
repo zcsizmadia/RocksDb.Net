@@ -180,6 +180,23 @@ public class RocksDbBasicTests
     }
 
     [Fact]
+    public void AdvancedRuntimeHelpers_DoNotThrow()
+    {
+        using var dir = new TempDir();
+        using var opts = new DbOptions { CreateIfMissing = true, CreateMissingColumnFamilies = true };
+        var cfDescs = new List<ColumnFamilyDescriptor> { new("default"), new("cf1") };
+
+        using var db = RocksDb.Open(opts, dir.Path, cfDescs);
+        var cf1 = db.GetColumnFamily("cf1");
+
+        db.Put("key", "value", cf1);
+        db.Flush(new[] { cf1 });
+        db.SuggestCompactRange(cf1, Encoding.UTF8.GetBytes("a"), Encoding.UTF8.GetBytes("z"));
+        db.CancelAllBackgroundWork(wait: false);
+        db.SetOptions(new[] { new KeyValuePair<string, string>("disable_auto_compactions", "true") });
+    }
+
+    [Fact]
     public void GetColumnFamilyMetadata_ReturnsMetadataForDefaultAndNamedFamilies()
     {
         using var dir = new TempDir();
