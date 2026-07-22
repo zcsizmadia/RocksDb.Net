@@ -89,6 +89,8 @@ Ownership notes:
 | `TryCatchUpWithPrimary()` | Catches up a secondary instance |
 | `LatestSequenceNumber` | Current sequence number (property) |
 | `GetDbIdentity()` | Returns the unique database identity string |
+| `GetLiveFiles()` | Returns metadata for the currently live SST files |
+| `ApproximateSizes(IEnumerable<(string Start, string Limit)>)` | Returns approximate sizes for one or more key ranges |
 
 ---
 

@@ -242,6 +242,37 @@ public class RocksDbBasicTests
     }
 
     [Fact]
+    public void GetLiveFiles_ReturnsLiveFileMetadata()
+    {
+        using var db = new TempDb();
+
+        db.Db.Put("a", "1");
+        db.Db.Flush();
+
+        using var liveFiles = db.Db.GetLiveFiles();
+
+        Assert.NotNull(liveFiles);
+        Assert.NotEmpty(liveFiles.Files);
+        Assert.All(liveFiles.Files, file => Assert.True(file.Size >= 0));
+        Assert.All(liveFiles.Files, file => Assert.True(file.Level >= 0));
+    }
+
+    [Fact]
+    public void ApproximateSizes_ReturnsOneValuePerRange()
+    {
+        using var db = new TempDb();
+
+        db.Db.Put("a", "1");
+        db.Db.Put("z", "2");
+        db.Db.Flush();
+
+        ulong[] sizes = db.Db.ApproximateSizes(new[] { ("a", "z") });
+
+        Assert.Single(sizes);
+        Assert.True(sizes[0] >= 0);
+    }
+
+    [Fact]
     public void LatestSequenceNumber_IncrementsOnWrite()
     {
         using var db = new TempDb();

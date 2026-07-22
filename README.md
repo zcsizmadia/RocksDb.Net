@@ -146,6 +146,22 @@ var histogram = options.GetHistogramData(0);
 Console.WriteLine(histogram?.Count);
 ```
 
+### Live files and approximate sizes
+
+```csharp
+using var db = RocksDb.Open(new DbOptions { CreateIfMissing = true }, "inspection_db");
+
+db.Put("a", "1");
+db.Put("z", "2");
+db.Flush();
+
+using var liveFiles = db.GetLiveFiles();
+Console.WriteLine(liveFiles?.Files.Count);
+
+ulong[] sizes = db.ApproximateSizes(new[] { ("a", "z") });
+Console.WriteLine(sizes[0]);
+```
+
 ### Advanced maintenance helpers
 
 ```csharp
