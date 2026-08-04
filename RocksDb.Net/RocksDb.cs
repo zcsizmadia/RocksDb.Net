@@ -927,6 +927,9 @@ public sealed class RocksDb : RocksDbHandle
         }
     }
 
+    /// <summary>Returns <c>true</c> when the database has no known keys.</summary>
+    public bool IsEmpty => GetPropertyInt("rocksdb.estimate-num-keys").GetValueOrDefault() == 0;
+
     /// <summary>Returns the unique identity of this database instance.</summary>
     public unsafe string GetDbIdentity()
     {
@@ -994,6 +997,73 @@ public sealed class RocksDb : RocksDbHandle
                 fixed (ulong* sizePtr = sizes)
                 {
                     NativeMethods.rocksdb_approximate_sizes(Handle, rangeList.Count, startKeyPtr, startLenPtr, limitKeyPtr, limitLenPtr, (nint)sizePtr, ref err);
+                }
+            }
+
+            NativeMethods.ThrowOnError(err);
+            return sizes;
+        }
+        finally
+        {
+            for (int i = 0; i < startPins.Length; i++)
+            {
+                if (startPins[i].IsAllocated) startPins[i].Free();
+                if (limitPins[i].IsAllocated) limitPins[i].Free();
+            }
+        }
+    }
+
+    /// <summary>Returns approximate size information for one or more key ranges in a specific column family.</summary>
+    public unsafe ulong[] ApproximateSizes(ColumnFamilyHandle cf, IEnumerable<(string Start, string Limit)> ranges)
+    {
+        ArgumentNullException.ThrowIfNull(cf);
+        ArgumentNullException.ThrowIfNull(ranges);
+
+        var rangeList = ranges.ToList();
+        if (rangeList.Count == 0)
+        {
+            return [];
+        }
+
+        var startKeys = new byte*[rangeList.Count];
+        var startLengths = new nuint[rangeList.Count];
+        var limitKeys = new byte*[rangeList.Count];
+        var limitLengths = new nuint[rangeList.Count];
+        var sizes = new ulong[rangeList.Count];
+        var startPins = new GCHandle[rangeList.Count];
+        var limitPins = new GCHandle[rangeList.Count];
+
+        try
+        {
+            for (int i = 0; i < rangeList.Count; i++)
+            {
+                var (startKey, limitKey) = rangeList[i];
+                if (!string.IsNullOrEmpty(startKey))
+                {
+                    byte[] bytes = Encoding.UTF8.GetBytes(startKey);
+                    startPins[i] = GCHandle.Alloc(bytes, GCHandleType.Pinned);
+                    startKeys[i] = (byte*)startPins[i].AddrOfPinnedObject();
+                    startLengths[i] = (nuint)bytes.Length;
+                }
+
+                if (!string.IsNullOrEmpty(limitKey))
+                {
+                    byte[] bytes = Encoding.UTF8.GetBytes(limitKey);
+                    limitPins[i] = GCHandle.Alloc(bytes, GCHandleType.Pinned);
+                    limitKeys[i] = (byte*)limitPins[i].AddrOfPinnedObject();
+                    limitLengths[i] = (nuint)bytes.Length;
+                }
+            }
+
+            nint err = default;
+            fixed (byte** startKeyPtr = startKeys)
+            fixed (nuint* startLenPtr = startLengths)
+            fixed (byte** limitKeyPtr = limitKeys)
+            fixed (nuint* limitLenPtr = limitLengths)
+            {
+                fixed (ulong* sizePtr = sizes)
+                {
+                    NativeMethods.rocksdb_approximate_sizes_cf(Handle, cf.Handle, rangeList.Count, startKeyPtr, startLenPtr, limitKeyPtr, limitLenPtr, (nint)sizePtr, ref err);
                 }
             }
 

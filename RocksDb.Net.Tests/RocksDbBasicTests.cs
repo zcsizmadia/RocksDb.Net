@@ -273,6 +273,26 @@ public class RocksDbBasicTests
     }
 
     [Fact]
+    public void ApproximateSizes_ColumnFamily_ReturnsOneValuePerRange()
+    {
+        using var dir = new TempDir();
+        using var options = new DbOptions { CreateIfMissing = true, CreateMissingColumnFamilies = true };
+        var cfDescs = new List<ColumnFamilyDescriptor> { new("default"), new("cf1") };
+
+        using var db = RocksDb.Open(options, dir.Path, cfDescs);
+        var cf1 = db.GetColumnFamily("cf1");
+
+        db.Put("a", "1", cf1);
+        db.Put("z", "2", cf1);
+        db.Flush(cf1);
+
+        ulong[] sizes = db.ApproximateSizes(cf1, new[] { ("a", "z") });
+
+        Assert.Single(sizes);
+        Assert.True(sizes[0] >= 0);
+    }
+
+    [Fact]
     public void DeleteFilesInRange_DoesNotThrowAndPreservesData()
     {
         using var db = new TempDb();
@@ -387,6 +407,35 @@ public class RocksDbBasicTests
         string id = db.Db.GetDbIdentity();
 
         Assert.NotEmpty(id);
+    }
+
+    [Fact]
+    public void IsEmpty_ReturnsTrueForNewDatabase()
+    {
+        using var db = new TempDb();
+
+        Assert.True(db.Db.IsEmpty);
+    }
+
+    [Fact]
+    public void IsEmpty_ReturnsFalseAfterPut()
+    {
+        using var db = new TempDb();
+        db.Db.Put("key", "value");
+        db.Db.Flush();
+
+        Assert.False(db.Db.IsEmpty);
+    }
+
+    [Fact]
+    public void ToggleFileDeletions_DoesNotThrow()
+    {
+        using var db = new TempDb();
+
+        db.Db.DisableFileDeletions();
+        db.Db.EnableFileDeletions();
+
+        Assert.True(true);
     }
 
     [Fact]

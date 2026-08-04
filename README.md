@@ -160,6 +160,9 @@ Console.WriteLine(liveFiles?.Files.Count);
 
 ulong[] sizes = db.ApproximateSizes(new[] { ("a", "z") });
 Console.WriteLine(sizes[0]);
+
+ulong[] cfSizes = db.ApproximateSizes(cf, new[] { ("a", "z") });
+Console.WriteLine(cfSizes[0]);
 ```
 
 ### Advanced maintenance helpers

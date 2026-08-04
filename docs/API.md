@@ -87,11 +87,13 @@ Ownership notes:
 | `IngestExternalFile(string[], ...)` | Ingests SST files into the database |
 | `DisableFileDeletions()` / `EnableFileDeletions()` | Controls SST file deletion |
 | `DeleteFilesInRange(string, string)` / `DeleteFilesInRange(ColumnFamilyHandle, string, string)` | Deletes files in a key range for maintenance |
+| `IsEmpty` | Indicates whether the database currently contains zero keys |
 | `TryCatchUpWithPrimary()` | Catches up a secondary instance |
 | `LatestSequenceNumber` | Current sequence number (property) |
 | `GetDbIdentity()` | Returns the unique database identity string |
 | `GetLiveFiles()` | Returns metadata for the currently live SST files |
 | `ApproximateSizes(IEnumerable<(string Start, string Limit)>)` | Returns approximate sizes for one or more key ranges |
+| `ApproximateSizes(ColumnFamilyHandle, IEnumerable<(string Start, string Limit)>)` | Returns approximate sizes for a specific column family |
 
 ---
 
