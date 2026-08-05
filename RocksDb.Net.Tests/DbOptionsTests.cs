@@ -179,6 +179,24 @@ public class DbOptionsTests
     }
 
     [Fact]
+    public void AdvancedCompactionAndIngestSettings_GetSet()
+    {
+        using var opts = new DbOptions();
+
+        opts.AllowIngestBehind = true;
+        Assert.True(opts.AllowIngestBehind);
+
+        opts.CompactionReadaheadSize = 64UL * 1024;
+        Assert.Equal(64UL * 1024, opts.CompactionReadaheadSize);
+
+        opts.MaxWriteBufferSizeToMaintain = 1024L * 1024;
+        Assert.Equal(1024L * 1024, opts.MaxWriteBufferSizeToMaintain);
+
+        opts.MaxCompactionBytes = 512UL * 1024 * 1024;
+        Assert.Equal(512UL * 1024 * 1024, opts.MaxCompactionBytes);
+    }
+
+    [Fact]
     public void MaxBackgroundJobs_GetSet()
     {
         using var opts = new DbOptions();

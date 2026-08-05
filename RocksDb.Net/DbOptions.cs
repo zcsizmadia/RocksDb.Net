@@ -198,6 +198,34 @@ public sealed class DbOptions : RocksDbHandle
         set => NativeMethods.rocksdb_options_set_disable_auto_compactions(Handle, value ? 1 : 0);
     }
 
+    /// <summary>If true, allow ingesting behind the database.</summary>
+    public bool AllowIngestBehind
+    {
+        get => NativeMethods.rocksdb_options_get_allow_ingest_behind(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_allow_ingest_behind(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>Size of the readahead buffer used for compaction, in bytes.</summary>
+    public ulong CompactionReadaheadSize
+    {
+        get => NativeMethods.rocksdb_options_get_compaction_readahead_size(Handle);
+        set => NativeMethods.rocksdb_options_compaction_readahead_size(Handle, (nuint)value);
+    }
+
+    /// <summary>Maximum size of the write buffer to maintain, in bytes.</summary>
+    public long MaxWriteBufferSizeToMaintain
+    {
+        get => NativeMethods.rocksdb_options_get_max_write_buffer_size_to_maintain(Handle);
+        set => NativeMethods.rocksdb_options_set_max_write_buffer_size_to_maintain(Handle, value);
+    }
+
+    /// <summary>Maximum size of a single compaction, in bytes.</summary>
+    public ulong MaxCompactionBytes
+    {
+        get => NativeMethods.rocksdb_options_get_max_compaction_bytes(Handle);
+        set => NativeMethods.rocksdb_options_set_max_compaction_bytes(Handle, value);
+    }
+
     /// <summary>Number of levels used for level-style compaction.</summary>
     public int NumLevels
     {
@@ -688,6 +716,39 @@ public sealed class DbOptions : RocksDbHandle
         string? result = System.Runtime.InteropServices.Marshal.PtrToStringUTF8(ptr);
         NativeMethods.rocksdb_free(ptr);
         return result;
+    }
+
+    /// <summary>Returns the current value of a ticker from the statistics subsystem.</summary>
+    public ulong GetTickerCount(uint tickerType)
+        => NativeMethods.rocksdb_options_statistics_get_ticker_count(Handle, tickerType);
+
+    /// <summary>Returns histogram data for a statistics histogram type.</summary>
+    public HistogramData? GetHistogramData(uint histogramType)
+    {
+        nint dataHandle = NativeMethods.rocksdb_statistics_histogram_data_create();
+        if (dataHandle == nint.Zero)
+        {
+            return null;
+        }
+
+        try
+        {
+            NativeMethods.rocksdb_options_statistics_get_histogram_data(Handle, histogramType, dataHandle);
+            return new HistogramData(
+                NativeMethods.rocksdb_statistics_histogram_data_get_median(dataHandle),
+                NativeMethods.rocksdb_statistics_histogram_data_get_p95(dataHandle),
+                NativeMethods.rocksdb_statistics_histogram_data_get_p99(dataHandle),
+                NativeMethods.rocksdb_statistics_histogram_data_get_average(dataHandle),
+                NativeMethods.rocksdb_statistics_histogram_data_get_std_dev(dataHandle),
+                NativeMethods.rocksdb_statistics_histogram_data_get_max(dataHandle),
+                NativeMethods.rocksdb_statistics_histogram_data_get_count(dataHandle),
+                NativeMethods.rocksdb_statistics_histogram_data_get_sum(dataHandle),
+                NativeMethods.rocksdb_statistics_histogram_data_get_min(dataHandle));
+        }
+        finally
+        {
+            NativeMethods.rocksdb_statistics_histogram_data_destroy(dataHandle);
+        }
     }
 
     // ── Merge operator ──────────────────────────────────
