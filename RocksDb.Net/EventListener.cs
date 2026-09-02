@@ -359,10 +359,10 @@ public abstract class EventListener : RocksDbHandle
     private static unsafe FlushJobInfo CreateFlushJobInfo(nint info)
     {
         nuint length;
-        byte* str = NativeMethods.rocksdb_flushjobinfo_cf_name(info, &length);
+        byte* str = NativeMethods.rocksdb_flushjobinfo_cf_name(info, out length);
         var columnFamilyName = NativeMethods.PtrToStringUTF8(str, length);
 
-        str = NativeMethods.rocksdb_flushjobinfo_file_path(info, &length);
+        str = NativeMethods.rocksdb_flushjobinfo_file_path(info, out length);
         var filePath = NativeMethods.PtrToStringUTF8(str, length);
 
         return new FlushJobInfo(
@@ -380,7 +380,7 @@ public abstract class EventListener : RocksDbHandle
     private static unsafe CompactionJobInfo CreateCompactionJobInfo(nint info)
     {
         nuint length;
-        byte* str = NativeMethods.rocksdb_compactionjobinfo_cf_name(info, &length);
+        byte* str = NativeMethods.rocksdb_compactionjobinfo_cf_name(info, out length);
         var columnFamilyName = NativeMethods.PtrToStringUTF8(str, length);
 
         nuint inputCount = NativeMethods.rocksdb_compactionjobinfo_input_files_count(info);
@@ -388,7 +388,7 @@ public abstract class EventListener : RocksDbHandle
         for (nuint i = 0; i < inputCount; i++)
         {
             nuint len;
-            byte* p = NativeMethods.rocksdb_compactionjobinfo_input_file_at(info, i, &len);
+            byte* p = NativeMethods.rocksdb_compactionjobinfo_input_file_at(info, i, out len);
             inputFiles[i] = NativeMethods.PtrToStringUTF8(p, len) ?? string.Empty;
         }
 
@@ -397,7 +397,7 @@ public abstract class EventListener : RocksDbHandle
         for (nuint i = 0; i < outputCount; i++)
         {
             nuint len;
-            byte* p = NativeMethods.rocksdb_compactionjobinfo_output_file_at(info, i, &len);
+            byte* p = NativeMethods.rocksdb_compactionjobinfo_output_file_at(info, i, out len);
             outputFiles[i] = NativeMethods.PtrToStringUTF8(p, len) ?? string.Empty;
         }
 
@@ -425,12 +425,12 @@ public abstract class EventListener : RocksDbHandle
     private static unsafe SubCompactionJobInfo CreateSubCompactionJobInfo(nint info)
     {
         nuint length;
-        byte* str = NativeMethods.rocksdb_subcompactionjobinfo_cf_name(info, &length);
+        byte* str = NativeMethods.rocksdb_subcompactionjobinfo_cf_name(info, out length);
         var columnFamilyName = NativeMethods.PtrToStringUTF8(str, length);
 
-        byte* errStr = null;
-        NativeMethods.rocksdb_subcompactionjobinfo_status(info, &errStr);
-        var status = errStr != null ? Marshal.PtrToStringAnsi((nint)errStr) : "OK";
+        nint errStr = nint.Zero;
+        NativeMethods.rocksdb_subcompactionjobinfo_status(info, ref errStr);
+        var status = errStr != nint.Zero ? Marshal.PtrToStringAnsi(errStr) : "OK";
 
         return new SubCompactionJobInfo(columnFamilyName, status);
     }
@@ -440,10 +440,10 @@ public abstract class EventListener : RocksDbHandle
     private static unsafe ExternalFileIngestionInfo CreateExternalFileIngestionInfo(nint info)
     {
         nuint length;
-        byte* str = NativeMethods.rocksdb_externalfileingestioninfo_cf_name(info, &length);
+        byte* str = NativeMethods.rocksdb_externalfileingestioninfo_cf_name(info, out length);
         var columnFamilyName = NativeMethods.PtrToStringUTF8(str, length);
 
-        str = NativeMethods.rocksdb_externalfileingestioninfo_internal_file_path(info, &length);
+        str = NativeMethods.rocksdb_externalfileingestioninfo_internal_file_path(info, out length);
         var internalPath = NativeMethods.PtrToStringUTF8(str, length);
 
         return new ExternalFileIngestionInfo(
@@ -480,7 +480,7 @@ public abstract class EventListener : RocksDbHandle
     private static unsafe WriteStallInfo CreateWriteStallInfo(nint info)
     {
         nuint length;
-        byte* str = NativeMethods.rocksdb_writestallinfo_cf_name(info, &length);
+        byte* str = NativeMethods.rocksdb_writestallinfo_cf_name(info, out length);
         var columnFamilyName = NativeMethods.PtrToStringUTF8(str, length);
 
         // Fetch pointers to the conditions
@@ -500,7 +500,7 @@ public abstract class EventListener : RocksDbHandle
     private static unsafe MemTableInfo CreateMemTableInfo(nint info)
     {
         nuint length;
-        byte* str = NativeMethods.rocksdb_memtableinfo_cf_name(info, &length);
+        byte* str = NativeMethods.rocksdb_memtableinfo_cf_name(info, out length);
         var columnFamilyName = NativeMethods.PtrToStringUTF8(str, length);
 
         return new MemTableInfo(
