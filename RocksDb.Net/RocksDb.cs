@@ -377,6 +377,23 @@ public sealed class RocksDb : RocksDbHandle
         NativeMethods.ThrowOnError(err);
     }
 
+    /// <summary>
+    /// Atomically applies all operations in an indexed <paramref name="batch"/>.
+    /// </summary>
+    /// <remarks>
+    /// Until this existed, a <see cref="WriteBatchWithIndex"/> could be built
+    /// and inspected but never applied, which made the type unusable for its
+    /// purpose. Applying it does not clear it; the batch may be reused or
+    /// applied again.
+    /// </remarks>
+    public void Write(WriteBatchWithIndex batch, WriteOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(batch);
+        nint err = default;
+        NativeMethods.rocksdb_write_writebatch_wi(Handle, (options ?? _defaultWriteOptions).Handle, batch.Handle, ref err);
+        NativeMethods.ThrowOnError(err);
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Read operations
     // ─────────────────────────────────────────────────────────────────────────

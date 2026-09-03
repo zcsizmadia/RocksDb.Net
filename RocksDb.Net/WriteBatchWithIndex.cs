@@ -3,7 +3,8 @@ using System.Text;
 namespace RocksDbNet;
 
 /// <summary>
-/// An atomic write batch. Apply to the database with <see cref="RocksDb.Write"/>.
+/// An atomic write batch that also indexes its own contents, so it can be
+/// read back before it is applied. Maps to <c>rocksdb_writebatch_wi_t</c>.
 /// Maps to <c>rocksdb_writebatch_wi_t</c>.
 /// </summary>
 public sealed class WriteBatchWithIndex : RocksDbHandle
@@ -193,6 +194,183 @@ public sealed class WriteBatchWithIndex : RocksDbHandle
     {
         byte* ptr = NativeMethods.rocksdb_writebatch_wi_data(Handle, out nuint size);
         return new ReadOnlySpan<byte>(ptr, checked((int)size)).ToArray();
+    }
+
+    // ── Reading back ─────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Reads a key from this batch alone, ignoring the database, or returns
+    /// <see langword="null"/> if the batch does not mention it.
+    /// </summary>
+    /// <param name="options">
+    /// The database options, not read options. RocksDb needs them for the merge
+    /// operator, so that a merge queued in this batch can be resolved.
+    /// </param>
+    /// <param name="key">The key to read.</param>
+    /// <remarks>
+    /// Throws when the batch holds a merge for this key that cannot be resolved
+    /// on its own, for instance because there is no base value here and no merge
+    /// operator configured. Use
+    /// <see cref="GetFromBatchAndDb(RocksDb, ReadOnlySpan{byte}, ReadOptions?)"/>
+    /// when the base value is in the database.
+    /// </remarks>
+    public unsafe byte[]? GetFromBatch(DbOptions options, ReadOnlySpan<byte> key)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        nint err = default;
+        nint value;
+        nuint length;
+        fixed (byte* k = key)
+            value = NativeMethods.rocksdb_writebatch_wi_get_from_batch(
+                Handle, options.Handle, k, (nuint)key.Length, out length, ref err);
+
+        NativeMethods.ThrowOnError(err);
+        return CopyAndFree(value, length);
+    }
+
+    /// <inheritdoc cref="GetFromBatch(DbOptions, ReadOnlySpan{byte})"/>
+    public unsafe byte[]? GetFromBatch(DbOptions options, ReadOnlySpan<byte> key, ColumnFamilyHandle cf)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(cf);
+
+        nint err = default;
+        nint value;
+        nuint length;
+        fixed (byte* k = key)
+            value = NativeMethods.rocksdb_writebatch_wi_get_from_batch_cf(
+                Handle, options.Handle, cf.Handle, k, (nuint)key.Length, out length, ref err);
+
+        NativeMethods.ThrowOnError(err);
+        return CopyAndFree(value, length);
+    }
+
+    /// <summary>
+    /// Reads a key, seeing this batch's queued writes on top of what is already
+    /// in <paramref name="db"/>, or returns <see langword="null"/> if neither
+    /// has it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is read-your-own-writes, and the reason to choose an indexed batch
+    /// over a plain <see cref="WriteBatch"/>. A queued put shadows the stored
+    /// value, a queued delete hides it, and a queued merge is resolved against
+    /// it using the database's merge operator.
+    /// </para>
+    /// <para>
+    /// A snapshot in <paramref name="options"/> applies to the database side
+    /// only. This batch's own writes are always visible, since they are not in
+    /// the database yet.
+    /// </para>
+    /// </remarks>
+    public unsafe byte[]? GetFromBatchAndDb(RocksDb db, ReadOnlySpan<byte> key, ReadOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(db);
+
+        nint err = default;
+        nint value;
+        nuint length;
+        fixed (byte* k = key)
+            value = NativeMethods.rocksdb_writebatch_wi_get_from_batch_and_db(
+                Handle, db.Handle, (options ?? _defaultReadOptions).Handle,
+                k, (nuint)key.Length, out length, ref err);
+
+        NativeMethods.ThrowOnError(err);
+        return CopyAndFree(value, length);
+    }
+
+    /// <inheritdoc cref="GetFromBatchAndDb(RocksDb, ReadOnlySpan{byte}, ReadOptions?)"/>
+    public unsafe byte[]? GetFromBatchAndDb(
+        RocksDb db, ReadOnlySpan<byte> key, ColumnFamilyHandle cf, ReadOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(db);
+        ArgumentNullException.ThrowIfNull(cf);
+
+        nint err = default;
+        nint value;
+        nuint length;
+        fixed (byte* k = key)
+            value = NativeMethods.rocksdb_writebatch_wi_get_from_batch_and_db_cf(
+                Handle, db.Handle, (options ?? _defaultReadOptions).Handle, cf.Handle,
+                k, (nuint)key.Length, out length, ref err);
+
+        NativeMethods.ThrowOnError(err);
+        return CopyAndFree(value, length);
+    }
+
+    /// <summary>Reads a UTF-8 key from this batch and the database.</summary>
+    public string? GetStringFromBatchAndDb(RocksDb db, string key, ReadOptions? options = null)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(key);
+
+        byte[]? value = GetFromBatchAndDb(db, Encoding.UTF8.GetBytes(key), options);
+        return value is null ? null : Encoding.UTF8.GetString(value);
+    }
+
+    // ── Iteration ────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Creates an iterator over <paramref name="db"/> with this batch's queued
+    /// writes overlaid.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The iterator merges the two sources, so it shows what the data would look
+    /// like if the batch were applied. Queued puts shadow stored values, and
+    /// queued deletes hide them.
+    /// </para>
+    /// <para>
+    /// Do not modify the batch while the iterator is positioned; RocksDb
+    /// invalidates the current key and value. Dispose the iterator before both
+    /// the batch and the database.
+    /// </para>
+    /// </remarks>
+    public Iterator NewIteratorWithBase(RocksDb db, ReadOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(db);
+
+        // The base iterator is created here and never wrapped, because
+        // rocksdb_writebatch_wi_create_iterator_with_base deletes the
+        // rocksdb_iterator_t it is given. Handing it a caller's Iterator would
+        // leave that object holding a freed pointer, and its disposal would
+        // destroy the same memory twice.
+        nint baseIterator = NativeMethods.rocksdb_create_iterator(
+            db.Handle, (options ?? _defaultReadOptions).Handle);
+
+        nint overlay = NativeMethods.rocksdb_writebatch_wi_create_iterator_with_base_readopts(
+            Handle, baseIterator, (options ?? _defaultReadOptions).Handle);
+
+        return Iterator.FromHandle(overlay, db, options, secondary: this);
+    }
+
+    /// <inheritdoc cref="NewIteratorWithBase(RocksDb, ReadOptions?)"/>
+    public Iterator NewIteratorWithBase(RocksDb db, ColumnFamilyHandle cf, ReadOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(db);
+        ArgumentNullException.ThrowIfNull(cf);
+
+        nint baseIterator = NativeMethods.rocksdb_create_iterator_cf(
+            db.Handle, (options ?? _defaultReadOptions).Handle, cf.Handle);
+
+        nint overlay = NativeMethods.rocksdb_writebatch_wi_create_iterator_with_base_cf_readopts(
+            Handle, baseIterator, cf.Handle, (options ?? _defaultReadOptions).Handle);
+
+        return Iterator.FromHandle(overlay, db, options, secondary: this);
+    }
+
+    private static readonly ReadOptions _defaultReadOptions = new();
+
+    private static unsafe byte[]? CopyAndFree(nint value, nuint length)
+    {
+        if (value == nint.Zero)
+        {
+            return null;
+        }
+
+        byte[] result = new ReadOnlySpan<byte>((byte*)value, checked((int)length)).ToArray();
+        NativeMethods.rocksdb_free(value);
+        return result;
     }
 
     protected override void DisposeHandle()

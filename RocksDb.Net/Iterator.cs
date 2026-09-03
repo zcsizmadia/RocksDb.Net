@@ -24,17 +24,34 @@ public sealed class Iterator : RocksDbHandle
     // common failure, where the options were simply not kept in a variable.
     private readonly ReadOptions? _options;
 
-    private Iterator(nint handle, RocksDbHandle owner, ReadOptions? options)
+    // A second object this iterator reads through, kept alive for the same
+    // reason as the options. RocksDbHandle tracks one parent, which is the
+    // thing whose closing invalidates the iterator. An overlay iterator over a
+    // WriteBatchWithIndex also reads the batch, and that must not be collected
+    // underneath it either.
+    private readonly RocksDbHandle? _secondary;
+
+    private Iterator(nint handle, RocksDbHandle owner, ReadOptions? options, RocksDbHandle? secondary)
     {
         Handle = handle;
         _options = options;
+        _secondary = secondary;
         SetParent(owner);
     }
 
     internal static Iterator FromHandle(nint handle, RocksDbHandle owner, ReadOptions? options)
-    {
-        return new Iterator(handle, owner, options);
-    }
+        => new(handle, owner, options, secondary: null);
+
+    /// <summary>
+    /// For an iterator that reads through two objects, such as a database
+    /// overlaid with an indexed write batch.
+    /// </summary>
+    internal static Iterator FromHandle(
+        nint handle, RocksDbHandle owner, ReadOptions? options, RocksDbHandle secondary)
+        => new(handle, owner, options, secondary);
+
+    /// <summary>Whether this iterator reads through a second source.</summary>
+    internal bool HasSecondarySource => _secondary is not null;
 
     /// <summary>Returns true if the iterator is positioned at a valid entry.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

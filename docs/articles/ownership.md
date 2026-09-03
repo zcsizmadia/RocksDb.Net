@@ -54,6 +54,14 @@ You do not have to police this. Each of those types keeps its parent reachable, 
 
 One case the mechanism cannot cover: an iterator holds its `ReadOptions` alive, because RocksDb stores an iterate bound as a pointer into the options struct. That protects against the options being collected, which is the common accident. It cannot protect against disposing them explicitly while the iterator is still in use, because the native struct is gone at that point.
 
+## Indexed write batches
+
+`WriteBatchWithIndex.NewIteratorWithBase` creates its own base iterator internally and never hands one out. That is deliberate: the native call **deletes** the iterator it is given, so passing in an iterator you hold would leave your object pointing at freed memory and its disposal would destroy the same memory a second time.
+
+The overlay iterator reads through both the database and the batch, so it holds both alive and must be disposed before either. Do not modify the batch while such an iterator is positioned; RocksDb invalidates its current key and value.
+
+Applying a batch does not consume it. It can be applied again, or to a second database.
+
 ## Transactions
 
 `TransactionDb.Open` consumes its `DbOptions` exactly as `RocksDb.Open` does, and disposes them after the database closes. The `TransactionDbOptions` are copied instead, so dispose those whenever you like.

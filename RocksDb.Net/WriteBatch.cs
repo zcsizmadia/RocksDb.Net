@@ -3,7 +3,7 @@ using System.Text;
 namespace RocksDbNet;
 
 /// <summary>
-/// An atomic write batch. Apply to the database with <see cref="RocksDb.Write"/>.
+/// An atomic write batch. Apply to the database with <see cref="RocksDb.Write(WriteBatch, WriteOptions)"/>.
 /// Maps to <c>rocksdb_writebatch_t</c>.
 /// </summary>
 public sealed class WriteBatch : RocksDbHandle
