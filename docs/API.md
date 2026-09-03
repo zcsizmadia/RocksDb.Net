@@ -405,6 +405,26 @@ Some RocksDb C API calls transfer ownership of native handles. After calling the
 
 Callback-based objects (`MergeOperator`, `CompactionFilter`, `CompactionFilterFactory`, `Comparator`) handle ownership automatically via their native destructor callbacks.
 
+### Exceptions in callbacks
+
+A managed exception must never propagate into native code; the runtime treats that as unrecoverable and terminates the process. Every callback this library installs therefore catches exceptions at the boundary and reports them through `RocksDbCallbacks.UnhandledException`.
+
+Subscribe to that event to see failures that would otherwise be invisible. Handlers run on whichever thread raised the exception, which is a RocksDb background thread for flush, compaction and backup events, so they must be thread-safe.
+
+What happens after the exception depends on whether the callback can tell RocksDb it failed:
+
+| Callback | Behaviour when it throws |
+|----------|--------------------------|
+| `CompactionFilter.Filter` | Entry is kept unchanged |
+| `CompactionFilterFactory.CreateFilter` | No filter for that compaction job |
+| `MergeOperator.FullMerge` | Merge fails; the read reports a corruption error |
+| `MergeOperator.PartialMerge` | Operands are kept and merged later by `FullMerge` |
+| `Logger.Log` | Log line is dropped |
+| `EventListener` events | Notification is skipped |
+| `Comparator.Compare` | **Process terminates** |
+
+`Comparator.Compare` is the exception because it has no failure channel: it must return an ordering, and any invented answer misrepresents key order for data RocksDb then writes and later reads. Rather than corrupt the database, the process is terminated with a message naming the callback and the exception. Handle exceptions inside your comparator.
+
 ### Caller-provided buffers
 
 Most methods that take a key or value copy it, or use it only for the duration of the call, so the caller does not have to keep the buffer alive afterwards.

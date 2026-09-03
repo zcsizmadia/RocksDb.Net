@@ -65,10 +65,20 @@ public abstract class Logger : RocksDbHandle
         nint msg,
         uint msg_len)
     {
-        var self = GetSelfFromPinnedIntPtr<Logger>(state);
-        var message = Marshal.PtrToStringUTF8(msg, (int)msg_len) ?? string.Empty;
+        try
+        {
+            var self = GetSelfFromPinnedIntPtr<Logger>(state);
+            var message = Marshal.PtrToStringUTF8(msg, (int)msg_len) ?? string.Empty;
 
-        self.Log((InfoLogLevel)level, message);
+            self.Log((InfoLogLevel)level, message);
+        }
+        catch (Exception ex)
+        {
+            // A dropped log line is the mildest possible consequence, and RocksDb
+            // does not check the outcome. Reporting a logging failure through the
+            // logger would recurse, so it only goes to the callback event.
+            RocksDbCallbacks.Report(nameof(Log), ex);
+        }
     }
 
     // ── Construction ─────────────────────────────────────────────────────────

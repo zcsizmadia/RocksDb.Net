@@ -46,8 +46,15 @@ public abstract class Comparator : RocksDbHandle
 
     private static void DestructorCallback(nint state)
     {
-        var self = GetSelfFromPinnedIntPtr<Comparator>(state);
-        self.UnpinGarbageCollector();
+        try
+        {
+            var self = GetSelfFromPinnedIntPtr<Comparator>(state);
+            self.UnpinGarbageCollector();
+        }
+        catch (Exception ex)
+        {
+            RocksDbCallbacks.Report("Comparator destructor", ex);
+        }
     }
 
     private static unsafe int CompareCallback(
@@ -55,10 +62,22 @@ public abstract class Comparator : RocksDbHandle
         byte* keyA, nuint keyALen,
         byte* keyB, nuint keyBLen)
     {
-        var self = GetSelfFromPinnedIntPtr<Comparator>(state);
-        var keyASpan = new ReadOnlySpan<byte>(keyA, checked((int)keyALen));
-        var keyBSpan = new ReadOnlySpan<byte>(keyB, checked((int)keyBLen));
-        return self.Compare(keyASpan, keyBSpan);
+        try
+        {
+            var self = GetSelfFromPinnedIntPtr<Comparator>(state);
+            var keyASpan = new ReadOnlySpan<byte>(keyA, checked((int)keyALen));
+            var keyBSpan = new ReadOnlySpan<byte>(keyB, checked((int)keyBLen));
+            return self.Compare(keyASpan, keyBSpan);
+        }
+        catch (Exception ex)
+        {
+            // Compare has no failure channel: it must return an ordering. Any
+            // value we invent is a lie about key order, and RocksDb would write
+            // and later read data against it, so there is no safe fallback.
+            // Terminate with a diagnosable message instead.
+            RocksDbCallbacks.ReportFatal(nameof(Compare), ex);
+            throw; // Unreachable: ReportFatal does not return.
+        }
     }
 
     //private static nint NameCallback(nint state) => GetNameFromPinnedIntPtr(state);
@@ -73,7 +92,7 @@ public abstract class Comparator : RocksDbHandle
 
         _destructorDelegate = DestructorCallback;
         _compareDelegate = CompareCallback;
-        _nameDelegate = GetNameFromPinnedIntPtr; // NameCallback;
+        _nameDelegate = GetNameFromPinnedIntPtrSafe;
 
         Handle = NativeMethods.rocksdb_comparator_create(
             GetPinnedIntPtr(),

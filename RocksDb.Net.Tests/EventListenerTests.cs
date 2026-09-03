@@ -108,6 +108,42 @@ public class EventListenerTests
         }
     }
 
+    /// <summary>Overrides exactly one event, leaving the other nine to the base class.</summary>
+    private sealed class SingleOverrideListener : EventListener
+    {
+        public int FlushCompletedCount;
+
+        public override void OnFlushCompleted(FlushJobInfo info)
+            => Interlocked.Increment(ref FlushCompletedCount);
+    }
+
+    /// <summary>
+    /// A listener only has to override the events it cares about. RocksDb invokes
+    /// all ten callbacks with no null check, so the unoverridden ones must still
+    /// be installed and filtered on the managed side. See issue #35.
+    /// </summary>
+    [Fact]
+    public void EventListener_PartialOverride_DoesNotCrash()
+    {
+        using var dir = new TempDir();
+        var listener = new SingleOverrideListener();
+
+        using var opts = new DbOptions { CreateIfMissing = true };
+        opts.EventListener = listener;
+
+        using var db = RocksDb.Open(opts, dir.Path);
+
+        // Drive flush, compaction and memtable-sealed events, none of which this
+        // listener overrides except OnFlushCompleted.
+        db.Put("a", "1");
+        db.Flush();
+        db.Put("b", "2");
+        db.Flush();
+        db.CompactRange();
+
+        Assert.True(listener.FlushCompletedCount > 0, "the single override should still fire");
+    }
+
     [Fact]
     public void EventListener_ReceivesFlushEvents()
     {

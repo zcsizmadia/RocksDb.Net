@@ -70,9 +70,16 @@ public abstract class MergeOperator : RocksDbHandle
 
     private static void DestructorCallback(nint state)
     {
-        var self = GetSelfFromPinnedIntPtr<MergeOperator>(state);
-        self.TransferOwnership();
-        self.UnpinGarbageCollector();
+        try
+        {
+            var self = GetSelfFromPinnedIntPtr<MergeOperator>(state);
+            self.TransferOwnership();
+            self.UnpinGarbageCollector();
+        }
+        catch (Exception ex)
+        {
+            RocksDbCallbacks.Report("MergeOperator destructor", ex);
+        }
     }
 
     private static unsafe nint FullMergeCallback(
@@ -86,29 +93,45 @@ public abstract class MergeOperator : RocksDbHandle
         nuint* newValLen
         )
     {
-        var self = SelfFromState(state);
-        var keySpan = new ReadOnlySpan<byte>(key, checked((int)keyLen));
-        var operandsList = CreateOperands(operands, operandsLen, numOperands);
-        bool hasExistingValue = existingVal != null;
-        var existingValueSpan = hasExistingValue ? new ReadOnlySpan<byte>(existingVal, checked((int)existingValLen)) : default;
-
-        if (!self.FullMerge(keySpan, hasExistingValue, existingValueSpan, operandsList, out byte[] newVal))
+        try
         {
-            // If no success, return a null pointer and set newValLen to 0
-            // This indicates to RocksDb that the merge operation failed, and in that case RocksDb will not use the returned value,
-            // and the delete_value callback will not be called.
+            var self = SelfFromState(state);
+            var keySpan = new ReadOnlySpan<byte>(key, checked((int)keyLen));
+            var operandsList = CreateOperands(operands, operandsLen, numOperands);
+            bool hasExistingValue = existingVal != null;
+            var existingValueSpan = hasExistingValue ? new ReadOnlySpan<byte>(existingVal, checked((int)existingValLen)) : default;
+
+            if (!self.FullMerge(keySpan, hasExistingValue, existingValueSpan, operandsList, out byte[] newVal))
+            {
+                // If no success, return a null pointer and set newValLen to 0
+                // This indicates to RocksDb that the merge operation failed, and in that case RocksDb will not use the returned value,
+                // and the delete_value callback will not be called.
+                *newValLen = 0;
+                *success = 0;
+                return nint.Zero;
+            }
+
+            nint buf = Marshal.AllocHGlobal(newVal.Length);
+            Marshal.Copy(newVal, 0, buf, newVal.Length);
+
+            *newValLen = (nuint)newVal.Length;
+            *success = 1;
+
+            return buf;
+        }
+        catch (Exception ex)
+        {
+            // Unlike a comparator, a merge operator has a real failure channel:
+            // success = 0 tells RocksDb the merge failed, which surfaces as a
+            // corruption error on the read or compaction that triggered it. That
+            // is a truthful outcome, so report and fail the merge rather than
+            // inventing a merged value.
+            RocksDbCallbacks.Report(nameof(FullMerge), ex);
+
             *newValLen = 0;
             *success = 0;
             return nint.Zero;
         }
-
-        nint buf = Marshal.AllocHGlobal(newVal.Length);
-        Marshal.Copy(newVal, 0, buf, newVal.Length);
-
-        *newValLen = (nuint)newVal.Length;
-        *success = 1;
-
-        return buf;
     }
 
     private static unsafe nint PartialMergeCallback(
@@ -120,38 +143,58 @@ public abstract class MergeOperator : RocksDbHandle
         byte* success,
         nuint* newValLen)
     {
-        var self = SelfFromState(state);
-        var keySpan = new ReadOnlySpan<byte>(key, checked((int)keyLen));
-        var operandsList = CreateOperands(operands, operandsLen, numOperands);
-
-        if (!self.PartialMerge(keySpan, operandsList, out byte[] newVal))
+        try
         {
-            // If no success, return a null pointer and set newValLen to 0
-            // This indicates to RocksDb that the merge operation failed, and in that case RocksDb will not use the returned value,
-            // and the delete_value callback will not be called.
+            var self = SelfFromState(state);
+            var keySpan = new ReadOnlySpan<byte>(key, checked((int)keyLen));
+            var operandsList = CreateOperands(operands, operandsLen, numOperands);
+
+            if (!self.PartialMerge(keySpan, operandsList, out byte[] newVal))
+            {
+                // If no success, return a null pointer and set newValLen to 0
+                // This indicates to RocksDb that the merge operation failed, and in that case RocksDb will not use the returned value,
+                // and the delete_value callback will not be called.
+
+                *newValLen = 0;
+                *success = (byte)0;
+                return nint.Zero;
+            }
+
+            nint buf = Marshal.AllocHGlobal(newVal.Length);
+            Marshal.Copy(newVal, 0, buf, newVal.Length);
+
+            *newValLen = (nuint)newVal.Length;
+            *success = (byte)1;
+
+            return buf;
+        }
+        catch (Exception ex)
+        {
+            // A failed partial merge is not an error: RocksDb falls back to
+            // keeping the operands and merging them later via FullMerge.
+            RocksDbCallbacks.Report(nameof(PartialMerge), ex);
 
             *newValLen = 0;
             *success = (byte)0;
             return nint.Zero;
         }
-
-        nint buf = Marshal.AllocHGlobal(newVal.Length);
-        Marshal.Copy(newVal, 0, buf, newVal.Length);
-
-        *newValLen = (nuint)newVal.Length;
-        *success = (byte)1;
-
-        return buf;
     }
 
     private static void DeleteValueCallback(
         nint state,
         nint value, nuint valueLen)
     {
-        Marshal.FreeHGlobal(value);
+        try
+        {
+            Marshal.FreeHGlobal(value);
+        }
+        catch (Exception ex)
+        {
+            RocksDbCallbacks.Report("DeleteValue", ex);
+        }
     }
 
-    private static nint NameCallback(nint state) => GetNameFromPinnedIntPtr(state);
+    private static nint NameCallback(nint state) => GetNameFromPinnedIntPtrSafe(state);
 
     private static MergeOperator SelfFromState(nint state) => GetSelfFromPinnedIntPtr<MergeOperator>(state);
 

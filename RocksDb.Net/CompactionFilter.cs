@@ -101,9 +101,16 @@ public abstract class CompactionFilter : RocksDbHandle
 
     private static void CB_Destructor(nint state)
     {
-        var self = GetSelfFromPinnedIntPtr<CompactionFilter>(state);
-        self.TransferOwnership();
-        self.UnpinGarbageCollector();
+        try
+        {
+            var self = GetSelfFromPinnedIntPtr<CompactionFilter>(state);
+            self.TransferOwnership();
+            self.UnpinGarbageCollector();
+        }
+        catch (Exception ex)
+        {
+            RocksDbCallbacks.Report("CompactionFilter destructor", ex);
+        }
     }
 
     private static unsafe byte CB_Filter(
@@ -113,40 +120,55 @@ public abstract class CompactionFilter : RocksDbHandle
         byte** newValue, nuint* newValueLen,
         byte* valueChanged)
     {
-        //var self = SelfFromState(state);
-        var self = GetSelfFromPinnedIntPtr<CompactionFilter>(state);
-        var keySpan = new ReadOnlySpan<byte>(key, checked((int)keyLen));
-        var valSpan = new ReadOnlySpan<byte>(val, checked((int)valLen));
-
-        // Release the buffer returned to C++ on the previous call from this
-        // managed thread. C++ has already copied it via std::string::assign.
-        int threadId = Environment.CurrentManagedThreadId;
-        if (self._lastNewValueBufsByThread.TryRemove(threadId, out nint lastNewValueBuf) && lastNewValueBuf != IntPtr.Zero)
+        // An exception must not reach native code. Keeping the entry unchanged is
+        // the one fallback that cannot lose or alter data: the compaction simply
+        // behaves as if this filter had declined to act. Note that a filter which
+        // throws for every entry therefore turns into a no-op rather than an
+        // error, which is why the exception is also reported.
+        try
         {
-            Marshal.FreeHGlobal(lastNewValueBuf);
-            self._newValueBufs.TryRemove(lastNewValueBuf, out _);
+            //var self = SelfFromState(state);
+            var self = GetSelfFromPinnedIntPtr<CompactionFilter>(state);
+            var keySpan = new ReadOnlySpan<byte>(key, checked((int)keyLen));
+            var valSpan = new ReadOnlySpan<byte>(val, checked((int)valLen));
+
+            // Release the buffer returned to C++ on the previous call from this
+            // managed thread. C++ has already copied it via std::string::assign.
+            int threadId = Environment.CurrentManagedThreadId;
+            if (self._lastNewValueBufsByThread.TryRemove(threadId, out nint lastNewValueBuf) && lastNewValueBuf != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(lastNewValueBuf);
+                self._newValueBufs.TryRemove(lastNewValueBuf, out _);
+            }
+
+            FilterDecision decision = self.Filter(level, keySpan, valSpan, out byte[]? newVal);
+
+            if (decision == FilterDecision.ChangeValue && newVal is { Length: > 0 })
+            {
+                nint buf = Marshal.AllocHGlobal(newVal.Length);
+                self._lastNewValueBufsByThread[threadId] = buf;
+                self._newValueBufs.TryAdd(buf, 0);
+                Marshal.Copy(newVal, 0, buf, newVal.Length);
+                *newValue = (byte*)buf;
+                *newValueLen = (nuint)newVal.Length;
+                *valueChanged = 1;
+            }
+            else
+            {
+                *valueChanged = 0;
+            }
+
+            // C API: return non-zero to remove the key, 0 to keep it.
+            // ChangeValue keeps the key (return 0) with *valueChanged = 1.
+            return decision == FilterDecision.Remove ? (byte)1 : (byte)0;
         }
-
-        FilterDecision decision = self.Filter(level, keySpan, valSpan, out byte[]? newVal);
-
-        if (decision == FilterDecision.ChangeValue && newVal is { Length: > 0 })
+        catch (Exception ex)
         {
-            nint buf = Marshal.AllocHGlobal(newVal.Length);
-            self._lastNewValueBufsByThread[threadId] = buf;
-            self._newValueBufs.TryAdd(buf, 0);
-            Marshal.Copy(newVal, 0, buf, newVal.Length);
-            *newValue = (byte*)buf;
-            *newValueLen = (nuint)newVal.Length;
-            *valueChanged = 1;
-        }
-        else
-        {
+            RocksDbCallbacks.Report(nameof(Filter), ex);
+
             *valueChanged = 0;
+            return 0; // Keep the entry unchanged.
         }
-
-        // C API: return non-zero to remove the key, 0 to keep it.
-        // ChangeValue keeps the key (return 0) with *valueChanged = 1.
-        return decision == FilterDecision.Remove ? (byte)1 : (byte)0;
     }
 
     // ── Construction ─────────────────────────────────────────────────────────
@@ -160,7 +182,7 @@ public abstract class CompactionFilter : RocksDbHandle
 
         _destructorCb = CB_Destructor;
         _filterCb = CB_Filter;
-        _nameCb = GetNameFromPinnedIntPtr;
+        _nameCb = GetNameFromPinnedIntPtrSafe;
 
         Handle = NativeMethods.rocksdb_compactionfilter_create(
             GetPinnedIntPtr(),

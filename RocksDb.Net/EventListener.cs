@@ -168,84 +168,129 @@ public abstract class EventListener : RocksDbHandle
     // ── Static callbacks ─────────────────────────────────────────────────────
     // Using static methods avoids unsafe-lambda syntax issues.
 
+    // Whether the derived class overrides each event, decided once in the
+    // constructor. See the comment there for why this cannot be expressed by
+    // passing a null callback to RocksDb.
+    private readonly bool _hasOnFlushBegin;
+    private readonly bool _hasOnFlushCompleted;
+    private readonly bool _hasOnCompactionBegin;
+    private readonly bool _hasOnCompactionCompleted;
+    private readonly bool _hasOnSubCompactionBegin;
+    private readonly bool _hasOnSubCompactionCompleted;
+    private readonly bool _hasOnExternalFileIngested;
+    private readonly bool _hasOnBackgroundError;
+    private readonly bool _hasOnStallConditionsChanged;
+    private readonly bool _hasOnMemTableSealed;
+
+    /// <summary>
+    /// Invokes a listener method when the derived class overrides it, keeping any
+    /// exception it throws from reaching native code. RocksDb ignores the outcome
+    /// of these notifications, so reporting and swallowing the exception does not
+    /// change any data.
+    /// </summary>
+    /// <remarks>
+    /// Both delegate arguments are always <c>static</c> lambdas, so the compiler
+    /// caches one instance per call site and this adds no per-event allocation.
+    /// </remarks>
+    private static void Notify(
+        string callbackName,
+        nint state,
+        nint info,
+        Func<EventListener, bool> isOverridden,
+        Action<EventListener, nint> body)
+    {
+        try
+        {
+            EventListener self = SelfFromState(state);
+
+            if (isOverridden(self))
+            {
+                body(self, info);
+            }
+        }
+        catch (Exception ex)
+        {
+            RocksDbCallbacks.Report(callbackName, ex);
+        }
+    }
+
     private static void DestructorCallback(nint state)
     {
-        // RocksDB called this via shared_ptr deleter — the native handle is now freed.
-        // Transfer ownership so that our Dispose() won't call rocksdb_eventlistener_destroy again,
-        // then release the GC root created for native callbacks.
-        var self = GetSelfFromPinnedIntPtr<EventListener>(state);
-        self.TransferOwnership();
-        self.UnpinGarbageCollector();
+        try
+        {
+            // RocksDB called this via shared_ptr deleter — the native handle is now freed.
+            // Transfer ownership so that our Dispose() won't call rocksdb_eventlistener_destroy again,
+            // then release the GC root created for native callbacks.
+            var self = GetSelfFromPinnedIntPtr<EventListener>(state);
+            self.TransferOwnership();
+            self.UnpinGarbageCollector();
+        }
+        catch (Exception ex)
+        {
+            RocksDbCallbacks.Report("EventListener destructor", ex);
+        }
     }
 
     private static void OnFlushBeginCallback(nint state, nint db, nint info)
-    {
-        var self = SelfFromState(state);
-
-        self.OnFlushBegin(CreateFlushJobInfo(info));
-    }
+        => Notify(nameof(OnFlushBegin), state, info,
+            static self => self._hasOnFlushBegin,
+            static (self, i) => self.OnFlushBegin(CreateFlushJobInfo(i)));
 
     private static void OnFlushCompletedCallback(nint state, nint db, nint info)
-    {
-        var self = SelfFromState(state);
-
-        self.OnFlushCompleted(CreateFlushJobInfo(info));
-    }
+        => Notify(nameof(OnFlushCompleted), state, info,
+            static self => self._hasOnFlushCompleted,
+            static (self, i) => self.OnFlushCompleted(CreateFlushJobInfo(i)));
 
     private static void OnCompactionBeginCallback(nint state, nint db, nint info)
-    {
-        var self = SelfFromState(state);
-
-        self.OnCompactionBegin(CreateCompactionJobInfo(info));
-    }
+        => Notify(nameof(OnCompactionBegin), state, info,
+            static self => self._hasOnCompactionBegin,
+            static (self, i) => self.OnCompactionBegin(CreateCompactionJobInfo(i)));
 
     private static void OnCompactionCompletedCallback(nint state, nint db, nint info)
-    {
-        var self = SelfFromState(state);
-
-        self.OnCompactionCompleted(CreateCompactionJobInfo(info));
-    }
+        => Notify(nameof(OnCompactionCompleted), state, info,
+            static self => self._hasOnCompactionCompleted,
+            static (self, i) => self.OnCompactionCompleted(CreateCompactionJobInfo(i)));
 
     private static void OnSubCompactionBeginCallback(nint state, nint info)
-    {
-        var self = SelfFromState(state);
-
-        self.OnSubCompactionBegin(CreateSubCompactionJobInfo(info));
-    }
+        => Notify(nameof(OnSubCompactionBegin), state, info,
+            static self => self._hasOnSubCompactionBegin,
+            static (self, i) => self.OnSubCompactionBegin(CreateSubCompactionJobInfo(i)));
 
     private static void OnSubCompactionCompletedCallback(nint state, nint info)
-    {
-        var self = SelfFromState(state);
-
-        self.OnSubCompactionCompleted(CreateSubCompactionJobInfo(info));
-    }
+        => Notify(nameof(OnSubCompactionCompleted), state, info,
+            static self => self._hasOnSubCompactionCompleted,
+            static (self, i) => self.OnSubCompactionCompleted(CreateSubCompactionJobInfo(i)));
 
     private static void OnExternalFileIngestedCallback(nint state, nint db, nint info)
-    {
-        var self = SelfFromState(state);
+        => Notify(nameof(OnExternalFileIngested), state, info,
+            static self => self._hasOnExternalFileIngested,
+            static (self, i) => self.OnExternalFileIngested(CreateExternalFileIngestionInfo(i)));
 
-        self.OnExternalFileIngested(CreateExternalFileIngestionInfo(info));
-    }
+    private static void OnStallConditionsChangedCallback(nint state, nint info)
+        => Notify(nameof(OnStallConditionsChanged), state, info,
+            static self => self._hasOnStallConditionsChanged,
+            static (self, i) => self.OnStallConditionsChanged(CreateWriteStallInfo(i)));
+
+    private static void OnMemTableSealedCallback(nint state, nint info)
+        => Notify(nameof(OnMemTableSealed), state, info,
+            static self => self._hasOnMemTableSealed,
+            static (self, i) => self.OnMemTableSealed(CreateMemTableInfo(i)));
 
     private static void OnBackgroundErrorCallback(nint state, uint reason, nint info)
     {
-        var self = SelfFromState(state);
+        try
+        {
+            EventListener self = SelfFromState(state);
 
-        self.OnBackgroundError(CreateBackgroundErrorInfo(reason, info));
-    }
-
-    private static void OnStallConditionsChangedCallback(nint state, nint info)
-    {
-        var self = SelfFromState(state);
-
-        self.OnStallConditionsChanged(CreateWriteStallInfo(info));
-    }
-
-    private static void OnMemTableSealedCallback(nint state, nint info)
-    {
-        var self = SelfFromState(state);
-
-        self.OnMemTableSealed(CreateMemTableInfo(info));
+            if (self._hasOnBackgroundError)
+            {
+                self.OnBackgroundError(CreateBackgroundErrorInfo(reason, info));
+            }
+        }
+        catch (Exception ex)
+        {
+            RocksDbCallbacks.Report(nameof(OnBackgroundError), ex);
+        }
     }
 
     private static EventListener SelfFromState(nint state) => GetSelfFromPinnedIntPtr<EventListener>(state);
@@ -269,37 +314,42 @@ public abstract class EventListener : RocksDbHandle
         _onStallConditionsChangedDelegate = OnStallConditionsChangedCallback;
         _onMemTableSealedDelegate = OnMemTableSealedCallback;
 
-        // Only expose callbacks for methods that are actually overridden
-        // in the derived class, to avoid unnecessary native-to-managed
-        // transitions and generating info objects for events the user doesn't care about.
-        // Note:
-        // Checking if methods are override is using reflection to see if the declaring type is not this base class.
-        // Since it is done only once during construction, and this object is created infrequently,
-        // the performance impact is negligible.
+        // Skip work for events the derived class does not care about, so that no
+        // info object is built and no virtual call is made for them.
+        //
+        // The check has to happen on this side of the boundary. Handing RocksDb a
+        // null function pointer is not a way to opt out: rocksdb_eventlistener_t
+        // in db/c.cc overrides all ten EventListener virtuals and invokes the
+        // stored pointer with no null check, so a null crashes the process the
+        // first time that event fires. See issue #35.
+        //
+        // Detecting an override uses reflection to see whether the declaring type
+        // is still this base class. It runs once per instance, and listeners are
+        // created infrequently, so the cost is irrelevant.
+        _hasOnFlushBegin = this.CheckIfMethodOverridden<EventListener>(nameof(OnFlushBegin));
+        _hasOnFlushCompleted = this.CheckIfMethodOverridden<EventListener>(nameof(OnFlushCompleted));
+        _hasOnCompactionBegin = this.CheckIfMethodOverridden<EventListener>(nameof(OnCompactionBegin));
+        _hasOnCompactionCompleted = this.CheckIfMethodOverridden<EventListener>(nameof(OnCompactionCompleted));
+        _hasOnSubCompactionBegin = this.CheckIfMethodOverridden<EventListener>(nameof(OnSubCompactionBegin));
+        _hasOnSubCompactionCompleted = this.CheckIfMethodOverridden<EventListener>(nameof(OnSubCompactionCompleted));
+        _hasOnExternalFileIngested = this.CheckIfMethodOverridden<EventListener>(nameof(OnExternalFileIngested));
+        _hasOnBackgroundError = this.CheckIfMethodOverridden<EventListener>(nameof(OnBackgroundError));
+        _hasOnStallConditionsChanged = this.CheckIfMethodOverridden<EventListener>(nameof(OnStallConditionsChanged));
+        _hasOnMemTableSealed = this.CheckIfMethodOverridden<EventListener>(nameof(OnMemTableSealed));
 
         Handle = NativeMethods.rocksdb_eventlistener_create(
             GetPinnedIntPtr(),
             Marshal.GetFunctionPointerForDelegate(_destructorDelegate),
-            this.CheckIfMethodOverridden<EventListener>(nameof(OnFlushBegin)) ?
-                Marshal.GetFunctionPointerForDelegate(_onFlushBeginDelegate) : IntPtr.Zero,
-            this.CheckIfMethodOverridden<EventListener>(nameof(OnFlushCompleted)) ?
-                Marshal.GetFunctionPointerForDelegate(_onFlushCompletedDelegate) : IntPtr.Zero,
-            this.CheckIfMethodOverridden<EventListener>(nameof(OnCompactionBegin)) ?
-                Marshal.GetFunctionPointerForDelegate(_onCompactionBeginDelegate) : IntPtr.Zero,
-            this.CheckIfMethodOverridden<EventListener>(nameof(OnCompactionCompleted)) ?
-                Marshal.GetFunctionPointerForDelegate(_onCompactionCompletedDelegate) : IntPtr.Zero,
-            this.CheckIfMethodOverridden<EventListener>(nameof(OnSubCompactionBegin)) ?
-                Marshal.GetFunctionPointerForDelegate(_onSubCompactionBeginDelegate) : IntPtr.Zero,
-            this.CheckIfMethodOverridden<EventListener>(nameof(OnSubCompactionCompleted)) ?
-                Marshal.GetFunctionPointerForDelegate(_onSubCompactionCompletedDelegate) : IntPtr.Zero,
-            this.CheckIfMethodOverridden<EventListener>(nameof(OnExternalFileIngested)) ?
-                Marshal.GetFunctionPointerForDelegate(_onExternalFileIngestedDelegate) : IntPtr.Zero,
-            this.CheckIfMethodOverridden<EventListener>(nameof(OnBackgroundError)) ?
-                Marshal.GetFunctionPointerForDelegate(_onBackgroundErrorDelegate) : IntPtr.Zero,
-            this.CheckIfMethodOverridden<EventListener>(nameof(OnStallConditionsChanged)) ?
-                Marshal.GetFunctionPointerForDelegate(_onStallConditionsChangedDelegate) : IntPtr.Zero,
-            this.CheckIfMethodOverridden<EventListener>(nameof(OnMemTableSealed)) ?
-                Marshal.GetFunctionPointerForDelegate(_onMemTableSealedDelegate) : IntPtr.Zero);
+            Marshal.GetFunctionPointerForDelegate(_onFlushBeginDelegate),
+            Marshal.GetFunctionPointerForDelegate(_onFlushCompletedDelegate),
+            Marshal.GetFunctionPointerForDelegate(_onCompactionBeginDelegate),
+            Marshal.GetFunctionPointerForDelegate(_onCompactionCompletedDelegate),
+            Marshal.GetFunctionPointerForDelegate(_onSubCompactionBeginDelegate),
+            Marshal.GetFunctionPointerForDelegate(_onSubCompactionCompletedDelegate),
+            Marshal.GetFunctionPointerForDelegate(_onExternalFileIngestedDelegate),
+            Marshal.GetFunctionPointerForDelegate(_onBackgroundErrorDelegate),
+            Marshal.GetFunctionPointerForDelegate(_onStallConditionsChangedDelegate),
+            Marshal.GetFunctionPointerForDelegate(_onMemTableSealedDelegate));
     }
 
     // ── Virtual methods ───────────────────────────────────────────────

@@ -40,7 +40,7 @@ public abstract class CompactionFilterFactory : RocksDbHandle
 
         _destructorCallback = FCB_Destructor;
         _createFilterCallback = FCB_CreateFilter;
-        _nameCallback = GetNameFromPinnedIntPtr;
+        _nameCallback = GetNameFromPinnedIntPtrSafe;
 
         Handle = NativeMethods.rocksdb_compactionfilterfactory_create(
             GetPinnedIntPtr(),
@@ -53,9 +53,16 @@ public abstract class CompactionFilterFactory : RocksDbHandle
 
     private static void FCB_Destructor(nint state)
     {
-        var self = GetSelfFromPinnedIntPtr<CompactionFilterFactory>(state);
-        self.TransferOwnership();
-        self.UnpinGarbageCollector();
+        try
+        {
+            var self = GetSelfFromPinnedIntPtr<CompactionFilterFactory>(state);
+            self.TransferOwnership();
+            self.UnpinGarbageCollector();
+        }
+        catch (Exception ex)
+        {
+            RocksDbCallbacks.Report("CompactionFilterFactory destructor", ex);
+        }
     }
 
     // Called by C++ for each compaction job. The returned filter handle is
@@ -63,20 +70,33 @@ public abstract class CompactionFilterFactory : RocksDbHandle
     // job finishes, which triggers the filter's own destructor callback.
     private static nint FCB_CreateFilter(nint state, nint contextPtr)
     {
-        var self = GetSelfFromPinnedIntPtr<CompactionFilterFactory>(state);
-
-        var ctx = new CompactionFilterContext
+        try
         {
-            IsFullCompaction = NativeMethods.rocksdb_compactionfiltercontext_is_full_compaction(contextPtr) != 0,
-            IsManualCompaction = NativeMethods.rocksdb_compactionfiltercontext_is_manual_compaction(contextPtr) != 0,
-        };
+            var self = GetSelfFromPinnedIntPtr<CompactionFilterFactory>(state);
 
-        CompactionFilter filter = self.CreateFilter(ctx);
+            var ctx = new CompactionFilterContext
+            {
+                IsFullCompaction = NativeMethods.rocksdb_compactionfiltercontext_is_full_compaction(contextPtr) != 0,
+                IsManualCompaction = NativeMethods.rocksdb_compactionfiltercontext_is_manual_compaction(contextPtr) != 0,
+            };
 
-        // Return the native handle. C++ now owns this handle; its destructor
-        // callback will free the filter's GCHandle when compaction finishes.
-        // The caller MUST NOT dispose `filter` — C++ manages its lifetime.
-        return filter.Handle;
+            CompactionFilter filter = self.CreateFilter(ctx);
+
+            // Return the native handle. C++ now owns this handle; its destructor
+            // callback will free the filter's GCHandle when compaction finishes.
+            // The caller MUST NOT dispose `filter` — C++ manages its lifetime.
+            return filter.Handle;
+        }
+        catch (Exception ex)
+        {
+            RocksDbCallbacks.Report(nameof(CreateFilter), ex);
+
+            // c.cc wraps the returned pointer in std::unique_ptr<CompactionFilter>,
+            // and RocksDb treats a null filter as "no filtering for this compaction
+            // job", which every call site already guards for. So a null return is a
+            // supported outcome that leaves the data untouched.
+            return nint.Zero;
+        }
     }
 
     // ── Abstract factory method ──────────────────────────────────────────────
