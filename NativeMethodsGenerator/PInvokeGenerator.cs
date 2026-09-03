@@ -62,7 +62,13 @@ public static class PInvokeGenerator
 
         sb.AppendLine("}");
 
-        return sb.ToString();
+        // AppendLine uses Environment.NewLine, which would make the output CRLF
+        // on Windows and LF on Linux. That is not acceptable for a file kept
+        // under source control and checked for drift in CI: the same version of
+        // the header would produce a different file on each platform. Normalise
+        // to CRLF, matching the rest of the repository, so generation is
+        // byte-for-byte deterministic wherever it runs.
+        return sb.ToString().ReplaceLineEndings("\r\n");
     }
 
     private static void GenerateFunction(StringBuilder sb, CFunction fn)
