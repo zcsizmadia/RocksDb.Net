@@ -236,8 +236,22 @@ public abstract class MergeOperator : RocksDbHandle
             Marshal.GetFunctionPointerForDelegate(_nameDelegate));
     }
 
-    private static IEnumerable<byte[]> CreateOperands(nint operands, nint operandsLen, int numOperands)
+    /// <summary>
+    /// Copies the operands out of the native arrays.
+    /// </summary>
+    /// <remarks>
+    /// Materialised rather than yielded. RocksDb builds these arrays as
+    /// call-scoped locals, so a lazy sequence that an override stored and
+    /// enumerated later read freed memory. Making it eager costs one array
+    /// allocation and nothing else: each operand was already copied into a
+    /// managed array here, so the same bytes move either way, and an operator
+    /// that reads all of its operands, which is nearly all of them, pays the
+    /// same as before.
+    /// </remarks>
+    private static IReadOnlyList<byte[]> CreateOperands(nint operands, nint operandsLen, int numOperands)
     {
+        var result = new byte[numOperands][];
+
         for (int i = 0; i < numOperands; i++)
         {
             // Get the pointer to the operand
@@ -253,8 +267,10 @@ public abstract class MergeOperator : RocksDbHandle
             byte[] operandData = new byte[operandLen];
             Marshal.Copy(operandPtr, operandData, 0, checked((int)operandLen));
 
-            yield return operandData;
+            result[i] = operandData;
         }
+
+        return result;
     }
 
     // ── Abstract methods ───────────────────────────────────────────────
@@ -265,16 +281,29 @@ public abstract class MergeOperator : RocksDbHandle
     /// <param name="key">The key being merged.</param>
     /// <param name="hasExistingValue"><c>true</c> if the key has a pre-existing value.</param>
     /// <param name="existingValue">The current value (valid only when <paramref name="hasExistingValue"/> is <c>true</c>).</param>
-    /// <param name="operands">The operands to merge, in chronological order.</param>
+    /// <param name="operands">
+    /// The operands to merge, in chronological order. Managed copies, so they
+    /// may be kept beyond the call.
+    /// </param>
     /// <param name="newValue">Output: the result of the merge.</param>
     /// <returns><c>true</c> if the merge succeeded; <c>false</c> to signal failure.</returns>
-    public abstract bool FullMerge(ReadOnlySpan<byte> key, bool hasExistingValue, ReadOnlySpan<byte> existingValue, IEnumerable<byte[]> operands, out byte[] newValue);
+    public abstract bool FullMerge(ReadOnlySpan<byte> key, bool hasExistingValue, ReadOnlySpan<byte> existingValue, IReadOnlyList<byte[]> operands, out byte[] newValue);
 
     /// <summary>
     /// Optional partial merge: combines a subset of operands before a full
     /// merge. Return <c>false</c> to fall back to <see cref="FullMerge"/>.
     /// </summary>
-    public virtual bool PartialMerge(ReadOnlySpan<byte> key, IEnumerable<byte[]> operands, out byte[] newValue)
+    /// <param name="key">The key being merged.</param>
+    /// <param name="operands">
+    /// The operands to combine, in chronological order. Managed copies, so they
+    /// may be kept beyond the call.
+    /// </param>
+    /// <param name="newValue">Output: the combined operand.</param>
+    /// <returns>
+    /// <see langword="true"/> if the operands were combined;
+    /// <see langword="false"/> to leave it to <see cref="FullMerge"/>.
+    /// </returns>
+    public virtual bool PartialMerge(ReadOnlySpan<byte> key, IReadOnlyList<byte[]> operands, out byte[] newValue)
     {
         newValue = [];
         return false;

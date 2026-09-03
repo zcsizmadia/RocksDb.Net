@@ -96,7 +96,7 @@ public class CompactFilesTests
         Assert.Equal("1-updated", db.Db.GetString("a"));
         Assert.Equal("2-updated", db.Db.GetString("b"));
 
-        using ColumnFamilyMetadata? metadata = db.Db.GetColumnFamilyMetadata();
+        ColumnFamilyMetadata? metadata = db.Db.GetColumnFamilyMetadata();
         Assert.NotNull(metadata);
         Assert.Equal(1UL, (ulong)metadata!.FileCount);
     }
@@ -149,7 +149,7 @@ public class CompactFilesTests
         db.Db.Put("a"u8, "1-updated"u8, cf);
         db.Db.Flush(cf);
 
-        using ColumnFamilyMetadata? before = db.Db.GetColumnFamilyMetadata(cf);
+        ColumnFamilyMetadata? before = db.Db.GetColumnFamilyMetadata(cf);
         Assert.NotNull(before);
 
         string[] inputs = [.. before!.Levels.SelectMany(l => l.Files).Select(f => f.RelativeFilename)];

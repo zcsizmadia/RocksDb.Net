@@ -49,7 +49,7 @@ public class CallbackExceptionTests
 
     private sealed class ThrowingMergeOperator() : MergeOperator("throwing-merge")
     {
-        public override bool FullMerge(ReadOnlySpan<byte> key, bool hasExistingValue, ReadOnlySpan<byte> existingValue, IEnumerable<byte[]> operands, out byte[] newValue)
+        public override bool FullMerge(ReadOnlySpan<byte> key, bool hasExistingValue, ReadOnlySpan<byte> existingValue, IReadOnlyList<byte[]> operands, out byte[] newValue)
             => throw new InvalidOperationException("merge boom");
     }
 

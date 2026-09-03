@@ -9,7 +9,7 @@ public class MergeOperatorTests
     private sealed class NameValidatingMergeOperator(string name) : MergeOperator(name)
     {
         public override bool FullMerge(ReadOnlySpan<byte> key, bool hasExistingValue,
-            ReadOnlySpan<byte> existingValue, IEnumerable<byte[]> operands, out byte[] newValue)
+            ReadOnlySpan<byte> existingValue, IReadOnlyList<byte[]> operands, out byte[] newValue)
         {
             newValue = [];
             return true;
@@ -19,7 +19,7 @@ public class MergeOperatorTests
     private sealed class NoPartialOverrideMergeOperator() : MergeOperator("NoPartialOverride")
     {
         public override bool FullMerge(ReadOnlySpan<byte> key, bool hasExistingValue,
-            ReadOnlySpan<byte> existingValue, IEnumerable<byte[]> operands, out byte[] newValue)
+            ReadOnlySpan<byte> existingValue, IReadOnlyList<byte[]> operands, out byte[] newValue)
         {
             newValue = [];
             return true;
@@ -76,7 +76,7 @@ public class MergeOperatorTests
         public AppendMergeOperator() : base("AppendMerge") { }
 
         public override bool FullMerge(ReadOnlySpan<byte> key, bool hasExistingValue,
-            ReadOnlySpan<byte> existingValue, IEnumerable<byte[]> operands, out byte[] newValue)
+            ReadOnlySpan<byte> existingValue, IReadOnlyList<byte[]> operands, out byte[] newValue)
         {
             var sb = new StringBuilder();
             if (hasExistingValue)
@@ -150,7 +150,7 @@ public class MergeOperatorTests
         public PartialMergeOperator() : base("PartialAppendMerge") { }
 
         public override bool FullMerge(ReadOnlySpan<byte> key, bool hasExistingValue,
-            ReadOnlySpan<byte> existingValue, IEnumerable<byte[]> operands, out byte[] newValue)
+            ReadOnlySpan<byte> existingValue, IReadOnlyList<byte[]> operands, out byte[] newValue)
         {
             var sb = new StringBuilder();
             if (hasExistingValue)
@@ -166,7 +166,7 @@ public class MergeOperatorTests
             return true;
         }
 
-        public override bool PartialMerge(ReadOnlySpan<byte> key, IEnumerable<byte[]> operands, out byte[] newValue)
+        public override bool PartialMerge(ReadOnlySpan<byte> key, IReadOnlyList<byte[]> operands, out byte[] newValue)
         {
             var sb = new StringBuilder();
             foreach (var op in operands)

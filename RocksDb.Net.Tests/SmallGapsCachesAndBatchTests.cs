@@ -175,7 +175,7 @@ public class SmallGapsCachesAndBatchTests
 
             db.CompactRange();
 
-            using ColumnFamilyMetadata? metadata = db.GetColumnFamilyMetadata();
+            ColumnFamilyMetadata? metadata = db.GetColumnFamilyMetadata();
             return metadata!.FileCount;
         }
 

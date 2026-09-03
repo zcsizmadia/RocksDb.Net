@@ -269,12 +269,17 @@ public class RocksDbBasicTests
         db.Db.Put("a", "1");
         db.Db.Flush();
 
-        using var liveFiles = db.Db.GetLiveFiles();
+        IReadOnlyList<LiveFileMetadata> liveFiles = db.Db.GetLiveFiles();
 
-        Assert.NotNull(liveFiles);
-        Assert.NotEmpty(liveFiles.Files);
-        Assert.All(liveFiles.Files, file => Assert.True(file.Size >= 0));
-        Assert.All(liveFiles.Files, file => Assert.True(file.Level >= 0));
+        Assert.NotEmpty(liveFiles);
+        Assert.All(liveFiles, file => Assert.False(string.IsNullOrEmpty(file.Name)));
+        Assert.All(liveFiles, file => Assert.True(file.Level >= 0));
+
+        // Read in full, so the values survive without the database being open
+        // and without anything to dispose.
+        string firstName = liveFiles[0].Name;
+        db.Db.Dispose();
+        Assert.Equal(firstName, liveFiles[0].Name);
     }
 
     [Fact]
@@ -762,7 +767,7 @@ public class RocksDbBasicTests
         public TestAppendMergeOp() : base("TestAppendMerge") { }
 
         public override bool FullMerge(ReadOnlySpan<byte> key, bool hasExistingValue,
-            ReadOnlySpan<byte> existingValue, IEnumerable<byte[]> operands, out byte[] newValue)
+            ReadOnlySpan<byte> existingValue, IReadOnlyList<byte[]> operands, out byte[] newValue)
         {
             var sb = new StringBuilder();
             if (hasExistingValue)

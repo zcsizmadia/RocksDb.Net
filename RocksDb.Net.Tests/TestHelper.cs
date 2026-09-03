@@ -117,8 +117,7 @@ public static class TestDb
     /// <summary>Names of the currently live SST files.</summary>
     public static string[] LiveFileNames(this RocksDb db)
     {
-        using LiveFiles? live = db.GetLiveFiles();
-        return live is null ? [] : [.. live.Files.Select(f => f.Name)];
+        return [.. db.GetLiveFiles().Select(f => f.Name)];
     }
 
     /// <summary>

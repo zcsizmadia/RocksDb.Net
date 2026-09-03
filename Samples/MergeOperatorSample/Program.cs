@@ -68,7 +68,7 @@ class CounterMergeOperator : MergeOperator
         ReadOnlySpan<byte> key,
         bool hasExistingValue,
         ReadOnlySpan<byte> existingValue,
-        IEnumerable<byte[]> operands,
+        IReadOnlyList<byte[]> operands,
         out byte[] newValue)
     {
         long sum = 0;
@@ -87,7 +87,7 @@ class CounterMergeOperator : MergeOperator
 
     public override bool PartialMerge(
         ReadOnlySpan<byte> key,
-        IEnumerable<byte[]> operands,
+        IReadOnlyList<byte[]> operands,
         out byte[] newValue)
     {
         long sum = 0;
@@ -111,7 +111,7 @@ class AppendListMergeOperator : MergeOperator
         ReadOnlySpan<byte> key,
         bool hasExistingValue,
         ReadOnlySpan<byte> existingValue,
-        IEnumerable<byte[]> operands,
+        IReadOnlyList<byte[]> operands,
         out byte[] newValue)
     {
         var sb = new StringBuilder();
