@@ -1896,9 +1896,7 @@ public sealed class RocksDb : RocksDbHandle
                         Temperature = (Temperature)NativeMethods.rocksdb_livefiles_storage_info_temperature(info, i),
                         TrimToSize = NativeMethods.rocksdb_livefiles_storage_info_trim_to_size(info, i) != 0,
 
-                        // The checksum is a NUL-terminated string on the native
-                        // side but holds raw bytes, so read it as such.
-                        FileChecksum = checksum is null ? [] : ReadNulTerminatedBytes(checksum),
+                        FileChecksum = ReadChecksum(info, i, checksum),
                         FileChecksumFuncName = Marshal.PtrToStringUTF8((nint)NativeMethods.rocksdb_livefiles_storage_info_file_checksum_func_name(info, i)),
                         ReplacementContents = replacement is null || replacementLen == 0
                             ? []
@@ -1922,15 +1920,54 @@ public sealed class RocksDb : RocksDbHandle
         }
     }
 
-    private static unsafe byte[] ReadNulTerminatedBytes(byte* ptr)
+    /// <summary>Name RocksDb's only C-reachable checksum generator reports.</summary>
+    private const string Crc32cChecksumFuncName = "FileChecksumCrc32c";
+
+    /// <summary>
+    /// Width of a CRC32C checksum, which <c>Finalize</c> writes with
+    /// <c>PutFixed32</c>.
+    /// </summary>
+    private const int Crc32cChecksumLength = 4;
+
+    /// <summary>
+    /// Reads a file checksum, whose length the C API does not report.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>rocksdb_livefiles_storage_info_file_checksum</c> returns
+    /// <c>file_checksum.c_str()</c> and no length, unlike
+    /// <c>replacement_contents</c> immediately beside it, which does report one.
+    /// A checksum is raw binary, so reading up to the first NUL is wrong: it
+    /// yields nothing at all when the leading byte is zero, and silently
+    /// truncates when an interior byte is.
+    /// </para>
+    /// <para>
+    /// That was not theoretical. CRC32C is four bytes written by
+    /// <c>PutFixed32</c>, so roughly one checksum in 256 was read as empty and
+    /// one in sixty as too short, which is what made a test asserting on the
+    /// checksum fail intermittently in CI while passing everywhere else.
+    /// </para>
+    /// <para>
+    /// The length therefore has to come from the algorithm. The function name
+    /// says which was used, and CRC32C is the only generator the C API can
+    /// install, so it is the only width that can be known here. Any other name
+    /// means the database was written by an application using a generator this
+    /// wrapper cannot identify, and there is no length it could safely assume.
+    /// </para>
+    /// </remarks>
+    private static unsafe byte[] ReadChecksum(nint info, nuint index, byte* checksum)
     {
-        int length = 0;
-        while (ptr[length] != 0)
+        if (checksum is null)
         {
-            length++;
+            return [];
         }
 
-        return length == 0 ? [] : new ReadOnlySpan<byte>(ptr, length).ToArray();
+        string? funcName = Marshal.PtrToStringUTF8(
+            (nint)NativeMethods.rocksdb_livefiles_storage_info_file_checksum_func_name(info, index));
+
+        return funcName == Crc32cChecksumFuncName
+            ? new ReadOnlySpan<byte>(checksum, Crc32cChecksumLength).ToArray()
+            : [];
     }
 
     // ─────────────────────────────────────────────────────────────────────────
