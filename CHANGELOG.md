@@ -66,6 +66,7 @@ Full coverage of the RocksDb 11.8.1 additions. Highlights:
 - **New operations**: `CompactFiles`, `GetLiveFilesStorageInfo`, `PauseBackgroundWork` and `ContinueBackgroundWork`, `VerifyChecksum`, `VerifyFileChecksums`, `SetDbOptions`, and `ApproximateSizes` with `SizeApproximationOptions`.
 - **Write-ahead log**: `GetSortedWalFiles`, `GetCurrentWalFile`, and `GetUpdatesSince` for replication and change-data-capture.
 - **Callbacks**: `WalFilter` for rewriting or skipping records during recovery, and `ReadOptions.SetTableFilter` for skipping SST files during a read.
+- **Reads that avoid a copy**: `GetPinned` returns a `PinnableSlice` giving a `ReadOnlySpan<byte>` over the value with no managed copy, and none at all natively when it is served from the block cache. `TryGetInto` fills a caller-owned buffer instead, allocating nothing, and reports the length required when the buffer is too small. Every read previously copied twice.
 
 ### Changed
 

@@ -409,6 +409,114 @@ public sealed class RocksDb : RocksDbHandle
         return result;
     }
 
+    // ── Reads that avoid a copy ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Reads the value for <paramref name="key"/> without copying it into
+    /// managed memory, or returns <see langword="null"/> if the key is absent.
+    /// </summary>
+    /// <remarks>
+    /// Dispose the result promptly: it pins the block the value came from, which
+    /// cannot be evicted from the block cache while it lives. See
+    /// <see cref="PinnableSlice"/>.
+    /// </remarks>
+    public unsafe PinnableSlice? GetPinned(ReadOnlySpan<byte> key, ReadOptions? options = null)
+    {
+        nint err = default;
+        nint slice;
+        fixed (byte* k = key)
+            slice = NativeMethods.rocksdb_get_pinned(Handle, (options ?? _defaultReadOptions).Handle,
+                k, (nuint)key.Length, ref err);
+
+        // A null return means either "not found" or "failed", so the error has to
+        // be checked before deciding which.
+        NativeMethods.ThrowOnError(err);
+
+        return slice == nint.Zero ? null : new PinnableSlice(slice, this);
+    }
+
+    /// <inheritdoc cref="GetPinned(ReadOnlySpan{byte}, ReadOptions?)"/>
+    public unsafe PinnableSlice? GetPinned(ReadOnlySpan<byte> key, ColumnFamilyHandle cf, ReadOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(cf);
+
+        nint err = default;
+        nint slice;
+        fixed (byte* k = key)
+            slice = NativeMethods.rocksdb_get_pinned_cf(Handle, (options ?? _defaultReadOptions).Handle,
+                cf.Handle, k, (nuint)key.Length, ref err);
+
+        NativeMethods.ThrowOnError(err);
+
+        return slice == nint.Zero ? null : new PinnableSlice(slice, this);
+    }
+
+    /// <summary>
+    /// Reads the value for <paramref name="key"/> into a caller-owned buffer,
+    /// allocating nothing.
+    /// </summary>
+    /// <param name="key">The key to read.</param>
+    /// <param name="destination">Buffer to copy the value into.</param>
+    /// <param name="valueLength">
+    /// The value's full length when the key was found, whether or not it fitted,
+    /// so a caller given <see langword="false"/> can size a buffer and retry.
+    /// Zero when the key was absent.
+    /// </param>
+    /// <param name="options">Read options, or <see langword="null"/> for the defaults.</param>
+    /// <returns>
+    /// <see langword="true"/> only when the key was found <em>and</em> the value
+    /// fitted. <see langword="false"/> means either the key was absent, which
+    /// leaves <paramref name="valueLength"/> zero, or the buffer was too small,
+    /// which sets it to the length required.
+    /// </returns>
+    /// <remarks>
+    /// The counterpart to <see cref="GetPinned(ReadOnlySpan{byte}, ReadOptions?)"/>:
+    /// this copies once into memory you already own and pins nothing, so there is
+    /// no lifetime to manage. Prefer it when the values are small or a buffer can
+    /// be reused across reads.
+    /// </remarks>
+    public unsafe bool TryGetInto(
+        ReadOnlySpan<byte> key, Span<byte> destination, out int valueLength, ReadOptions? options = null)
+    {
+        nint err = default;
+        byte copied;
+        byte found;
+        nuint length;
+
+        fixed (byte* k = key)
+        fixed (byte* dest = destination)
+            copied = NativeMethods.rocksdb_get_into_buffer(Handle, (options ?? _defaultReadOptions).Handle,
+                k, (nuint)key.Length, dest, (nuint)destination.Length, out length, &found, ref err);
+
+        NativeMethods.ThrowOnError(err);
+
+        valueLength = found != 0 ? checked((int)length) : 0;
+        return copied != 0;
+    }
+
+    /// <inheritdoc cref="TryGetInto(ReadOnlySpan{byte}, Span{byte}, out int, ReadOptions?)"/>
+    public unsafe bool TryGetInto(
+        ReadOnlySpan<byte> key, ColumnFamilyHandle cf, Span<byte> destination, out int valueLength,
+        ReadOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(cf);
+
+        nint err = default;
+        byte copied;
+        byte found;
+        nuint length;
+
+        fixed (byte* k = key)
+        fixed (byte* dest = destination)
+            copied = NativeMethods.rocksdb_get_into_buffer_cf(Handle, (options ?? _defaultReadOptions).Handle,
+                cf.Handle, k, (nuint)key.Length, dest, (nuint)destination.Length, out length, &found, ref err);
+
+        NativeMethods.ThrowOnError(err);
+
+        valueLength = found != 0 ? checked((int)length) : 0;
+        return copied != 0;
+    }
+
     /// <summary>Returns the value for <paramref name="key"/> in <paramref name="cf"/>, or <c>null</c>.</summary>
     public unsafe byte[]? Get(ReadOnlySpan<byte> key, ColumnFamilyHandle cf, ReadOptions? options = null)
     {
