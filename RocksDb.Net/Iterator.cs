@@ -214,7 +214,13 @@ public sealed class Iterator : RocksDbHandle
     {
         private readonly Iterator _iterator;
 
-        internal Enumerator(Iterator iterator) { _iterator = iterator; }
+        private bool _started;
+
+        internal Enumerator(Iterator iterator)
+        {
+            _iterator = iterator;
+            _started = false;
+        }
 
         /// <summary>
         /// Advances to the next entry.
@@ -225,15 +231,48 @@ public sealed class Iterator : RocksDbHandle
         /// </returns>
         public bool MoveNext()
         {
-            if (!_iterator.IsValid())
+            // A RocksDb iterator already sits on the first entry after a seek,
+            // whereas an enumerator has to start before the first element. So
+            // the first call reports the position it was handed and every later
+            // one advances.
+            //
+            // Advancing on the first call, which is what this did before, was
+            // wrong twice over: it skipped the first entry, and it returned
+            // true once more after the last one, leaving the caller reading an
+            // invalid iterator. That second part is worse than it sounds,
+            // because the native accessors do not fail on an invalid iterator;
+            // they return whatever the buffer happens to hold.
+            if (_started)
             {
-                return false;
+                _iterator.Next();
+            }
+            else
+            {
+                _started = true;
             }
 
-            _iterator.Next();
+            if (_iterator.IsValid())
+            {
+                return true;
+            }
 
-            return true;
+            // An iterator stops being valid either because it ran out or
+            // because the read failed. Only the second is an error, and the
+            // loop simply ending would otherwise swallow it.
+            _iterator.CheckForError();
+            return false;
         }
+
+        /// <summary>
+        /// The current entry. Invalidated by the next <see cref="MoveNext"/>.
+        /// </summary>
+        /// <remarks>
+        /// Present so <c>foreach</c> works. Without a <c>Current</c> the
+        /// pattern is not satisfied and <c>foreach (var e in iterator)</c> did
+        /// not compile, despite <see cref="GetEnumerator"/> claiming to return
+        /// an enumerator over the collection.
+        /// </remarks>
+        public Entry Current => new(_iterator.Key(), _iterator.Value());
 
         /// <summary>
         /// The current key. Invalidated by the next <see cref="MoveNext"/>.
@@ -244,6 +283,31 @@ public sealed class Iterator : RocksDbHandle
         /// The current value. Invalidated by the next <see cref="MoveNext"/>.
         /// </summary>
         public ReadOnlySpan<byte> CurrentValue => _iterator.Value();
+    }
+
+    /// <summary>
+    /// One key and value from an <see cref="Enumerator"/>.
+    /// </summary>
+    /// <remarks>
+    /// A <see langword="ref struct"/> rather than a tuple, because
+    /// <see cref="ValueTuple{T1, T2}"/> cannot hold a
+    /// <see cref="ReadOnlySpan{T}"/>. Both spans point into the iterator's own
+    /// buffers and are invalidated as soon as it moves, so copy anything you
+    /// need to keep.
+    /// </remarks>
+    public readonly ref struct Entry
+    {
+        internal Entry(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
+        {
+            Key = key;
+            Value = value;
+        }
+
+        /// <summary>The key.</summary>
+        public ReadOnlySpan<byte> Key { get; }
+
+        /// <summary>The value.</summary>
+        public ReadOnlySpan<byte> Value { get; }
     }
 
     protected override void DisposeHandle()
