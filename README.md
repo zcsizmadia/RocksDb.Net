@@ -1,11 +1,26 @@
+<div align="center">
+
+<img src="https://raw.githubusercontent.com/zcsizmadia/RocksDb.Net/main/logo-128.png" alt="RocksDb.Net" width="128" height="128">
+
 # RocksDb.Net
 
 A modern C# wrapper for [RocksDb](https://rocksdb.org/), the high-performance embedded key-value store developed by Meta. Built on .NET's `LibraryImport` source generator with zero-copy spans and deterministic disposal.
 
+[![Build](https://github.com/zcsizmadia/RocksDb.Net/actions/workflows/build.yml/badge.svg)](https://github.com/zcsizmadia/RocksDb.Net/actions/workflows/build.yml)
+[![NuGet](https://img.shields.io/nuget/v/RocksDb.Net.svg)](https://www.nuget.org/packages/RocksDb.Net)
+[![Downloads](https://img.shields.io/nuget/dt/RocksDb.Net.svg)](https://www.nuget.org/packages/RocksDb.Net)
+[![.NET](https://img.shields.io/badge/.NET-8.0%20%7C%209.0%20%7C%2010.0-512BD4)](https://dotnet.microsoft.com/)
+[![RocksDb](https://img.shields.io/badge/RocksDb-11.8.1-blue)](https://github.com/facebook/rocksdb/releases/tag/v11.8.1)
+[![License](https://img.shields.io/badge/license-MIT-green)](https://github.com/zcsizmadia/RocksDb.Net/blob/main/LICENSE)
+
+**[API reference](https://zcsizmadia.github.io/RocksDb.Net/)** &nbsp;·&nbsp; [Guides](https://zcsizmadia.github.io/RocksDb.Net/articles/ownership.html) &nbsp;·&nbsp; [Samples](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples) &nbsp;·&nbsp; [Changelog](https://github.com/zcsizmadia/RocksDb.Net/blob/main/CHANGELOG.md)
+
+</div>
+
 ## Features
 
-- **Full RocksDb C API coverage** — 1,000+ auto-generated P/Invoke bindings from the official `rocksdb/c.h` header
-- **Modern .NET** — targets .NET 10, uses `LibraryImport`, `ReadOnlySpan<byte>`, and `ref struct` iterators
+- **Full RocksDb C API coverage** — every exported function in the official `rocksdb/c.h` header, auto-generated into P/Invoke bindings
+- **Modern .NET** — targets .NET 8, 9 and 10, uses `LibraryImport`, `ReadOnlySpan<byte>`, and `ref struct` iterators
 - **Idiomatic C# API** — `IDisposable` handles, properties, string overloads, LINQ-compatible iterators
 - **Column families** — create, drop, and operate on multiple column families, with metadata inspection
 - **Merge operators** — built-in `UInt64Add` and custom merge operator support
@@ -14,7 +29,9 @@ A modern C# wrapper for [RocksDb](https://rocksdb.org/), the high-performance em
 - **Backups & checkpoints** — `BackupEngine` and `Checkpoint` for point-in-time snapshots
 - **SST file ingestion** — bulk-load data with `SstFileWriter`
 - **Bloom/Ribbon filters** — configurable filter policies for point lookups
-- **Event listeners** — observe flush, compaction, and background error events
+- **Event listeners** — observe flush, compaction, ingestion and background error events, with table properties and compaction statistics
+- **Write-ahead log** — list log files, and stream changes with `GetUpdatesSince` for replication
+- **WAL filter** — inspect, rewrite or skip records during recovery
 - **Cross-platform** — ships native binaries via the `RocksDb.Net.Runtimes` package
 
 ## Versioning
@@ -23,7 +40,15 @@ The package version is `<RocksDbVersion>.<Revision>`, so `11.8.1.1` wraps RocksD
 
 Breaking changes land only when the RocksDb version changes. A revision bump alone, such as `11.8.1.1` to `11.8.1.2`, never breaks compatibility.
 
-**Upgrading from 11.1.2.1 to 11.8.1.1 has breaking changes.** See the [changelog](CHANGELOG.md#breaking-changes) for the full list and migrations. In short: the 12 deprecated fluent setters on `DbOptions` are gone in favour of the properties that replaced them, `ReadOptions.ReadTier` is now an enum, three metadata counts return `int` instead of `nuint`, and some `RocksDbHandle` helpers are no longer public.
+**Upgrading from 11.1.2.1 to 11.8.1.1 has breaking changes.** See the [changelog](https://github.com/zcsizmadia/RocksDb.Net/blob/main/CHANGELOG.md#breaking-changes) for the full list and migrations. In short: the 12 deprecated fluent setters on `DbOptions` are gone in favour of the properties that replaced them, `ReadOptions.ReadTier` is now an enum, three metadata counts return `int` instead of `nuint`, and some `RocksDbHandle` helpers are no longer public.
+
+## Documentation
+
+- **[API reference](https://zcsizmadia.github.io/RocksDb.Net/)** — every public type and member, generated from the source.
+- **[Ownership and lifetime](https://zcsizmadia.github.io/RocksDb.Net/articles/ownership.html)** — which side frees each native handle. RocksDb is inconsistent about this and the wrapper follows it rather than hiding it, so this is worth reading before writing much code.
+- **[Callbacks and exceptions](https://zcsizmadia.github.io/RocksDb.Net/articles/callbacks.html)** — what happens when your comparator or merge operator throws, which thread each callback runs on, and why most options only take effect at open time.
+- **[Samples](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples)** — runnable examples, one per feature area.
+- **[Changelog](https://github.com/zcsizmadia/RocksDb.Net/blob/main/CHANGELOG.md)** — what changed, and how to migrate across a breaking release.
 
 ## Requirements
 
@@ -224,23 +249,23 @@ using var db = RocksDb.Open(options, "filtered_db");
 
 ## Samples
 
-The [`Samples/`](Samples/) directory contains runnable examples:
+The [`Samples/`](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples) directory contains runnable examples:
 
 | Sample | Description |
 |--------|-------------|
-| [Basic](Samples/Basic/) | Basic open, put, get, delete |
-| [WriteBatchSample](Samples/WriteBatchSample/) | Atomic multi-key writes |
-| [IteratorSample](Samples/IteratorSample/) | Key-range scanning and seeking |
-| [ColumnFamilySample](Samples/ColumnFamilySample/) | Working with column families |
-| [SnapshotSample](Samples/SnapshotSample/) | Point-in-time consistent reads |
-| [MergeOperatorSample](Samples/MergeOperatorSample/) | Custom and built-in merge operators |
-| [CompactionFilterSample](Samples/CompactionFilterSample/) | Filtering keys during compaction |
-| [BackupAndCheckpointSample](Samples/BackupAndCheckpointSample/) | Backups and checkpoints |
-| [SstFileWriterSample](Samples/SstFileWriterSample/) | Bulk-loading with SST files |
-| [BloomFilterSample](Samples/BloomFilterSample/) | Bloom and Ribbon filter policies |
-| [EventListenerSample](Samples/EventListenerSample/) | Observing database events |
-| [ReadOnlyAndSecondarySample](Samples/ReadOnlyAndSecondarySample/) | Read-only and secondary instances |
-| [TuningAndStatsSample](Samples/TuningAndStatsSample/) | Performance tuning and statistics |
+| [Basic](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples/Basic) | Basic open, put, get, delete |
+| [WriteBatchSample](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples/WriteBatchSample) | Atomic multi-key writes |
+| [IteratorSample](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples/IteratorSample) | Key-range scanning and seeking |
+| [ColumnFamilySample](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples/ColumnFamilySample) | Working with column families |
+| [SnapshotSample](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples/SnapshotSample) | Point-in-time consistent reads |
+| [MergeOperatorSample](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples/MergeOperatorSample) | Custom and built-in merge operators |
+| [CompactionFilterSample](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples/CompactionFilterSample) | Filtering keys during compaction |
+| [BackupAndCheckpointSample](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples/BackupAndCheckpointSample) | Backups and checkpoints |
+| [SstFileWriterSample](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples/SstFileWriterSample) | Bulk-loading with SST files |
+| [BloomFilterSample](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples/BloomFilterSample) | Bloom and Ribbon filter policies |
+| [EventListenerSample](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples/EventListenerSample) | Observing database events |
+| [ReadOnlyAndSecondarySample](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples/ReadOnlyAndSecondarySample) | Read-only and secondary instances |
+| [TuningAndStatsSample](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples/TuningAndStatsSample) | Performance tuning and statistics |
 
 Run any sample with:
 
@@ -273,7 +298,7 @@ RocksDb.Net/
 ## Building from Source
 
 ```shell
-git clone https://github.com/user/RocksDb.Net.git
+git clone https://github.com/zcsizmadia/RocksDb.Net.git
 cd RocksDb.Net
 dotnet build
 dotnet test
@@ -283,10 +308,10 @@ The P/Invoke bindings in `NativeMethods.g.cs` are auto-generated from the [Rocks
 
 ```shell
 dotnet run --project NativeMethodsGenerator -- \
-    --version 11.0.4 \
+    --version 11.8.1 \
     --output RocksDb.Net/Native/NativeMethods.g.cs
 ```
 
 ## License
 
-See [LICENSE](LICENSE) for details.
+MIT. See [LICENSE](https://github.com/zcsizmadia/RocksDb.Net/blob/main/LICENSE) for details.
