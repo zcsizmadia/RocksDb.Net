@@ -11,7 +11,7 @@ A modern C# wrapper for [RocksDb](https://rocksdb.org/), the high-performance em
 [![RocksDb](https://img.shields.io/badge/RocksDb-11.8.1-blue)](https://github.com/facebook/rocksdb/releases/tag/v11.8.1)
 [![License](https://img.shields.io/badge/license-MIT%20%2B%20Apache--2.0-green)](https://github.com/zcsizmadia/RocksDb.Net/blob/main/LICENSE)
 
-**[API reference](https://zcsizmadia.github.io/RocksDb.Net/)** · [Guides](https://zcsizmadia.github.io/RocksDb.Net/articles/ownership.html) · [Samples](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples) · [Changelog](https://github.com/zcsizmadia/RocksDb.Net/blob/main/CHANGELOG.md)
+**[API reference](https://zcsizmadia.github.io/RocksDb.Net/)** · [Guides](https://zcsizmadia.github.io/RocksDb.Net/articles/getting-started.html) · [Samples](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples) · [Changelog](https://github.com/zcsizmadia/RocksDb.Net/blob/main/CHANGELOG.md)
 
 ## Features
 
