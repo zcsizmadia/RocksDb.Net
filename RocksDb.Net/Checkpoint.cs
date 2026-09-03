@@ -35,6 +35,42 @@ public sealed class Checkpoint : RocksDbHandle
         NativeMethods.ThrowOnError(err);
     }
 
+    /// <summary>
+    /// Writes one column family's live files into <paramref name="exportDir"/>
+    /// and returns the metadata needed to import them elsewhere.
+    /// </summary>
+    /// <param name="cf">The column family to export.</param>
+    /// <param name="exportDir">
+    /// Directory to write into. <b>It must not already exist:</b> RocksDb
+    /// creates it and fails with "Specified export_dir exists" otherwise, even
+    /// if the directory is empty. Pass a path under a directory you control
+    /// rather than one you have already created.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// Unlike <see cref="CreateCheckpoint"/>, which copies a whole database into
+    /// something you open separately, this exports a single column family so it
+    /// can be imported into a database that is already running. That is the way
+    /// to copy a column family between databases, rename one, or restore just
+    /// one part of a database.
+    /// </para>
+    /// <para>
+    /// The export holds no write-ahead log and no history, only the current
+    /// contents. Dispose the returned metadata when finished with it.
+    /// </para>
+    /// </remarks>
+    public ExportImportFilesMetadata ExportColumnFamily(ColumnFamilyHandle cf, string exportDir)
+    {
+        ArgumentNullException.ThrowIfNull(cf);
+        ArgumentException.ThrowIfNullOrEmpty(exportDir);
+
+        nint err = default;
+        nint metadata = NativeMethods.rocksdb_checkpoint_export_column_family(Handle, cf.Handle, exportDir, ref err);
+        NativeMethods.ThrowOnError(err);
+
+        return new ExportImportFilesMetadata(metadata);
+    }
+
     protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_checkpoint_object_destroy(Handle);
