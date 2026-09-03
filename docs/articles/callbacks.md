@@ -5,11 +5,27 @@ A managed exception must never propagate into native code. The runtime treats th
 Subscribe to that event, because an exception in a callback is otherwise invisible:
 
 ```csharp
-RocksDbCallbacks.UnhandledException += (_, e) =>
-    logger.LogError(e.Exception, "RocksDb callback {Callback} threw", e.CallbackName);
+RocksDbCallbacks.UnhandledException += (sender, e) =>
+    logger.LogError(e.Exception, "RocksDb callback {Callback} on {Source} threw", e.CallbackName, sender);
 ```
 
 Handlers run on whichever thread raised the exception, which is a RocksDb background thread for flush, compaction and backup events, so they must be thread-safe. A handler that itself throws is ignored, so it cannot mask the failure it was reporting.
+
+## Which instance threw
+
+The sender is the wrapper whose callback threw. It matters as soon as an application installs more than one, because the callback name does not identify them: two compaction filters both report under `Filter`.
+
+```csharp
+RocksDbCallbacks.UnhandledException += (sender, e) =>
+{
+    if (ReferenceEquals(sender, archiveFilter))
+    {
+        logger.LogError(e.Exception, "The archive compaction filter threw");
+    }
+};
+```
+
+It is null only when the instance could not be identified, which happens when resolving it is itself what failed.
 
 ## What happens after the exception
 

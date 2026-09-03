@@ -463,7 +463,7 @@ public sealed class ReadOptions : RocksDbHandle
         }
         catch (Exception ex)
         {
-            RocksDbCallbacks.Report(nameof(SetTableFilter), ex);
+            RocksDbCallbacks.Report(nameof(SetTableFilter), ex, state);
 
             // Including the file is the only safe fallback. Excluding it would
             // quietly drop data from the read's results.
@@ -492,7 +492,7 @@ public sealed class ReadOptions : RocksDbHandle
         }
         catch (Exception ex)
         {
-            RocksDbCallbacks.Report("table filter destructor", ex);
+            RocksDbCallbacks.Report("table filter destructor", ex, state);
         }
     }
 

@@ -342,7 +342,7 @@ public abstract class EventListener : RocksDbHandle
         }
         catch (Exception ex)
         {
-            RocksDbCallbacks.Report(callbackName, ex);
+            RocksDbCallbacks.Report(callbackName, ex, state);
         }
     }
 
@@ -359,7 +359,7 @@ public abstract class EventListener : RocksDbHandle
         }
         catch (Exception ex)
         {
-            RocksDbCallbacks.Report("EventListener destructor", ex);
+            RocksDbCallbacks.Report("EventListener destructor", ex, state);
         }
     }
 
@@ -421,7 +421,7 @@ public abstract class EventListener : RocksDbHandle
         }
         catch (Exception ex)
         {
-            RocksDbCallbacks.Report(nameof(OnBackgroundError), ex);
+            RocksDbCallbacks.Report(nameof(OnBackgroundError), ex, state);
         }
     }
 

@@ -404,7 +404,7 @@ public sealed class CreateBackupOptions : RocksDbHandle
         {
             // RocksDb ignores the outcome of this callback, so reporting and
             // continuing loses nothing.
-            RocksDbCallbacks.Report(nameof(SetProgressCallback), ex);
+            RocksDbCallbacks.Report(nameof(SetProgressCallback), ex, state);
         }
     }
 
@@ -422,7 +422,7 @@ public sealed class CreateBackupOptions : RocksDbHandle
         }
         catch (Exception ex)
         {
-            RocksDbCallbacks.Report(nameof(SetExcludeFilesCallback), ex);
+            RocksDbCallbacks.Report(nameof(SetExcludeFilesCallback), ex, state);
 
             // Including the file is the safe answer: excluding one by mistake
             // would produce a backup that cannot be restored on its own.

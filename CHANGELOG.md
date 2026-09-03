@@ -42,6 +42,10 @@ Full coverage of the RocksDb 11.8.1 additions. Highlights:
 
 ### Changed
 
+- `RocksDbCallbacks.UnhandledException` now passes the wrapper instance that threw as the event sender, which was previously always null. The callback name does not identify it, so an application running several filters or listeners could not tell which one failed.
+- Corrected the documentation on `DeleteFilesInRange`, which said it does not remove keys. It does: the keys in a deleted file are gone, with no tombstone. Level 0 files are never deleted, and a file only partly inside the range is left alone. Both now documented.
+- Documented that `CancelAllBackgroundWork` is irreversible. Reads and `SetOptions` still work afterwards, but `Flush` fails with "Shutdown in progress". Use `PauseBackgroundWork` and `ContinueBackgroundWork` to suspend and resume.
+- Documented the two conditions under which `SuggestCompactRange` does something. Auto compactions must be enabled, and only levels below the highest non-empty one are marked, so a database whose data is all in level 0 is unaffected.
 - Tests run on Linux, Windows and macOS, and against net8.0, net9.0 and net10.0. Previously only Linux and only net10.0.
 - The build is warning-free and CI enforces it with `-warnaserror`.
 - Code coverage is collected and published as a build artifact.

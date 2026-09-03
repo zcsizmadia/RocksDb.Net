@@ -109,7 +109,7 @@ public abstract class CompactionFilter : RocksDbHandle
         }
         catch (Exception ex)
         {
-            RocksDbCallbacks.Report("CompactionFilter destructor", ex);
+            RocksDbCallbacks.Report("CompactionFilter destructor", ex, state);
         }
     }
 
@@ -164,7 +164,7 @@ public abstract class CompactionFilter : RocksDbHandle
         }
         catch (Exception ex)
         {
-            RocksDbCallbacks.Report(nameof(Filter), ex);
+            RocksDbCallbacks.Report(nameof(Filter), ex, state);
 
             *valueChanged = 0;
             return 0; // Keep the entry unchanged.

@@ -78,7 +78,7 @@ public abstract class MergeOperator : RocksDbHandle
         }
         catch (Exception ex)
         {
-            RocksDbCallbacks.Report("MergeOperator destructor", ex);
+            RocksDbCallbacks.Report("MergeOperator destructor", ex, state);
         }
     }
 
@@ -126,7 +126,7 @@ public abstract class MergeOperator : RocksDbHandle
             // corruption error on the read or compaction that triggered it. That
             // is a truthful outcome, so report and fail the merge rather than
             // inventing a merged value.
-            RocksDbCallbacks.Report(nameof(FullMerge), ex);
+            RocksDbCallbacks.Report(nameof(FullMerge), ex, state);
 
             *newValLen = 0;
             *success = 0;
@@ -172,7 +172,7 @@ public abstract class MergeOperator : RocksDbHandle
         {
             // A failed partial merge is not an error: RocksDb falls back to
             // keeping the operands and merging them later via FullMerge.
-            RocksDbCallbacks.Report(nameof(PartialMerge), ex);
+            RocksDbCallbacks.Report(nameof(PartialMerge), ex, state);
 
             *newValLen = 0;
             *success = (byte)0;
@@ -190,7 +190,7 @@ public abstract class MergeOperator : RocksDbHandle
         }
         catch (Exception ex)
         {
-            RocksDbCallbacks.Report("DeleteValue", ex);
+            RocksDbCallbacks.Report("DeleteValue", ex, state);
         }
     }
 

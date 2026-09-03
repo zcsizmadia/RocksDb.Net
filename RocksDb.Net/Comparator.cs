@@ -53,7 +53,7 @@ public abstract class Comparator : RocksDbHandle
         }
         catch (Exception ex)
         {
-            RocksDbCallbacks.Report("Comparator destructor", ex);
+            RocksDbCallbacks.Report("Comparator destructor", ex, state);
         }
     }
 
@@ -75,7 +75,7 @@ public abstract class Comparator : RocksDbHandle
             // value we invent is a lie about key order, and RocksDb would write
             // and later read data against it, so there is no safe fallback.
             // Terminate with a diagnosable message instead.
-            RocksDbCallbacks.ReportFatal(nameof(Compare), ex);
+            RocksDbCallbacks.ReportFatal(nameof(Compare), ex, state);
             throw; // Unreachable: ReportFatal does not return.
         }
     }
