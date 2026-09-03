@@ -37,7 +37,7 @@ The package version is `<RocksDbVersion>.<Revision>`, so `11.8.1.1` wraps RocksD
 Breaking changes land only when the RocksDb version changes. A revision bump alone, such as `11.8.1.1` to `11.8.1.2`, never breaks compatibility.
 
 The dependency on the native `RocksDb.Net.Runtimes` package is bounded to
-revisions of the same RocksDb version, currently `[11.8.1.1, 11.8.2)`. The
+revisions of the same RocksDb version, currently `[11.8.1.2, 11.8.2)`. The
 P/Invoke declarations are generated from exactly that version's `c.h`, so a
 runtimes package built from a different RocksDb version could disagree with them
 about the native ABI, and nothing would catch it at build or load time.
