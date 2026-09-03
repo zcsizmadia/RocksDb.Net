@@ -917,7 +917,7 @@ public sealed class RocksDb : RocksDbHandle
     public unsafe ulong? GetPropertyInt(string propName)
     {
         ulong val;
-        int rc = NativeMethods.rocksdb_property_int(Handle, propName, (nint)(&val));
+        int rc = NativeMethods.rocksdb_property_int(Handle, propName, &val);
         return rc == 0 ? val : null;
     }
 
@@ -936,7 +936,7 @@ public sealed class RocksDb : RocksDbHandle
     public unsafe ulong? GetPropertyInt(string propName, ColumnFamilyHandle cf)
     {
         ulong val;
-        int rc = NativeMethods.rocksdb_property_int_cf(Handle, cf.Handle, propName, (nint)(&val));
+        int rc = NativeMethods.rocksdb_property_int_cf(Handle, cf.Handle, propName, &val);
         return rc == 0 ? val : null;
     }
 
@@ -974,10 +974,126 @@ public sealed class RocksDb : RocksDbHandle
         return liveFilesHandle == nint.Zero ? null : new LiveFiles(liveFilesHandle);
     }
 
-    /// <summary>Returns approximate size information for one or more key ranges.</summary>
-    public unsafe ulong[] ApproximateSizes(IEnumerable<(string Start, string Limit)> ranges)
+    // ─────────────────────────────────────────────────────────────────────────
+    // Background work
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Stops RocksDb starting new flushes and compactions, and waits for the
+    /// ones already running to finish.
+    /// </summary>
+    /// <remarks>
+    /// Writes continue to be accepted, so pausing for long enough will build up
+    /// memtables and eventually stall the writer. Calls nest: each
+    /// <see cref="PauseBackgroundWork"/> needs a matching
+    /// <see cref="ContinueBackgroundWork"/> before work resumes.
+    /// </remarks>
+    public void PauseBackgroundWork()
+    {
+        nint err = default;
+        NativeMethods.rocksdb_pause_background_work(Handle, ref err);
+        NativeMethods.ThrowOnError(err);
+    }
+
+    /// <summary>
+    /// Undoes one <see cref="PauseBackgroundWork"/>, letting flushes and
+    /// compactions run again once every pause has been matched.
+    /// </summary>
+    public void ContinueBackgroundWork()
+    {
+        nint err = default;
+        NativeMethods.rocksdb_continue_background_work(Handle, ref err);
+        NativeMethods.ThrowOnError(err);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Integrity checks
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Reads every live SST and blob file and verifies its block checksums.
+    /// </summary>
+    /// <remarks>
+    /// This reads the whole database, so it is a maintenance operation rather
+    /// than something to run on a request path. Use
+    /// <see cref="VerifyFileChecksums()"/> for the cheaper whole-file check.
+    /// </remarks>
+    /// <exception cref="RocksDbException">A checksum did not match.</exception>
+    public void VerifyChecksum()
+    {
+        nint err = default;
+        NativeMethods.rocksdb_verify_checksum(Handle, ref err);
+        NativeMethods.ThrowOnError(err);
+    }
+
+    /// <summary>
+    /// Verifies block checksums, using <paramref name="options"/> for the reads
+    /// it performs.
+    /// </summary>
+    /// <exception cref="RocksDbException">A checksum did not match.</exception>
+    public void VerifyChecksum(ReadOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        nint err = default;
+        NativeMethods.rocksdb_verify_checksum_with_options(Handle, options.Handle, ref err);
+        NativeMethods.ThrowOnError(err);
+    }
+
+    /// <summary>
+    /// Verifies each file's whole-file checksum against the checksum recorded
+    /// for it in the manifest.
+    /// </summary>
+    /// <remarks>
+    /// Cheaper than <see cref="VerifyChecksum()"/>, but it requires a file
+    /// checksum generator to have been configured through
+    /// <see cref="DbOptions.SetFileChecksumGenFactory"/>. Without one RocksDb
+    /// has recorded nothing to compare against and fails the call rather than
+    /// reporting success, so this is not a drop-in substitute.
+    /// </remarks>
+    /// <exception cref="RocksDbException">
+    /// A checksum did not match, or no file checksum generator was configured.
+    /// </exception>
+    public void VerifyFileChecksums()
+    {
+        nint err = default;
+        NativeMethods.rocksdb_verify_file_checksums(Handle, ref err);
+        NativeMethods.ThrowOnError(err);
+    }
+
+    /// <summary>
+    /// Verifies whole-file checksums, using <paramref name="options"/> for the
+    /// reads it performs.
+    /// </summary>
+    /// <exception cref="RocksDbException">A checksum did not match.</exception>
+    public void VerifyFileChecksums(ReadOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        nint err = default;
+        NativeMethods.rocksdb_verify_file_checksums_with_options(Handle, options.Handle, ref err);
+        NativeMethods.ThrowOnError(err);
+    }
+
+    // Pinning the start and limit key arrays for the approximate-size calls is
+    // the same 40 lines four times over, so it lives in one place. As with
+    // ApplyOptions, the delegate receives the pinned pointers as parameters
+    // because a lambda cannot capture a pointer local.
+    private unsafe delegate void ApproximateSizesCall(
+        int numRanges,
+        byte** startKeys,
+        nuint* startLengths,
+        byte** limitKeys,
+        nuint* limitLengths,
+        ulong* sizes,
+        ref nint errptr);
+
+    private unsafe ulong[] ApproximateSizesCore(
+        IEnumerable<(string Start, string Limit)> ranges,
+        ApproximateSizesCall call)
     {
         ArgumentNullException.ThrowIfNull(ranges);
+
         var rangeList = ranges.ToList();
         if (rangeList.Count == 0)
         {
@@ -997,6 +1113,8 @@ public sealed class RocksDb : RocksDbHandle
             for (int i = 0; i < rangeList.Count; i++)
             {
                 var (startKey, limitKey) = rangeList[i];
+
+                // A null pointer with zero length means "unbounded" on that side.
                 if (!string.IsNullOrEmpty(startKey))
                 {
                     byte[] bytes = Encoding.UTF8.GetBytes(startKey);
@@ -1019,11 +1137,9 @@ public sealed class RocksDb : RocksDbHandle
             fixed (nuint* startLenPtr = startLengths)
             fixed (byte** limitKeyPtr = limitKeys)
             fixed (nuint* limitLenPtr = limitLengths)
+            fixed (ulong* sizePtr = sizes)
             {
-                fixed (ulong* sizePtr = sizes)
-                {
-                    NativeMethods.rocksdb_approximate_sizes(Handle, rangeList.Count, startKeyPtr, startLenPtr, limitKeyPtr, limitLenPtr, (nint)sizePtr, ref err);
-                }
+                call(rangeList.Count, startKeyPtr, startLenPtr, limitKeyPtr, limitLenPtr, sizePtr, ref err);
             }
 
             NativeMethods.ThrowOnError(err);
@@ -1038,73 +1154,50 @@ public sealed class RocksDb : RocksDbHandle
             }
         }
     }
+
+    /// <summary>Returns approximate size information for one or more key ranges.</summary>
+    public unsafe ulong[] ApproximateSizes(IEnumerable<(string Start, string Limit)> ranges)
+        => ApproximateSizesCore(ranges,
+            (int n, byte** sk, nuint* sl, byte** lk, nuint* ll, ulong* sizes, ref nint err)
+                => NativeMethods.rocksdb_approximate_sizes(Handle, n, sk, sl, lk, ll, sizes, ref err));
 
     /// <summary>Returns approximate size information for one or more key ranges in a specific column family.</summary>
     public unsafe ulong[] ApproximateSizes(ColumnFamilyHandle cf, IEnumerable<(string Start, string Limit)> ranges)
     {
         ArgumentNullException.ThrowIfNull(cf);
-        ArgumentNullException.ThrowIfNull(ranges);
 
-        var rangeList = ranges.ToList();
-        if (rangeList.Count == 0)
-        {
-            return [];
-        }
-
-        var startKeys = new byte*[rangeList.Count];
-        var startLengths = new nuint[rangeList.Count];
-        var limitKeys = new byte*[rangeList.Count];
-        var limitLengths = new nuint[rangeList.Count];
-        var sizes = new ulong[rangeList.Count];
-        var startPins = new GCHandle[rangeList.Count];
-        var limitPins = new GCHandle[rangeList.Count];
-
-        try
-        {
-            for (int i = 0; i < rangeList.Count; i++)
-            {
-                var (startKey, limitKey) = rangeList[i];
-                if (!string.IsNullOrEmpty(startKey))
-                {
-                    byte[] bytes = Encoding.UTF8.GetBytes(startKey);
-                    startPins[i] = GCHandle.Alloc(bytes, GCHandleType.Pinned);
-                    startKeys[i] = (byte*)startPins[i].AddrOfPinnedObject();
-                    startLengths[i] = (nuint)bytes.Length;
-                }
-
-                if (!string.IsNullOrEmpty(limitKey))
-                {
-                    byte[] bytes = Encoding.UTF8.GetBytes(limitKey);
-                    limitPins[i] = GCHandle.Alloc(bytes, GCHandleType.Pinned);
-                    limitKeys[i] = (byte*)limitPins[i].AddrOfPinnedObject();
-                    limitLengths[i] = (nuint)bytes.Length;
-                }
-            }
-
-            nint err = default;
-            fixed (byte** startKeyPtr = startKeys)
-            fixed (nuint* startLenPtr = startLengths)
-            fixed (byte** limitKeyPtr = limitKeys)
-            fixed (nuint* limitLenPtr = limitLengths)
-            {
-                fixed (ulong* sizePtr = sizes)
-                {
-                    NativeMethods.rocksdb_approximate_sizes_cf(Handle, cf.Handle, rangeList.Count, startKeyPtr, startLenPtr, limitKeyPtr, limitLenPtr, (nint)sizePtr, ref err);
-                }
-            }
-
-            NativeMethods.ThrowOnError(err);
-            return sizes;
-        }
-        finally
-        {
-            for (int i = 0; i < startPins.Length; i++)
-            {
-                if (startPins[i].IsAllocated) startPins[i].Free();
-                if (limitPins[i].IsAllocated) limitPins[i].Free();
-            }
-        }
+        return ApproximateSizesCore(ranges,
+            (int n, byte** sk, nuint* sl, byte** lk, nuint* ll, ulong* sizes, ref nint err)
+                => NativeMethods.rocksdb_approximate_sizes_cf(Handle, cf.Handle, n, sk, sl, lk, ll, sizes, ref err));
     }
+
+    /// <summary>
+    /// Returns approximate size information for one or more key ranges, with
+    /// control over what the estimate includes.
+    /// </summary>
+    public unsafe ulong[] ApproximateSizes(SizeApproximationOptions options, IEnumerable<(string Start, string Limit)> ranges)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        return ApproximateSizesCore(ranges,
+            (int n, byte** sk, nuint* sl, byte** lk, nuint* ll, ulong* sizes, ref nint err)
+                => NativeMethods.rocksdb_approximate_sizes_with_options(Handle, options.Handle, n, sk, sl, lk, ll, sizes, ref err));
+    }
+
+    /// <summary>
+    /// Returns approximate size information for one or more key ranges in a
+    /// specific column family, with control over what the estimate includes.
+    /// </summary>
+    public unsafe ulong[] ApproximateSizes(ColumnFamilyHandle cf, SizeApproximationOptions options, IEnumerable<(string Start, string Limit)> ranges)
+    {
+        ArgumentNullException.ThrowIfNull(cf);
+        ArgumentNullException.ThrowIfNull(options);
+
+        return ApproximateSizesCore(ranges,
+            (int n, byte** sk, nuint* sl, byte** lk, nuint* ll, ulong* sizes, ref nint err)
+                => NativeMethods.rocksdb_approximate_sizes_cf_with_options(Handle, cf.Handle, options.Handle, n, sk, sl, lk, ll, sizes, ref err));
+    }
+
 
     /// <summary>
     /// Deletes files in the specified key range from the default column family.
