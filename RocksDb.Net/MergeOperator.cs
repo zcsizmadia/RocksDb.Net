@@ -212,11 +212,19 @@ public abstract class MergeOperator : RocksDbHandle
         _deleteValueDelegate = DeleteValueCallback;
         _nameDelegate = NameCallback;
 
+        // The partial-merge slot is always installed, even when the subclass does
+        // not override PartialMerge. RocksDb invokes it through
+        // `(*partial_merge_)(...)` with no null check, unlike the delete-value
+        // slot beside it, and it reaches that call on any flush or non-bottommost
+        // compaction that collapses two or more operands for one key. Leaving the
+        // slot null therefore terminated the process. The base PartialMerge
+        // returns false, which is the correct answer for an operator that cannot
+        // combine operands: RocksDb keeps them and calls FullMerge later.
         Handle = NativeMethods.rocksdb_mergeoperator_create(
             GetPinnedIntPtr(),
             Marshal.GetFunctionPointerForDelegate(_destructorDelegate),
             Marshal.GetFunctionPointerForDelegate(_fullMergeDelegate),
-            this.CheckIfMethodOverridden<MergeOperator>(nameof(PartialMerge)) ? Marshal.GetFunctionPointerForDelegate(_partialMergeDelegate) : IntPtr.Zero,
+            Marshal.GetFunctionPointerForDelegate(_partialMergeDelegate),
             Marshal.GetFunctionPointerForDelegate(_deleteValueDelegate),
             Marshal.GetFunctionPointerForDelegate(_nameDelegate));
     }

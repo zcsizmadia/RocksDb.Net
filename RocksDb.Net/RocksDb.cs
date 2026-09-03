@@ -86,7 +86,7 @@ public sealed class RocksDb : RocksDbHandle
             fixed (nint* handlesPtr = cfHandles)
                 handle = NativeMethods.rocksdb_open_column_families(
                     options.Handle, path, count,
-                    namesPtr, (nint)optsPtr, handlesPtr, ref err);
+                    namesPtr, optsPtr, handlesPtr, ref err);
         }
         finally
         {
@@ -141,7 +141,7 @@ public sealed class RocksDb : RocksDbHandle
             fixed (nint* handlesPtr = cfHandles)
                 handle = NativeMethods.rocksdb_open_for_read_only_column_families(
                     options.Handle, path, count,
-                    namesPtr, (nint)optsPtr, handlesPtr,
+                    namesPtr, optsPtr, handlesPtr,
                     errorIfWalExists ? (byte)1 : (byte)0, ref err);
         }
         finally

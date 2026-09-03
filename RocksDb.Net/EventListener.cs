@@ -5,45 +5,118 @@ using RocksDbNet.Extensions;
 namespace RocksDbNet;
 
 /// <summary>
-/// Mapped from rocksdb::FlushReason in listener.h
+/// Why RocksDb flushed a memtable, mapped from <c>rocksdb::FlushReason</c> in
+/// <c>listener.h</c>.
 /// </summary>
-public enum FlushReason : uint
+/// <remarks>
+/// The native values are explicit and must match exactly. A shifted value
+/// silently mislabels every flush an application observes.
+/// </remarks>
+public enum FlushReason
 {
+    /// <summary>No specific reason recorded.</summary>
     Others = 0x00,
+
+    /// <summary>A call that needed a consistent set of files on disk.</summary>
     GetLiveFiles = 0x01,
+
+    /// <summary>The database is closing.</summary>
     ShutDown = 0x02,
+
+    /// <summary>External SST file ingestion required a flush first.</summary>
     ExternalFileIngestion = 0x03,
+
+    /// <summary>A manual compaction required a flush first.</summary>
     ManualCompaction = 0x04,
-    ManualFlush = 0x05,
-    CheckPoint = 0x06,
-    TableMetaWrite = 0x07,
-    WalFull = 0x08,
-    WriteBufferFull = 0x09,
-    WriteBufferManager = 0x0a,
-    BufferLimit = 0x0b,
-    SleepInterval = 0x0c,
+
+    /// <summary>The write buffer manager asked for memory back.</summary>
+    WriteBufferManager = 0x05,
+
+    /// <summary>The memtable reached <see cref="DbOptions.WriteBufferSize"/>.</summary>
+    WriteBufferFull = 0x06,
+
+    /// <summary>Internal to RocksDb's own tests.</summary>
+    Test = 0x07,
+
+    /// <summary>A file deletion required a flush first.</summary>
+    DeleteFiles = 0x08,
+
+    /// <summary>An automatic compaction required a flush first.</summary>
+    AutoCompaction = 0x09,
+
+    /// <summary>An explicit <see cref="RocksDb.Flush(FlushOptions)"/>.</summary>
+    ManualFlush = 0x0a,
+
+    /// <summary>Recovering from a background error.</summary>
+    ErrorRecovery = 0x0b,
+
+    /// <summary>A retried flush during error recovery.</summary>
+    ErrorRecoveryRetryFlush = 0x0c,
+
+    /// <summary>The write-ahead log reached its size limit.</summary>
+    WalFull = 0x0d,
+
+    /// <summary>Catching up after error recovery completed.</summary>
+    CatchUpAfterErrorRecovery = 0x0e,
+
+    /// <summary>The memtable accumulated too many range deletions.</summary>
+    MemtableMaxRangeDeletions = 0x0f,
 }
 
 /// <summary>
-/// Mapped from rocksdb::BackgroundErrorReason in status.h
+/// What RocksDb was doing when a background error occurred, mapped from
+/// <c>rocksdb::BackgroundErrorReason</c> in <c>listener.h</c>.
 /// </summary>
-public enum BackgroundErrorReason : uint
+/// <remarks>
+/// The values are positional in the native header and must match it exactly.
+/// </remarks>
+public enum BackgroundErrorReason
 {
+    /// <summary>Flushing a memtable.</summary>
     Flush = 0,
+
+    /// <summary>Running a compaction.</summary>
     Compaction = 1,
+
+    /// <summary>Invoking a write callback.</summary>
     WriteCallback = 2,
-    MemTableSealing = 3,
+
+    /// <summary>Writing to the memtable.</summary>
+    MemTable = 3,
+
+    /// <summary>Writing the manifest.</summary>
     ManifestWrite = 4,
-    FlushNoSpace = 5,
-    CompactionNoSpace = 6,
+
+    /// <summary>Flushing with the write-ahead log disabled.</summary>
+    FlushNoWal = 5,
+
+    /// <summary>Writing the manifest with the write-ahead log disabled.</summary>
+    ManifestWriteNoWal = 6,
+
+    /// <summary>Opening a file asynchronously.</summary>
+    AsyncFileOpen = 7,
 }
 
-/// <summary>Describes the write stall condition of a column family.</summary>
-public enum WriteStallCondition : int
+/// <summary>
+/// The write stall state of a column family, mapped from
+/// <c>rocksdb::WriteStallCondition</c> in <c>types.h</c>.
+/// </summary>
+/// <remarks>
+/// Note the native ordering: <c>kNormal</c> is last, not first, because RocksDb
+/// adds new stall conditions before it. Assuming the conventional
+/// normal-first order inverts the signal, reporting the onset of a stall as
+/// normal operation and recovery as a stop.
+/// </remarks>
+public enum WriteStallCondition
 {
-    Normal = 0,
-    Delayed = 1,
-    Stopped = 2
+    /// <summary>Writes are being slowed down.</summary>
+    Delayed = 0,
+
+    /// <summary>Writes are stopped.</summary>
+    Stopped = 1,
+
+    /// <summary>No stall; writes proceed at full speed.</summary>
+    Normal = 2,
 }
 
 /// <summary>Information about a completed flush job.</summary>
