@@ -11,6 +11,12 @@ public sealed class CompactRangeOptions : RocksDbHandle
     /// <summary>If true, no other compaction will run at the same time as this one.</summary>
     public bool ExclusiveManualCompaction
     {
+        // The C API has a getter for this, so there was no reason for the
+        // property to be write-only. Every other write-only property on this
+        // type has since gained a getter too; the ones that remain write-only
+        // elsewhere in the library are the ones the C API genuinely cannot
+        // read back.
+        get => NativeMethods.rocksdb_compactoptions_get_exclusive_manual_compaction(Handle) != 0;
         set => NativeMethods.rocksdb_compactoptions_set_exclusive_manual_compaction(Handle, value ? (byte)1 : (byte)0);
     }
 

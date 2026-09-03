@@ -236,15 +236,32 @@ public sealed class BackupEngine : RocksDbHandle
     }
 
     /// <summary>Returns metadata for all available backups (newest first).</summary>
-    public IEnumerable<BackupInfo> AsEnumerable()
+    /// <remarks>
+    /// <para>
+    /// Read in full before returning, rather than streamed. This used to be a
+    /// lazy iterator holding the native info object open across the caller's
+    /// loop body, which leaked it outright if the enumerator was abandoned
+    /// without being disposed: the object was a bare pointer in a local with no
+    /// owner, so no finalizer would ever release it.
+    /// </para>
+    /// <para>
+    /// Reading eagerly costs nothing worth counting, since a backup directory
+    /// holds tens of entries carrying a few numbers each, and it means the
+    /// native snapshot lives only for the duration of this call instead of for
+    /// as long as the caller takes to iterate.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<BackupInfo> AsEnumerable()
     {
         nint info = NativeMethods.rocksdb_backup_engine_get_backup_info(Handle);
         try
         {
             int count = NativeMethods.rocksdb_backup_engine_info_count(info);
+            var backups = new BackupInfo[count];
+
             for (int i = 0; i < count; i++)
             {
-                yield return new BackupInfo(
+                backups[i] = new BackupInfo(
                     BackupId: NativeMethods.rocksdb_backup_engine_info_backup_id(info, i),
                     Timestamp: NativeMethods.rocksdb_backup_engine_info_timestamp(info, i),
                     Size: NativeMethods.rocksdb_backup_engine_info_size(info, i),
@@ -253,6 +270,8 @@ public sealed class BackupEngine : RocksDbHandle
                     AppMetadata = ReadAppMetadata(info, i),
                 };
             }
+
+            return backups;
         }
         finally
         {

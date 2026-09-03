@@ -143,12 +143,27 @@ public abstract class CompactionFilter : RocksDbHandle
 
             FilterDecision decision = self.Filter(level, keySpan, valSpan, out byte[]? newVal);
 
-            if (decision == FilterDecision.ChangeValue && newVal is { Length: > 0 })
+            // `is not null`, not `is { Length: > 0 }`. Requiring a positive
+            // length meant that replacing a value with an empty one was
+            // silently ignored and the old value kept, even though RocksDb
+            // accepts an empty replacement. A filter that blanks a value had no
+            // way to say so, and got no error either.
+            if (decision == FilterDecision.ChangeValue && newVal is not null)
             {
-                nint buf = Marshal.AllocHGlobal(newVal.Length);
+                // At least one byte, so the pointer handed to RocksDb is always
+                // valid and non-null even for an empty replacement. RocksDb
+                // does a std::string::assign of the reported length, and while
+                // a zero count would not dereference the pointer, passing a
+                // real allocation avoids depending on that.
+                nint buf = Marshal.AllocHGlobal(Math.Max(newVal.Length, 1));
                 self._lastNewValueBufsByThread[threadId] = buf;
                 self._newValueBufs.TryAdd(buf, 0);
-                Marshal.Copy(newVal, 0, buf, newVal.Length);
+
+                if (newVal.Length > 0)
+                {
+                    Marshal.Copy(newVal, 0, buf, newVal.Length);
+                }
+
                 *newValue = (byte*)buf;
                 *newValueLen = (nuint)newVal.Length;
                 *valueChanged = 1;

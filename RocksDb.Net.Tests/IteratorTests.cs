@@ -226,8 +226,14 @@ public class IteratorTests
         Assert.Equal("cf_val", iter.ValueAsString());
     }
 
+    /// <summary>
+    /// This test previously counted <c>MoveNext</c> calls and asserted three,
+    /// with a comment explaining that the enumerator skipped the first entry
+    /// and returned true once past the last. It now checks what the name
+    /// always claimed: that every entry is visited, once, in order.
+    /// </summary>
     [Fact]
-    public void GetEnumerator_IteratesAll()
+    public void GetEnumerator_IteratesEveryEntryOnceInOrder()
     {
         using var db = new TempDb();
         db.Db.Put("a", "1");
@@ -237,20 +243,63 @@ public class IteratorTests
         using var iter = db.Db.NewIterator();
         iter.SeekToFirst();
 
-        var enumerator = iter.GetEnumerator();
+        var seen = new List<string>();
+        Iterator.Enumerator enumerator = iter.GetEnumerator();
 
-        // Verify we can read current position before MoveNext
-        Assert.Equal("a", Encoding.UTF8.GetString(enumerator.CurrentKey));
-
-        // MoveNext advances the iterator; it checks IsValid before calling Next,
-        // so it returns true one extra time after the last valid entry.
-        int moveNextCount = 0;
         while (enumerator.MoveNext())
         {
-            moveNextCount++;
+            seen.Add(
+                $"{Encoding.UTF8.GetString(enumerator.CurrentKey)}=" +
+                Encoding.UTF8.GetString(enumerator.CurrentValue));
         }
 
-        // MoveNext returns true 3 times (valid at a→Next, valid at b→Next, valid at c→Next)
-        Assert.Equal(3, moveNextCount);
+        Assert.Equal(["a=1", "b=2", "c=3"], seen);
+    }
+
+    /// <summary>
+    /// And the point of having a <c>Current</c> at all: <c>foreach</c> now
+    /// compiles against an iterator, which it could not before.
+    /// </summary>
+    [Fact]
+    public void GetEnumerator_WorksWithForeach()
+    {
+        using var db = new TempDb();
+        db.Db.Put("a", "1");
+        db.Db.Put("b", "2");
+        db.Db.Put("c", "3");
+
+        using var iter = db.Db.NewIterator();
+        iter.SeekToFirst();
+
+        var seen = new List<string>();
+
+        foreach (Iterator.Entry entry in iter)
+        {
+            seen.Add(
+                $"{Encoding.UTF8.GetString(entry.Key)}={Encoding.UTF8.GetString(entry.Value)}");
+        }
+
+        Assert.Equal(["a=1", "b=2", "c=3"], seen);
+    }
+
+    /// <summary>
+    /// An empty range yields nothing rather than one bogus entry, which is the
+    /// other half of the old off-by-one.
+    /// </summary>
+    [Fact]
+    public void GetEnumerator_OnAnEmptyDatabaseYieldsNothing()
+    {
+        using var db = new TempDb();
+
+        using var iter = db.Db.NewIterator();
+        iter.SeekToFirst();
+
+        int count = 0;
+        foreach (Iterator.Entry _ in iter)
+        {
+            count++;
+        }
+
+        Assert.Equal(0, count);
     }
 }
