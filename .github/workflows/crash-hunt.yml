@@ -1,0 +1,108 @@
+# DO NOT MERGE THIS BRANCH.
+#
+# A throwaway workflow for hunting the intermittent test-host crash first seen
+# on Ubuntu, where a run died after 968 of 979 tests with no test attributed.
+# It lives on the ci/crash-hunt branch only and exists to be re-run, not kept.
+#
+# Why it is shaped like this. Re-running the real Build workflow costs about
+# three minutes per attempt, almost all of it checkout, SDK setup and building
+# three target frameworks on three operating systems, to get one ~20 second
+# test run out the far end. Twenty attempts that way is an hour of waiting for
+# seven minutes of testing.
+#
+# So: Ubuntu only, since that is where the crash appeared and it is the fastest
+# runner, and one job that builds once and then loops the test run twenty
+# times. Same seven minutes of testing, about eight minutes of wall clock.
+name: Crash hunt
+
+on:
+  push:
+    branches: [ 'ci/crash-hunt' ]
+  workflow_dispatch:
+    inputs:
+      iterations:
+        description: 'How many times to run the suite'
+        required: false
+        default: '20'
+
+jobs:
+  hunt:
+    name: Hunt (ubuntu, looped)
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Setup .NET SDKs
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: |
+          8.0.x
+          9.0.x
+          10.0.x
+
+    - name: Build
+      shell: bash
+      run: |
+        dotnet restore
+        dotnet build -c Release --no-restore -warnaserror
+
+    - name: Run the suite repeatedly
+      shell: bash
+      env:
+        TMP: ${{ runner.temp }}
+        TEMP: ${{ runner.temp }}
+        ITERATIONS: ${{ github.event.inputs.iterations || '20' }}
+      run: |
+        # No coverage collection here. It adds time to every iteration and the
+        # coverage gate is the real workflow's job, not this one's.
+        #
+        # Each iteration gets its own results directory so a crash dump and
+        # sequence file are not overwritten by the iterations after it, and so
+        # the directory name says which attempt failed.
+        failed=0
+
+        for i in $(seq 1 "$ITERATIONS"); do
+          echo "::group::iteration $i of $ITERATIONS"
+
+          if dotnet test -c Release --no-build \
+               --blame-crash \
+               --blame-crash-dump-type mini \
+               --blame-hang-timeout 5m \
+               --blame-hang-dump-type none \
+               --results-directory "TestResults/iteration-$i"; then
+            echo "iteration $i: pass"
+          else
+            echo "::error::iteration $i failed"
+            failed=$i
+          fi
+
+          echo "::endgroup::"
+
+          # Stop on the first failure. Continuing would keep running for
+          # minutes after the interesting thing has already happened, and the
+          # evidence is already on disk.
+          if [ "$failed" -ne 0 ]; then
+            break
+          fi
+        done
+
+        if [ "$failed" -ne 0 ]; then
+          echo "::error::caught a failure on iteration $failed of $ITERATIONS"
+          exit 1
+        fi
+
+        echo "all $ITERATIONS iterations passed"
+
+    - name: Upload the evidence
+      if: failure()
+      uses: actions/upload-artifact@v7
+      with:
+        name: crash-hunt-results
+        path: |
+          TestResults/**/Sequence_*.xml
+          TestResults/**/*.dmp
+          TestResults/**/*.core*
+          TestResults/**/*.trx
+        if-no-files-found: ignore
+        retention-days: 14
