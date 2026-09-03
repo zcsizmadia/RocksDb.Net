@@ -27,7 +27,7 @@ public abstract class Comparator : RocksDbHandle
     private delegate void DestructorDelegate(nint state);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    public unsafe delegate int CompareDelegate(
+    private unsafe delegate int CompareDelegate(
         nint state,
         byte* keyA, nuint keyALen,
         byte* keyB, nuint keyBLen);
@@ -84,6 +84,14 @@ public abstract class Comparator : RocksDbHandle
 
     // ── Construction ─────────────────────────────────────────────────────────
 
+    /// <summary>Creates a comparator with the given name.</summary>
+    /// <param name="name">
+    /// Identifies the ordering this comparator implements. RocksDb records it
+    /// in the database and refuses to reopen with a comparator whose name
+    /// differs, which is what stops data being read back in an order it was
+    /// not written in. Change the name only when the ordering itself changes,
+    /// and never reuse a name for different semantics.
+    /// </param>
     protected unsafe Comparator(string name)
     {
         ArgumentException.ThrowIfNullOrEmpty(name);

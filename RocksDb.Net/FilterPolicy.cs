@@ -11,11 +11,27 @@ public sealed class FilterPolicy : RocksDbHandle
     {
     }
 
-    /// <summary>Creates a partitioned block-based Bloom filter.</summary>
+    /// <summary>
+    /// Creates a Bloom filter in RocksDb's original on-disk format.
+    /// </summary>
+    /// <remarks>
+    /// Prefer <see cref="CreateBloomFull"/>. Both produce a Bloom filter of the
+    /// same size and accuracy and neither has anything to do with
+    /// partitioning, which is <see cref="BlockBasedTableOptions.PartitionFilters"/>.
+    /// The only difference is the legacy record format, kept for compatibility
+    /// with databases written by very old RocksDb versions.
+    /// </remarks>
     public static FilterPolicy CreateBloom(double bitsPerKey)
         => new(NativeMethods.rocksdb_filterpolicy_create_bloom(bitsPerKey));
 
-    /// <summary>Creates a full (non-partitioned) Bloom filter.</summary>
+    /// <summary>
+    /// Creates a Bloom filter in RocksDb's current on-disk format. This is the
+    /// one to use.
+    /// </summary>
+    /// <remarks>
+    /// Differs from <see cref="CreateBloom"/> only in the on-disk record
+    /// format, not in partitioning or in filter quality.
+    /// </remarks>
     public static FilterPolicy CreateBloomFull(double bitsPerKey)
         => new(NativeMethods.rocksdb_filterpolicy_create_bloom_full(bitsPerKey));
 

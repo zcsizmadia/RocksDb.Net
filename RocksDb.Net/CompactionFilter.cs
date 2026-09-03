@@ -173,6 +173,11 @@ public abstract class CompactionFilter : RocksDbHandle
 
     // ── Construction ─────────────────────────────────────────────────────────
 
+    /// <summary>Creates a compaction filter with the given name.</summary>
+    /// <param name="name">
+    /// Identifies the filter in RocksDb's logs and options output. Not
+    /// enforced on reopen.
+    /// </param>
     protected unsafe CompactionFilter(string name)
     {
         ArgumentException.ThrowIfNullOrEmpty(name);
@@ -193,14 +198,48 @@ public abstract class CompactionFilter : RocksDbHandle
 
     // ── Properties ───────────────────────────────────────────────────────────
     /// <summary>
-    /// When <c>true</c>, the filter is not invoked for entries that are still
-    /// visible under a live snapshot. Defaults to <c>false</c>.
+    /// Whether the filter runs regardless of live snapshots. Always
+    /// <see langword="true"/>, and setting it to <see langword="false"/> is not
+    /// usable.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Three corrections to what this looks like it does. It defaults to
+    /// <see langword="true"/>, not <see langword="false"/>. <see langword="true"/>
+    /// means the filter <em>is</em> applied to every entry, not that it is
+    /// skipped for snapshotted ones. And RocksDb has deprecated the setting:
+    /// snapshots are always ignored for compaction filters, because not
+    /// ignoring them never gave the guarantee it appeared to.
+    /// </para>
+    /// <para>
+    /// Setting it to <see langword="false"/> does not restore the old
+    /// behaviour; RocksDb fails table file creation instead, so compaction
+    /// stops working. That is why <see langword="false"/> throws here rather
+    /// than being passed through to break compaction later, at a point far
+    /// from the call that caused it. Setting <see langword="true"/> is allowed
+    /// and does nothing, since it is already true.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="NotSupportedException">
+    /// The value is <see langword="false"/>.
+    /// </exception>
+    [Obsolete(
+        "RocksDb has deprecated this and always ignores snapshots for compaction filters. " +
+        "Setting false fails table file creation.", error: false)]
     public bool IgnoreSnapshots
     {
         set
         {
-            NativeMethods.rocksdb_compactionfilter_set_ignore_snapshots(Handle, value ? (byte)1 : (byte)0);
+            if (!value)
+            {
+                throw new NotSupportedException(
+                    "RocksDb always ignores snapshots for compaction filters and has deprecated " +
+                    "this setting. Returning false from IgnoreSnapshots makes RocksDb fail table " +
+                    "file creation, which stops compaction, so this wrapper refuses the value " +
+                    "rather than letting the failure surface later during a compaction.");
+            }
+
+            NativeMethods.rocksdb_compactionfilter_set_ignore_snapshots(Handle, 1);
         }
     }
 

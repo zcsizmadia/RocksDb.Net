@@ -6,30 +6,129 @@ namespace RocksDbNet;
 /// <summary>Compression algorithm used by RocksDb.</summary>
 public enum Compression
 {
+    /// <summary>No compression. Fastest, largest on disk.</summary>
     None = 0,
+
+    /// <summary>
+    /// Snappy. Fast with modest ratios, and the traditional default.
+    /// </summary>
     Snappy = 1,
+
+    /// <summary>
+    /// Zlib. Better ratios than <see cref="Snappy"/> at a noticeably higher
+    /// CPU cost.
+    /// </summary>
     Zlib = 2,
+
+    /// <summary>
+    /// Bzip2. Strong ratios but slow enough that it is rarely the right
+    /// choice for live data.
+    /// </summary>
     Bz2 = 3,
+
+    /// <summary>
+    /// LZ4. Comparable ratios to <see cref="Snappy"/> and usually faster;
+    /// a good default for the upper levels.
+    /// </summary>
     Lz4 = 4,
+
+    /// <summary>
+    /// LZ4 in high-compression mode. Compresses harder and slower than
+    /// <see cref="Lz4"/> while decompressing just as fast, which suits data
+    /// written once and read often.
+    /// </summary>
     Lz4Hc = 5,
+
+    /// <summary>
+    /// Microsoft Xpress. Available only where the platform provides it, so
+    /// not portable.
+    /// </summary>
     Xpress = 6,
+
+    /// <summary>
+    /// Zstandard. The usual choice for the bottommost level: ratios near
+    /// <see cref="Zlib"/> with decompression closer to <see cref="Lz4"/>.
+    /// </summary>
     Zstd = 7,
 }
+
+// Whether a build actually supports a given algorithm depends on how the
+// native library was compiled. Selecting one that is missing fails at open
+// time rather than falling back silently.
 
 /// <summary>Compaction style.</summary>
 public enum CompactionStyle
 {
+    /// <summary>
+    /// Levelled compaction, the default. Keeps read amplification low and
+    /// space overhead small, at the cost of writing data several times as it
+    /// moves down the levels.
+    /// </summary>
     Level = 0,
+
+    /// <summary>
+    /// Universal compaction. Writes each piece of data far fewer times, so
+    /// write-heavy workloads go faster, but it can transiently need close to
+    /// twice the database size in free space and reads touch more files.
+    /// </summary>
     Universal = 1,
+
+    /// <summary>
+    /// First-in, first-out. Never really compacts; it deletes the oldest
+    /// files once a size or age bound is passed. For time-series and cache
+    /// data where losing the oldest entries is acceptable, and wrong for
+    /// anything that must be kept.
+    /// </summary>
     Fifo = 2,
 }
 
 /// <summary>WAL recovery mode.</summary>
 public enum WalRecoveryMode
 {
+    /// <summary>
+    /// Tolerates an incomplete final record in any log, which is what a crash
+    /// mid-write leaves behind, and refuses to open if corruption is found
+    /// anywhere else.
+    /// </summary>
+    /// <remarks>
+    /// Choose this when an applied update must never be rolled back, even by
+    /// a crash. The difference from <see cref="PointInTime"/> is what happens
+    /// on real corruption: this refuses to open, rather than recovering up to
+    /// the damage and discarding the rest.
+    /// </remarks>
     TolerateCorruptedTailRecords = 0,
+
+    /// <summary>
+    /// Expects a clean shutdown and treats any corruption at all, including an
+    /// incomplete tail record, as a failure to open.
+    /// </summary>
+    /// <remarks>
+    /// The strictest mode. Good for tests and for applications that would
+    /// rather fail loudly than start with less data than they wrote.
+    /// </remarks>
     AbsoluteConsistency = 1,
+
+    /// <summary>
+    /// Replays the log until the first inconsistency and stops there,
+    /// discarding everything after it. RocksDb's default.
+    /// </summary>
+    /// <remarks>
+    /// The recovered state is a real point in time, so it is consistent, but
+    /// writes after the damage are silently lost. Suited to storage that can
+    /// lose a tail of writes, such as a disk with a volatile write cache.
+    /// </remarks>
     PointInTime = 2,
+
+    /// <summary>
+    /// Ignores corruption wherever it appears and salvages whatever records
+    /// can still be read.
+    /// </summary>
+    /// <remarks>
+    /// A last resort. The result is not a point in time: records from after a
+    /// corrupt stretch can be applied while earlier ones are lost, so the
+    /// database can come back in a state no writer ever produced. Use it to
+    /// rescue data, not to run on.
+    /// </remarks>
     SkipAnyCorruptedRecords = 3,
 }
 
@@ -198,7 +297,15 @@ public sealed class DbOptions : RocksDbHandle
         set => NativeMethods.rocksdb_options_set_disable_auto_compactions(Handle, value ? 1 : 0);
     }
 
-    /// <summary>If true, allow ingesting behind the database.</summary>
+    /// <summary>
+    /// If true, allow ingesting files below the existing data. Deprecated by
+    /// RocksDb; prefer <see cref="CfAllowIngestBehind"/>.
+    /// </summary>
+    /// <remarks>
+    /// This is the old database-wide form. RocksDb has deprecated it in favour
+    /// of the per-column-family setting, so use
+    /// <see cref="CfAllowIngestBehind"/> for new code.
+    /// </remarks>
     public bool AllowIngestBehind
     {
         get => NativeMethods.rocksdb_options_get_allow_ingest_behind(Handle) != 0;
@@ -385,14 +492,30 @@ public sealed class DbOptions : RocksDbHandle
         set => NativeMethods.rocksdb_options_set_WAL_ttl_seconds(Handle, value);
     }
 
-    /// <summary>Total WAL size limit in MB before old WAL files are archived.</summary>
+    /// <summary>
+    /// Size cap in MB on the <em>archive</em> of obsolete write-ahead logs.
+    /// Once the archive exceeds it, the oldest archived logs are deleted until
+    /// it fits.
+    /// </summary>
+    /// <remarks>
+    /// This governs deletion, not archiving. Archiving is what happens when
+    /// either this or <see cref="WalTtlSeconds"/> is non-zero: while both are
+    /// zero, an obsolete log is deleted immediately and never archived at all.
+    /// </remarks>
     public ulong WalSizeLimitMb
     {
         get => NativeMethods.rocksdb_options_get_WAL_size_limit_MB(Handle);
         set => NativeMethods.rocksdb_options_set_WAL_size_limit_MB(Handle, value);
     }
 
-    /// <summary>Bytes synced per WAL write (0 = sync after every write).</summary>
+    /// <summary>
+    /// Same as <see cref="BytesPerSync"/> but for write-ahead log files. Zero
+    /// turns incremental syncing off, which is the default.
+    /// </summary>
+    /// <remarks>
+    /// Zero means off, not "sync after every write". For durability per write,
+    /// use <see cref="WriteOptions.Sync"/> instead.
+    /// </remarks>
     public ulong WalBytesPerSync
     {
         get => NativeMethods.rocksdb_options_get_wal_bytes_per_sync(Handle);
@@ -489,7 +612,18 @@ public sealed class DbOptions : RocksDbHandle
 
     // ── Misc ──────────────────────────────────────────────────────────────────
 
-    /// <summary>Bytes to sync to storage per write operation (0 = sync everything).</summary>
+    /// <summary>
+    /// Asks the operating system to sync this many bytes of an SST file
+    /// incrementally while it is being written. Zero turns incremental syncing
+    /// off, which is the default.
+    /// </summary>
+    /// <remarks>
+    /// Zero means off, not "sync everything". The point of the setting is to
+    /// spread write-back over time so a large file does not arrive at the disk
+    /// in one burst at the end. Enabling a rate limiter raises this to 1 MB on
+    /// its own. Does not apply to write-ahead log files; see
+    /// <see cref="WalBytesPerSync"/> for those.
+    /// </remarks>
     public ulong BytesPerSync
     {
         get => NativeMethods.rocksdb_options_get_bytes_per_sync(Handle);
@@ -886,6 +1020,13 @@ public sealed class DbOptions : RocksDbHandle
     // ── Event listener ──────────────────────────────────
 
     /// <summary>Adds an event listener to receive database event notifications.</summary>
+    /// <remarks>
+    /// This appends rather than replaces, despite being a property setter.
+    /// Assigning twice installs two listeners and both receive every event;
+    /// the second assignment does not displace the first. There is no way to
+    /// remove one afterwards. Ownership of the listener transfers to these
+    /// options.
+    /// </remarks>
     public EventListener EventListener
     {
         set
@@ -897,6 +1038,10 @@ public sealed class DbOptions : RocksDbHandle
     }
 
     /// <summary>Adds multiple event listeners to receive database event notifications.</summary>
+    /// <remarks>
+    /// Appends, as <see cref="EventListener"/> does, so this adds to any
+    /// listeners already installed rather than replacing them.
+    /// </remarks>
     public IEnumerable<EventListener> EventListeners
     {
         set
@@ -935,7 +1080,16 @@ public sealed class DbOptions : RocksDbHandle
     public ulong GetTickerCount(uint tickerType)
         => NativeMethods.rocksdb_options_statistics_get_ticker_count(Handle, tickerType);
 
-    /// <summary>Returns histogram data for a statistics histogram type.</summary>
+    /// <summary>
+    /// Returns histogram data for a statistics histogram type. Returns
+    /// all-zero data, not <see langword="null"/>, when no statistics object is
+    /// attached.
+    /// </summary>
+    /// <remarks>
+    /// An all-zero result is therefore ambiguous: it means either "no samples
+    /// recorded" or "statistics were never enabled". Attach a statistics object
+    /// with <see cref="EnableStatistics"/> before relying on the numbers.
+    /// </remarks>
     public HistogramData? GetHistogramData(uint histogramType)
     {
         nint dataHandle = NativeMethods.rocksdb_statistics_histogram_data_create();
@@ -1682,7 +1836,14 @@ public sealed class DbOptions : RocksDbHandle
         set => NativeMethods.rocksdb_options_set_bgerror_resume_retry_interval(Handle, value);
     }
 
-    /// <summary>Number of partitions used when writing blob files directly.</summary>
+    /// <summary>
+    /// Number of partitions used when writing blob files directly. Requires
+    /// <see cref="EnableBlobDirectWrite"/>.
+    /// </summary>
+    /// <remarks>
+    /// Without direct blob writing enabled this setting does nothing, so set
+    /// both or neither.
+    /// </remarks>
     public uint BlobDirectWritePartitions
     {
         get => NativeMethods.rocksdb_options_get_blob_direct_write_partitions(Handle);
@@ -1703,7 +1864,17 @@ public sealed class DbOptions : RocksDbHandle
         set => NativeMethods.rocksdb_options_set_bottommost_file_compaction_delay(Handle, value);
     }
 
-    /// <summary>If true, this column family permits ingesting files below the existing data, which is required by IngestExternalFileOptions.IngestBehind.</summary>
+    /// <summary>
+    /// If true, this column family permits ingesting files below the existing
+    /// data, which is required by
+    /// <see cref="IngestExternalFileOptions.IngestBehind"/>. This is the
+    /// setting to use, in preference to <see cref="AllowIngestBehind"/>.
+    /// </summary>
+    /// <remarks>
+    /// It has to be set from the moment the column family is created, or at
+    /// least before anything is written to it. Turning it on for a family that
+    /// already holds data does not make ingest-behind work for that family.
+    /// </remarks>
     public bool CfAllowIngestBehind
     {
         get => NativeMethods.rocksdb_options_get_cf_allow_ingest_behind(Handle) != 0;
@@ -1762,7 +1933,16 @@ public sealed class DbOptions : RocksDbHandle
         set => NativeMethods.rocksdb_options_set_delayed_write_rate(Handle, value);
     }
 
-    /// <summary>If true, writes to the memtable are rejected. Used by read-only and ingest-only configurations.</summary>
+    /// <summary>
+    /// If true, writes to this column family's memtable are rejected, which
+    /// guards a family that is only ever populated by file ingestion. Not
+    /// supported on the default column family.
+    /// </summary>
+    /// <remarks>
+    /// RocksDb rejects this setting on the <c>"default"</c> column family
+    /// because of the error-handling difficulties it creates there, so it is
+    /// only usable on a family you created yourself.
+    /// </remarks>
     public bool DisallowMemtableWrites
     {
         get => NativeMethods.rocksdb_options_get_disallow_memtable_writes(Handle) != 0;
@@ -1797,7 +1977,17 @@ public sealed class DbOptions : RocksDbHandle
         set => NativeMethods.rocksdb_options_set_enforce_write_buffer_manager_during_recovery(Handle, value ? (byte)1 : (byte)0);
     }
 
-    /// <summary>If true, SST files are opened with less upfront validation, trading open-time checking for speed.</summary>
+    /// <summary>
+    /// If true, file system metadata for SST files is recorded in the manifest
+    /// and reused to speed up reopening them. Experimental.
+    /// </summary>
+    /// <remarks>
+    /// No validation is skipped, and nothing is traded away for the speed. The
+    /// saving comes from not having to ask the file system again for metadata
+    /// already known at write time, which matters most on remote storage where
+    /// those calls are slow. Requires file system support; without it the
+    /// setting simply does nothing.
+    /// </remarks>
     public bool FastSstOpen
     {
         get => NativeMethods.rocksdb_options_get_fast_sst_open(Handle) != 0;
@@ -2063,7 +2253,17 @@ public sealed class DbOptions : RocksDbHandle
         set => NativeMethods.rocksdb_options_set_uncache_aggressiveness(Handle, value);
     }
 
-    /// <summary>If true, compaction reads bypass the OS page cache. Note this is the column-family level setting, distinct from the database-wide flush and compaction option.</summary>
+    /// <summary>
+    /// If true, compaction reads its input SST files with O_DIRECT, bypassing
+    /// the OS page cache, while ordinary user reads stay buffered.
+    /// </summary>
+    /// <remarks>
+    /// A database-level option, not a column-family one. It exists so that the
+    /// long sequential reads a compaction performs do not evict the working set
+    /// that user reads depend on. It is the read-side counterpart to
+    /// <see cref="UseDirectIoForFlushAndCompaction"/>, and the two are often set
+    /// together.
+    /// </remarks>
     public bool UseDirectIoForCompactionReads
     {
         get => NativeMethods.rocksdb_options_get_use_direct_io_for_compaction_reads(Handle) != 0;

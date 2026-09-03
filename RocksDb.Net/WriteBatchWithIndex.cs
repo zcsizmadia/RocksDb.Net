@@ -5,8 +5,14 @@ namespace RocksDbNet;
 /// <summary>
 /// An atomic write batch that also indexes its own contents, so it can be
 /// read back before it is applied. Maps to <c>rocksdb_writebatch_wi_t</c>.
-/// Maps to <c>rocksdb_writebatch_wi_t</c>.
 /// </summary>
+/// <remarks>
+/// Apply it with <see cref="RocksDb.Write(WriteBatchWithIndex, WriteOptions)"/>.
+/// To read pending writes before applying them, use
+/// <see cref="GetFromBatch(DbOptions, ReadOnlySpan{byte})"/> for the batch
+/// alone, or <see cref="GetFromBatchAndDb(RocksDb, ReadOnlySpan{byte}, ReadOptions)"/>
+/// to see the batch layered over the committed database.
+/// </remarks>
 public sealed class WriteBatchWithIndex : RocksDbHandle
 {
     /// <summary>Creates an empty write batch.</summary>

@@ -165,6 +165,16 @@ public sealed class Iterator : RocksDbHandle
         CheckForError();
     }
 
+    /// <summary>
+    /// Receives one key and value during <see cref="ForEach"/>.
+    /// </summary>
+    /// <param name="key">
+    /// The current key. Valid only for the duration of the call, because it
+    /// points into the iterator's buffer; copy it to keep it.
+    /// </param>
+    /// <param name="value">
+    /// The current value, with the same lifetime as <paramref name="key"/>.
+    /// </param>
     public delegate void ForEachDelegate(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value);
 
     /// <summary>
@@ -190,12 +200,29 @@ public sealed class Iterator : RocksDbHandle
     /// <returns>An enumerator that can be used to iterate through the collection.</returns>
     public Enumerator GetEnumerator() => new Enumerator(this);
 
+    /// <summary>
+    /// Walks an iterator without allocating, yielding spans that point
+    /// straight at the iterator's buffers.
+    /// </summary>
+    /// <remarks>
+    /// A <see langword="ref struct"/>, so it cannot be boxed, stored in a
+    /// field, or used across an <see langword="await"/>. That is deliberate:
+    /// the spans it hands out are only valid until the iterator moves, and
+    /// those restrictions are what stop one outliving its data.
+    /// </remarks>
     public ref struct Enumerator
     {
         private readonly Iterator _iterator;
 
         internal Enumerator(Iterator iterator) { _iterator = iterator; }
 
+        /// <summary>
+        /// Advances to the next entry.
+        /// </summary>
+        /// <returns>
+        /// <see langword="true"/> if there is an entry to read;
+        /// <see langword="false"/> once the iterator is exhausted.
+        /// </returns>
         public bool MoveNext()
         {
             if (!_iterator.IsValid())
@@ -208,8 +235,14 @@ public sealed class Iterator : RocksDbHandle
             return true;
         }
 
+        /// <summary>
+        /// The current key. Invalidated by the next <see cref="MoveNext"/>.
+        /// </summary>
         public ReadOnlySpan<byte> CurrentKey => _iterator.Key();
 
+        /// <summary>
+        /// The current value. Invalidated by the next <see cref="MoveNext"/>.
+        /// </summary>
         public ReadOnlySpan<byte> CurrentValue => _iterator.Value();
     }
 

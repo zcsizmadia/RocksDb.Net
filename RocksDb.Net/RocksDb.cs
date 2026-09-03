@@ -50,6 +50,11 @@ public sealed class RocksDb : RocksDbHandle
     // ─────────────────────────────────────────────────────────────────────────
 
     /// <summary>Opens (or creates) a database at <paramref name="path"/>.</summary>
+    /// <remarks>
+    /// The returned database takes ownership of <paramref name="options"/> and
+    /// disposes it when the database is disposed. Do not dispose it yourself and
+    /// do not reuse it for a second open.
+    /// </remarks>
     public static RocksDb Open(DbOptions options, string path)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -65,8 +70,16 @@ public sealed class RocksDb : RocksDbHandle
     /// <summary>
     /// Opens the database with an explicit set of column families.
     /// The <c>"default"</c> column family must always be included.
-    /// Returns the database and one <see cref="ColumnFamilyHandle"/> per descriptor.
     /// </summary>
+    /// <remarks>
+    /// Returns the database only. The handles are registered internally rather
+    /// than returned, so reach them with
+    /// <see cref="GetColumnFamily"/>; the database disposes them for you.
+    /// <para>
+    /// The returned database takes ownership of <paramref name="options"/> and
+    /// disposes it when the database is disposed.
+    /// </para>
+    /// </remarks>
     public static unsafe RocksDb Open(DbOptions options, string path, IReadOnlyList<ColumnFamilyDescriptor> columnFamilies)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -108,6 +121,10 @@ public sealed class RocksDb : RocksDbHandle
     }
 
     /// <summary>Opens an existing database in read-only mode.</summary>
+    /// <remarks>
+    /// The returned database takes ownership of <paramref name="options"/> and
+    /// disposes it when the database is disposed.
+    /// </remarks>
     public static RocksDb OpenReadOnly(DbOptions options, string path, bool errorIfWalExists = false)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -121,7 +138,16 @@ public sealed class RocksDb : RocksDbHandle
         return new RocksDb(handle, options);
     }
 
-    /// <summary>Opens an existing database in read-only mode.</summary>
+    /// <summary>
+    /// Opens an existing database in read-only mode with an explicit set of
+    /// column families. The <c>"default"</c> column family must always be
+    /// included.
+    /// </summary>
+    /// <remarks>
+    /// Returns the database only; reach the handles with
+    /// <see cref="GetColumnFamily"/>. The returned database takes ownership of
+    /// <paramref name="options"/> and disposes it.
+    /// </remarks>
     public static unsafe RocksDb OpenReadOnly(DbOptions options, string path, IReadOnlyList<ColumnFamilyDescriptor> columnFamilies, bool errorIfWalExists = false)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -1348,7 +1374,15 @@ public sealed class RocksDb : RocksDbHandle
     // Flush / Compact
     // ─────────────────────────────────────────────────────────────────────────
 
-    /// <summary>Flushes all memtables for all column families to storage.</summary>
+    /// <summary>
+    /// Flushes the memtable of the <c>"default"</c> column family to storage.
+    /// </summary>
+    /// <remarks>
+    /// The default family only, despite taking no column family argument. The
+    /// native call this maps to targets the default family, so other families
+    /// keep their unflushed memtables. To flush several, pass them to
+    /// <see cref="Flush(IReadOnlyList{ColumnFamilyHandle}, FlushOptions)"/>.
+    /// </remarks>
     public void Flush(FlushOptions? options = null)
     {
         nint err = default;
@@ -1366,6 +1400,11 @@ public sealed class RocksDb : RocksDbHandle
     }
 
     /// <summary>Flushes the specified column families.</summary>
+    /// <remarks>
+    /// An empty list is not "flush nothing": it falls through to
+    /// <see cref="Flush(FlushOptions)"/> and so flushes the <c>"default"</c>
+    /// family. If you mean to flush nothing, do not call this.
+    /// </remarks>
     public unsafe void Flush(IReadOnlyList<ColumnFamilyHandle> columnFamilies, FlushOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(columnFamilies);
@@ -1436,7 +1475,16 @@ public sealed class RocksDb : RocksDbHandle
                 limitKey.IsEmpty ? null : e, (nuint)limitKey.Length);
     }
 
-    /// <summary>Compacts the entire key-space using specified options.</summary>
+    /// <summary>
+    /// Triggers compaction on the key range
+    /// [<paramref name="startKey"/>, <paramref name="limitKey"/>) using the
+    /// given options.
+    /// </summary>
+    /// <remarks>
+    /// Omitting both bounds, or passing empty spans, compacts the whole
+    /// key-space. An empty <paramref name="startKey"/> means "from the first
+    /// key" and an empty <paramref name="limitKey"/> means "to the last".
+    /// </remarks>
     public unsafe void CompactRange(CompactRangeOptions options,
         ReadOnlySpan<byte> startKey = default, ReadOnlySpan<byte> limitKey = default)
     {
@@ -1681,7 +1729,28 @@ public sealed class RocksDb : RocksDbHandle
         }
     }
 
-    /// <summary>Returns <c>true</c> when the database has no known keys.</summary>
+    /// <summary>
+    /// Returns <see langword="true"/> when RocksDb's estimated key count is
+    /// zero. An estimate, and one that can read zero for a database that still
+    /// holds keys.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// RocksDb computes the estimate as the entry count minus <em>twice</em> the
+    /// deletion count, clamped at zero. The doubling is there because a
+    /// deletion is itself an entry, so it usually cancels out and the estimate
+    /// is close to right. It stops cancelling when keys are deleted that were
+    /// never present: each such deletion subtracts two from the estimate while
+    /// removing nothing, and enough of them drive it to zero while the real keys
+    /// are all still there.
+    /// </para>
+    /// <para>
+    /// Measured, so it is not hypothetical: 100 keys written and flushed, then
+    /// 100 deletions of keys that never existed, and this property reports
+    /// empty while every one of the 100 keys still reads back. Treat it as a
+    /// cheap hint and iterate when you need an answer you can rely on.
+    /// </para>
+    /// </remarks>
     public bool IsEmpty => GetPropertyInt("rocksdb.estimate-num-keys").GetValueOrDefault() == 0;
 
     /// <summary>Returns the unique identity of this database instance.</summary>

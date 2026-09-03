@@ -148,9 +148,16 @@ public sealed class BackupEngineOptions : RocksDbHandle
     }
 
     /// <summary>
-    /// Maximum number of backups to read metadata for when opening. A negative
-    /// value means all of them.
+    /// Caps how many of the latest non-corrupted backups are read when opening.
+    /// Has no effect through this library.
     /// </summary>
+    /// <remarks>
+    /// RocksDb honours this only for a read-only backup engine. Every engine
+    /// this library opens is writable, and for those the setting is ignored
+    /// because capping it would break the accounting of shared files that
+    /// backup deletion depends on. Kept for completeness; setting it changes
+    /// nothing.
+    /// </remarks>
     public int MaxValidBackupsToOpen
     {
         get => NativeMethods.rocksdb_backup_engine_options_get_max_valid_backups_to_open(Handle);
@@ -213,6 +220,10 @@ public sealed class BackupEngineOptions : RocksDbHandle
     /// disposing <paramref name="rateLimiter"/> and must keep it alive while the
     /// engine is in use. Prefer this over <see cref="BackupRateLimit"/> when the
     /// limiter is shared with other work.
+    /// <para>
+    /// Passing <see langword="null"/> does nothing rather than removing an
+    /// existing limiter, because the C API ignores a null argument.
+    /// </para>
     /// </remarks>
     public BackupEngineOptions SetBackupRateLimiter(RateLimiter? rateLimiter)
     {
@@ -221,7 +232,11 @@ public sealed class BackupEngineOptions : RocksDbHandle
     }
 
     /// <summary>Throttles restore I/O using a rate limiter object.</summary>
-    /// <remarks>Ownership works exactly as for <see cref="SetBackupRateLimiter"/>.</remarks>
+    /// <remarks>
+    /// Ownership works exactly as for <see cref="SetBackupRateLimiter"/>, and so
+    /// does the treatment of <see langword="null"/>: it is ignored, not a way to
+    /// remove a limiter.
+    /// </remarks>
     public BackupEngineOptions SetRestoreRateLimiter(RateLimiter? rateLimiter)
     {
         NativeMethods.rocksdb_backup_engine_options_set_restore_rate_limiter(Handle, rateLimiter?.Handle ?? nint.Zero);

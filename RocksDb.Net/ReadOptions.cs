@@ -142,7 +142,19 @@ public sealed class ReadOptions : RocksDbHandle
         set => NativeMethods.rocksdb_readoptions_set_tailing(Handle, value ? (byte)1 : (byte)0);
     }
 
-    /// <summary>Size of readahead for compaction reads, in bytes (0 = default).</summary>
+    /// <summary>
+    /// Readahead size in bytes for iteration and scans. Zero leaves RocksDb's
+    /// automatic readahead in charge.
+    /// </summary>
+    /// <remarks>
+    /// This applies to iterators, not to compaction. Compaction readahead is
+    /// <see cref="DbOptions.CompactionReadaheadSize"/>. By default RocksDb
+    /// already ramps readahead up on its own once it notices more than two
+    /// reads of a table file, starting at 8 KB and doubling to 256 KB, so
+    /// setting this only helps when scans are consistently larger than that.
+    /// Values above 2 MB mainly pay off for forward iteration on spinning
+    /// disks.
+    /// </remarks>
     public ulong ReadaheadSize
     {
         get => (ulong)NativeMethods.rocksdb_readoptions_get_readahead_size(Handle);
@@ -217,9 +229,25 @@ public sealed class ReadOptions : RocksDbHandle
     }
 
     /// <summary>
-    /// If true, a tailing iterator refreshes its snapshot as it goes, so it can
-    /// see data written after it was created.
+    /// If true, a long-running iterator periodically releases obsolete memory
+    /// and file resources while still showing the same point-in-time view.
+    /// Experimental, and does nothing unless a snapshot is set.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// It does not let the iterator see later writes. The opposite: it preserves
+    /// the snapshot view and refreshes only the underlying resources, so a
+    /// long-lived iterator stops pinning files and memory it no longer needs.
+    /// It requires <see cref="SetSnapshot"/> to have been given a snapshot, and
+    /// only takes effect while the iterator keeps making progress.
+    /// </para>
+    /// <para>
+    /// Marked experimental by RocksDb, which expects to default it to true
+    /// eventually. It has no effect on a transaction database using the
+    /// write-prepared or write-unprepared policies, which are currently
+    /// incompatible.
+    /// </para>
+    /// </remarks>
     public bool AutoRefreshIteratorWithSnapshot
     {
         get => NativeMethods.rocksdb_readoptions_get_auto_refresh_iterator_with_snapshot(Handle) != 0;
@@ -230,6 +258,12 @@ public sealed class ReadOptions : RocksDbHandle
     /// If true, an iterator may return an entry whose value has not been loaded
     /// yet, which avoids reading values the caller ends up skipping.
     /// </summary>
+    /// <remarks>
+    /// Applies to exactly two cases: large values held in blob files, and
+    /// iterators spanning several column families. Everywhere else it has no
+    /// effect at all, so setting it on an ordinary single-family iterator over
+    /// non-blob data changes nothing.
+    /// </remarks>
     public bool AllowUnpreparedValue
     {
         get => NativeMethods.rocksdb_readoptions_get_allow_unprepared_value(Handle) != 0;
@@ -247,9 +281,17 @@ public sealed class ReadOptions : RocksDbHandle
     }
 
     /// <summary>
-    /// Soft limit in bytes on the total size a multi-get returns. RocksDb stops
-    /// early once it is exceeded. 0 means no limit.
+    /// Soft limit in bytes on the cumulative value size a single multi-get
+    /// buffers. The default is <see cref="ulong.MaxValue"/>, which is the
+    /// effective "no limit".
     /// </summary>
+    /// <remarks>
+    /// Zero is not "no limit"; it is the smallest possible limit. The read
+    /// always makes progress, so at least one key is returned even when its
+    /// value alone exceeds the limit, and every key after the limit is crossed
+    /// comes back with an aborted status for the caller to retry. Setting zero
+    /// therefore reduces a multi-get to roughly one key per call.
+    /// </remarks>
     public ulong ValueSizeSoftLimit
     {
         get => NativeMethods.rocksdb_readoptions_get_value_size_soft_limit(Handle);
