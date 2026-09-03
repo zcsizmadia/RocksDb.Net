@@ -1,0 +1,46 @@
+name: Lint
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  markdown:
+    name: Markdown
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+
+    - uses: actions/setup-node@v6
+      with:
+        node-version: 22
+
+    - name: Lint Markdown
+      # Run the tool directly at a pinned version rather than through an action,
+      # so the only dependency is the package itself. Rules live in
+      # .markdownlint.jsonc, which markdownlint-cli2 discovers on its own.
+      run: npx --yes markdownlint-cli2@0.23.2 "**/*.md" "#**/node_modules/**"
+
+  actions:
+    name: Workflows
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Lint workflows
+      # actionlint ships a static binary, so pinning a release is simpler and
+      # more transparent than an action or an install script. It bundles
+      # shellcheck integration, which also covers the bash in our run steps.
+      env:
+        ACTIONLINT_VERSION: 1.7.12
+      run: |
+        curl -fsSL -o actionlint.tar.gz \
+          "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+        tar -xzf actionlint.tar.gz actionlint
+        ./actionlint -no-color -oneline

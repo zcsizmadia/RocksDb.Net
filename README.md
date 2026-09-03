@@ -83,6 +83,7 @@ db.Delete("hello");
 ```
 
 Important lifetime note:
+
 - `RocksDb.Open*` takes ownership of the `DbOptions` instance you pass in.
 - After opening, do not reuse that same `DbOptions` instance for other operations (for example `Destroy`, `Repair`, or `ListColumnFamilies`).
 - If you need options again, create a new `DbOptions` (or `Clone()` before passing ownership).
@@ -161,6 +162,7 @@ ulong total = BitConverter.ToUInt64(db.Get("visits"));
 ```
 
 Nested handle lifetime note:
+
 - `MergeOperator`, `CompactionFilterFactory`, and `EventListener` are transferred to native shared ownership when assigned to `DbOptions`.
 - `Comparator`, `CompactionFilter`, `Logger`, and `RateLimiter` are disposed with `DbOptions`.
 - In all cases, these objects must outlive the open `RocksDb` instance that uses them.
@@ -252,7 +254,7 @@ using var db = RocksDb.Open(options, "filtered_db");
 The [`Samples/`](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples) directory contains runnable examples:
 
 | Sample | Description |
-|--------|-------------|
+| -------- | ------------- |
 | [Basic](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples/Basic) | Basic open, put, get, delete |
 | [WriteBatchSample](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples/WriteBatchSample) | Atomic multi-key writes |
 | [IteratorSample](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples/IteratorSample) | Key-range scanning and seeking |
@@ -275,7 +277,7 @@ dotnet run --project Samples/Simple
 
 ## Architecture
 
-```
+```text
 RocksDb.Net/
 ├── Native/
 │   ├── NativeMethods.g.cs       # Auto-generated P/Invoke bindings (1,047 functions)

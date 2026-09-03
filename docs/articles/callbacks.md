@@ -16,7 +16,7 @@ Handlers run on whichever thread raised the exception, which is a RocksDb backgr
 Each callback degrades to the outcome that cannot lose or alter data:
 
 | Callback | Behaviour when it throws |
-|----------|--------------------------|
+| ---------- | -------------------------- |
 | `CompactionFilter.Filter` | Entry kept unchanged |
 | `CompactionFilterFactory.CreateFilter` | No filter for that compaction job |
 | `MergeOperator.FullMerge` | Merge fails, so the read reports a corruption error |
