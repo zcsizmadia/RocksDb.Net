@@ -38,6 +38,26 @@ public sealed class CompactRangeOptions : RocksDbHandle
         set => NativeMethods.rocksdb_compactoptions_set_max_subcompactions(Handle, value);
     }
 
+    /// <summary>
+    /// Whether this compaction collects blob-file garbage, overriding the column
+    /// family setting. Defaults to <see cref="RocksDbNet.BlobGarbageCollectionPolicy.UseDefault"/>.
+    /// </summary>
+    public BlobGarbageCollectionPolicy BlobGarbageCollectionPolicy
+    {
+        get => (BlobGarbageCollectionPolicy)NativeMethods.rocksdb_compactoptions_get_blob_garbage_collection_policy(Handle);
+        set => NativeMethods.rocksdb_compactoptions_set_blob_garbage_collection_policy(Handle, (int)value);
+    }
+
+    /// <summary>
+    /// The fraction of the oldest blob files considered for garbage collection,
+    /// from 0.0 to 1.0. A negative value falls back to the column family setting.
+    /// </summary>
+    public double BlobGarbageCollectionAgeCutoff
+    {
+        get => NativeMethods.rocksdb_compactoptions_get_blob_garbage_collection_age_cutoff(Handle);
+        set => NativeMethods.rocksdb_compactoptions_set_blob_garbage_collection_age_cutoff(Handle, value);
+    }
+
     public override void DisposeHandle()
     {
         NativeMethods.rocksdb_compactoptions_destroy(Handle);

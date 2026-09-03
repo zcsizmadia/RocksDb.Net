@@ -36,6 +36,16 @@ public sealed class WaitForCompactOptions : RocksDbHandle
         set => NativeMethods.rocksdb_wait_for_compact_options_set_timeout(Handle, value);
     }
 
+    /// <summary>
+    /// If true, the wait also covers purging obsolete files, not just finishing
+    /// compaction, so the database directory is fully settled when it returns.
+    /// </summary>
+    public bool WaitForPurge
+    {
+        get => NativeMethods.rocksdb_wait_for_compact_options_get_wait_for_purge(Handle) != 0;
+        set => NativeMethods.rocksdb_wait_for_compact_options_set_wait_for_purge(Handle, value ? (byte)1 : (byte)0);
+    }
+
     public override void DisposeHandle()
     {
         NativeMethods.rocksdb_wait_for_compact_options_destroy(Handle);

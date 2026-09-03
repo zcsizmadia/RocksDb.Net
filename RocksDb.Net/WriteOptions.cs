@@ -46,6 +46,35 @@ public sealed class WriteOptions : RocksDbHandle
         set => NativeMethods.rocksdb_writeoptions_set_ignore_missing_column_families(Handle, value ? (byte)1 : (byte)0);
     }
 
+    /// <summary>
+    /// Per-key checksum bytes added to the write batch so that corruption in
+    /// memory is detected before the data is written. 0 disables it.
+    /// </summary>
+    public ulong ProtectionBytesPerKey
+    {
+        get => (ulong)NativeMethods.rocksdb_writeoptions_get_protection_bytes_per_key(Handle);
+        set => NativeMethods.rocksdb_writeoptions_set_protection_bytes_per_key(Handle, (nuint)value);
+    }
+
+    /// <summary>
+    /// Priority this write is given by the rate limiter, if one is configured.
+    /// </summary>
+    public RateLimiterPriority RateLimiterPriority
+    {
+        get => (RateLimiterPriority)NativeMethods.rocksdb_writeoptions_get_rate_limiter_priority(Handle);
+        set => NativeMethods.rocksdb_writeoptions_set_rate_limiter_priority(Handle, (int)value);
+    }
+
+    /// <summary>
+    /// Labels the I/O this write performs. Leave this alone unless you have a
+    /// reason to override how RocksDb accounts for the operation.
+    /// </summary>
+    public IoActivity IoActivity
+    {
+        get => (IoActivity)NativeMethods.rocksdb_writeoptions_get_io_activity(Handle);
+        set => NativeMethods.rocksdb_writeoptions_set_io_activity(Handle, (int)value);
+    }
+
     public override void DisposeHandle()
     {
         NativeMethods.rocksdb_writeoptions_destroy(Handle);

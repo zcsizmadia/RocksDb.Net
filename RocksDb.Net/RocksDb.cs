@@ -712,6 +712,19 @@ public sealed class RocksDb : RocksDbHandle
         NativeMethods.ThrowOnError(err);
     }
 
+    /// <summary>
+    /// Flushes the WAL buffer to disk, with control over the rate limiter
+    /// priority as well as syncing.
+    /// </summary>
+    public void FlushWal(FlushWalOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        nint err = default;
+        NativeMethods.rocksdb_flush_wal_with_options(Handle, options.Handle, ref err);
+        NativeMethods.ThrowOnError(err);
+    }
+
     /// <summary>Triggers compaction on the key range [<paramref name="startKey"/>, <paramref name="limitKey"/>).</summary>
     public unsafe void CompactRange(ReadOnlySpan<byte> startKey = default, ReadOnlySpan<byte> limitKey = default)
     {
@@ -784,8 +797,13 @@ public sealed class RocksDb : RocksDbHandle
         NativeMethods.ThrowOnError(err);
     }
 
-    /// <summary>Applies one or more runtime options to the database.</summary>
-    public unsafe void SetOptions(IEnumerable<KeyValuePair<string, string>> options)
+    // Pinning a key/value array pair for the native set-options calls is the
+    // same 30 lines three times over, so it lives in one place. The delegate
+    // takes the pinned pointers as parameters rather than closing over them,
+    // since a lambda cannot capture a pointer local.
+    private unsafe delegate void SetOptionsCall(int count, byte** keys, byte** values, ref nint errptr);
+
+    private unsafe void ApplyOptions(IEnumerable<KeyValuePair<string, string>> options, SetOptionsCall call)
     {
         ArgumentNullException.ThrowIfNull(options);
 
@@ -813,7 +831,7 @@ public sealed class RocksDb : RocksDbHandle
             nint err = default;
             fixed (byte** k = keys)
             fixed (byte** v = values)
-                NativeMethods.rocksdb_set_options(Handle, entries.Count, k, v, ref err);
+                call(entries.Count, k, v, ref err);
             NativeMethods.ThrowOnError(err);
         }
         finally
@@ -825,49 +843,34 @@ public sealed class RocksDb : RocksDbHandle
             }
         }
     }
+
+    /// <summary>Applies one or more runtime options to the database.</summary>
+    public unsafe void SetOptions(IEnumerable<KeyValuePair<string, string>> options)
+        => ApplyOptions(options, (int count, byte** keys, byte** values, ref nint err)
+            => NativeMethods.rocksdb_set_options(Handle, count, keys, values, ref err));
 
     /// <summary>Applies one or more runtime options to a specific column family.</summary>
     public unsafe void SetOptions(ColumnFamilyHandle cf, IEnumerable<KeyValuePair<string, string>> options)
     {
         ArgumentNullException.ThrowIfNull(cf);
-        ArgumentNullException.ThrowIfNull(options);
 
-        var entries = options.ToList();
-        if (entries.Count == 0)
-            return;
-
-        var keys = new byte*[entries.Count];
-        var values = new byte*[entries.Count];
-        var keyPins = new GCHandle[entries.Count];
-        var valuePins = new GCHandle[entries.Count];
-
-        try
-        {
-            for (int i = 0; i < entries.Count; i++)
-            {
-                byte[] keyBytes = Encoding.UTF8.GetBytes(entries[i].Key + '\0');
-                byte[] valueBytes = Encoding.UTF8.GetBytes(entries[i].Value + '\0');
-                keyPins[i] = GCHandle.Alloc(keyBytes, GCHandleType.Pinned);
-                valuePins[i] = GCHandle.Alloc(valueBytes, GCHandleType.Pinned);
-                keys[i] = (byte*)keyPins[i].AddrOfPinnedObject();
-                values[i] = (byte*)valuePins[i].AddrOfPinnedObject();
-            }
-
-            nint err = default;
-            fixed (byte** k = keys)
-            fixed (byte** v = values)
-                NativeMethods.rocksdb_set_options_cf(Handle, cf.Handle, entries.Count, k, v, ref err);
-            NativeMethods.ThrowOnError(err);
-        }
-        finally
-        {
-            for (int i = 0; i < keyPins.Length; i++)
-            {
-                if (keyPins[i].IsAllocated) keyPins[i].Free();
-                if (valuePins[i].IsAllocated) valuePins[i].Free();
-            }
-        }
+        ApplyOptions(options, (int count, byte** keys, byte** values, ref nint err)
+            => NativeMethods.rocksdb_set_options_cf(Handle, cf.Handle, count, keys, values, ref err));
     }
+
+    /// <summary>
+    /// Applies one or more database-wide runtime options.
+    /// </summary>
+    /// <remarks>
+    /// This is the counterpart to <see cref="SetOptions(IEnumerable{KeyValuePair{string, string}})"/>
+    /// for options that live on the database rather than on a column family, and
+    /// it is the only way to change them after the database is open. Most
+    /// <see cref="DbOptions"/> values are read once at open time and ignored
+    /// afterwards.
+    /// </remarks>
+    public unsafe void SetDbOptions(IEnumerable<KeyValuePair<string, string>> options)
+        => ApplyOptions(options, (int count, byte** keys, byte** values, ref nint err)
+            => NativeMethods.rocksdb_set_db_options(Handle, count, keys, values, ref err));
 
     // ─────────────────────────────────────────────────────────────────────────
     // Properties
