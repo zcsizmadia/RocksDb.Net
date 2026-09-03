@@ -11,7 +11,19 @@
 
   <PropertyGroup>
     <RocksDbVersion>11.8.1</RocksDbVersion>
-    <Version>$(RocksDbVersion).1</Version>
+
+    <!--
+      VersionPrefix rather than Version, so that a prerelease can be built by
+      supplying VersionSuffix. Setting Version outright makes the SDK ignore
+      VersionSuffix entirely, which meant there was no way to produce a
+      preview package at all: the release workflow compares the tag against
+      this property, so a `-preview.1` tag failed the version gate with a
+      mismatch rather than publishing anything.
+
+      With a prefix, `-p:VersionSuffix=preview.1` yields 11.8.1.1-preview.1,
+      and an empty suffix yields 11.8.1.1 exactly as before.
+    -->
+    <VersionPrefix>$(RocksDbVersion).1</VersionPrefix>
 
     <!--
       The next RocksDb patch version, used to put an exclusive upper bound on
