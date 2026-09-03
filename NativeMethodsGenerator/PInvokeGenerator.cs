@@ -183,6 +183,8 @@ public static class PInvokeGenerator
             "char**" => "byte**",
             "const char**" => "byte**",
             "const char* const*" => "byte**",
+            // Out-parameter for an array of strings the callee allocates.
+            "char***" => "byte***",
 
             // void pointers
             "void*" => "nint",

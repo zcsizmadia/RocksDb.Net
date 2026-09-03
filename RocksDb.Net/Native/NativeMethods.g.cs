@@ -7286,7 +7286,7 @@ internal static unsafe partial class NativeMethods
         nuint num_input_file_names,
         int output_level,
         int output_path_id,
-        nint output_file_names,
+        byte*** output_file_names,
         nuint* num_output_file_names,
         nint compaction_job_info,
         ref nint errptr);
@@ -7301,7 +7301,7 @@ internal static unsafe partial class NativeMethods
         nuint num_input_file_names,
         int output_level,
         int output_path_id,
-        nint output_file_names,
+        byte*** output_file_names,
         nuint* num_output_file_names,
         nint compaction_job_info,
         ref nint errptr);
@@ -7399,7 +7399,7 @@ internal static unsafe partial class NativeMethods
         nint cache,
         nint* db_options,
         nuint* num_column_families,
-        nint column_family_names,
+        byte*** column_family_names,
         nint column_family_options,
         ref nint errptr);
 
