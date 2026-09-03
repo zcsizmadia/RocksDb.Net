@@ -91,10 +91,22 @@ public sealed record LiveFileStorageInfo
     public bool TrimToSize { get; init; }
 
     /// <summary>
-    /// The file's checksum, or empty when
-    /// <see cref="LiveFilesStorageInfoOptions.IncludeChecksumInfo"/> was not set
-    /// or no checksum was recorded. Raw bytes, since a checksum is not text.
+    /// The file's checksum as raw bytes, since a checksum is not text. Empty
+    /// when <see cref="LiveFilesStorageInfoOptions.IncludeChecksumInfo"/> was
+    /// not set, when no checksum was recorded, or when the algorithm that
+    /// produced it is one this library cannot size.
     /// </summary>
+    /// <remarks>
+    /// That last case needs explaining, because it is a limitation of the C
+    /// API rather than a choice. The native accessor returns the checksum as a
+    /// C string with no length, so the only way to know how many bytes to read
+    /// is to recognise the algorithm from
+    /// <see cref="FileChecksumFuncName"/>. CRC32C, four bytes, is the only
+    /// generator the C API can install and therefore the only one recognised
+    /// here. A database written by an application using a different generator
+    /// reports its name but an empty checksum, because guessing a length would
+    /// mean handing back bytes that are not the checksum.
+    /// </remarks>
     public byte[] FileChecksum { get; init; } = [];
 
     /// <summary>
