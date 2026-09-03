@@ -40,6 +40,15 @@ jobs:
 
     - name: Test
       shell: bash
+      env:
+        # Each test creates and deletes its own RocksDb database, so a run is a
+        # few thousand short-lived files, and the three target frameworks run
+        # concurrently. On the Windows runner the default temp directory is on
+        # the OS volume, which is markedly slower than the workspace volume that
+        # RUNNER_TEMP points at. Path.GetTempPath honours TMP and TEMP, so this
+        # moves that churn onto the faster disk.
+        TMP: ${{ runner.temp }}
+        TEMP: ${{ runner.temp }}
       run: |
         dotnet test -c Release --no-build \
           --collect:"XPlat Code Coverage" \
