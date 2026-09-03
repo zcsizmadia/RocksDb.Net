@@ -204,6 +204,20 @@ public static class PInvokeGenerator
             "uint8_t" => "byte",
             "int8_t" => "sbyte",
 
+            // Pointers to fixed-width integers. Without these the generic
+            // pointer fallback below turns them into an untyped nint, which
+            // forces every caller into a cast and loses the element type.
+            "uint64_t*" or "const uint64_t*" => "ulong*",
+            "int64_t*" or "const int64_t*" => "long*",
+            "uint32_t*" or "const uint32_t*" => "uint*",
+            "int32_t*" or "const int32_t*" => "int*",
+            "uint16_t*" or "const uint16_t*" => "ushort*",
+            "int16_t*" or "const int16_t*" => "short*",
+            "uint8_t*" or "const uint8_t*" => "byte*",
+            "int8_t*" or "const int8_t*" => "sbyte*",
+            "double*" or "const double*" => "double*",
+            "float*" or "const float*" => "float*",
+
             // Primitives
             "int" => "int",
             "unsigned int" => "uint",

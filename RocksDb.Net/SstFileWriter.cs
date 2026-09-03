@@ -96,7 +96,7 @@ public sealed class SstFileWriter : RocksDbHandle
         get
         {
             ulong size;
-            NativeMethods.rocksdb_sstfilewriter_file_size(Handle, (nint)(&size));
+            NativeMethods.rocksdb_sstfilewriter_file_size(Handle, &size);
             return size;
         }
     }

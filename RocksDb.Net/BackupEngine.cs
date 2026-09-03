@@ -94,7 +94,7 @@ public sealed class BackupEngine : RocksDbHandle
         uint backupId = 0;
         nint err = default;
         NativeMethods.rocksdb_backup_engine_create_new_backup_with_options(
-            Handle, db.Handle, options.Handle, (nint)(&backupId), ref err);
+            Handle, db.Handle, options.Handle, &backupId, ref err);
         NativeMethods.ThrowOnError(err);
         return backupId;
     }
@@ -119,7 +119,7 @@ public sealed class BackupEngine : RocksDbHandle
         nint err = default;
         fixed (byte* metadata = appMetadata)
             NativeMethods.rocksdb_backup_engine_create_new_backup_with_metadata(
-                Handle, db.Handle, options.Handle, metadata, (nuint)appMetadata.Length, (nint)(&backupId), ref err);
+                Handle, db.Handle, options.Handle, metadata, (nuint)appMetadata.Length, &backupId, ref err);
         NativeMethods.ThrowOnError(err);
         return backupId;
     }

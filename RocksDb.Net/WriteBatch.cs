@@ -183,6 +183,23 @@ public sealed class WriteBatch : RocksDbHandle
         return new ReadOnlySpan<byte>(ptr, checked((int)size)).ToArray();
     }
 
+    /// <summary>
+    /// Verifies the batch's internal checksums, catching corruption before the
+    /// batch is written.
+    /// </summary>
+    /// <remarks>
+    /// Only meaningful when per-key protection was enabled for the batch, via
+    /// <see cref="WriteOptions.ProtectionBytesPerKey"/>. Without it there is no
+    /// checksum to check and the call simply succeeds.
+    /// </remarks>
+    /// <exception cref="RocksDbException">The batch is corrupt.</exception>
+    public void VerifyChecksum()
+    {
+        nint err = default;
+        NativeMethods.rocksdb_writebatch_verify_checksum(Handle, ref err);
+        NativeMethods.ThrowOnError(err);
+    }
+
     public override void DisposeHandle()
     {
         NativeMethods.rocksdb_writebatch_destroy(Handle);

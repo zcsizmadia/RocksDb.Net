@@ -1365,6 +1365,24 @@ public sealed class DbOptions : RocksDbHandle
         set => NativeMethods.rocksdb_options_set_write_thread_slow_yield_usec(Handle, value);
     }
 
+    /// <summary>
+    /// Sets the generator RocksDb uses to compute a whole-file checksum for each
+    /// SST file it writes.
+    /// </summary>
+    /// <remarks>
+    /// Required for <see cref="RocksDb.VerifyFileChecksums()"/>, which fails
+    /// outright when no generator is configured. RocksDb copies the underlying
+    /// shared pointer rather than taking ownership, so the caller keeps
+    /// responsibility for disposing <paramref name="factory"/> and must keep it
+    /// alive while the database is open.
+    /// </remarks>
+    public DbOptions SetFileChecksumGenFactory(FileChecksumGenFactory factory)
+    {
+        ArgumentNullException.ThrowIfNull(factory);
+        NativeMethods.rocksdb_options_set_file_checksum_gen_factory(Handle, factory.Handle);
+        return this;
+    }
+
     // ── Checksum handoff file types ──────────────────────────────────────────
     // A set rather than a single value: checksum handoff is enabled per file
     // kind, so the C API exposes add / remove / contains / count / clear

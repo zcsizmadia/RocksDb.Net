@@ -723,7 +723,7 @@ internal static unsafe partial class NativeMethods
     internal static partial int rocksdb_property_int(
         nint db,
         string propname,
-        nint out_val);
+        ulong* out_val);
 
     [LibraryImport(LibName, StringMarshalling = StringMarshalling.Utf8)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
@@ -731,7 +731,7 @@ internal static unsafe partial class NativeMethods
         nint db,
         nint column_family,
         string propname,
-        nint out_val);
+        ulong* out_val);
 
     [LibraryImport(LibName, StringMarshalling = StringMarshalling.Utf8)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
@@ -4309,7 +4309,7 @@ internal static unsafe partial class NativeMethods
 
     [LibraryImport(LibName)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    internal static partial void rocksdb_sstfilewriter_file_size(nint writer, nint file_size);
+    internal static partial void rocksdb_sstfilewriter_file_size(nint writer, ulong* file_size);
 
     [LibraryImport(LibName)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
@@ -4592,7 +4592,7 @@ internal static unsafe partial class NativeMethods
         nint be,
         nint db,
         nint options,
-        nint backup_id,
+        uint* backup_id,
         ref nint errptr);
 
     [LibraryImport(LibName)]
@@ -4603,7 +4603,7 @@ internal static unsafe partial class NativeMethods
         nint options,
         byte* app_metadata,
         nuint app_metadata_len,
-        nint backup_id,
+        uint* backup_id,
         ref nint errptr);
 
     [LibraryImport(LibName)]
@@ -5214,7 +5214,7 @@ internal static unsafe partial class NativeMethods
     internal static partial int rocksdb_transactiondb_property_int(
         nint db,
         string propname,
-        nint out_val);
+        ulong* out_val);
 
     [LibraryImport(LibName)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
@@ -5634,7 +5634,7 @@ internal static unsafe partial class NativeMethods
     internal static partial int rocksdb_optimistictransactiondb_property_int(
         nint db,
         string propname,
-        nint out_val);
+        ulong* out_val);
 
     [LibraryImport(LibName)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
@@ -6418,7 +6418,7 @@ internal static unsafe partial class NativeMethods
         nuint* range_start_key_len,
         byte** range_limit_key,
         nuint* range_limit_key_len,
-        nint sizes,
+        ulong* sizes,
         ref nint errptr);
 
     [LibraryImport(LibName)]
@@ -6431,7 +6431,7 @@ internal static unsafe partial class NativeMethods
         nuint* range_start_key_len,
         byte** range_limit_key,
         nuint* range_limit_key_len,
-        nint sizes,
+        ulong* sizes,
         ref nint errptr);
 
     [LibraryImport(LibName)]
@@ -6445,7 +6445,7 @@ internal static unsafe partial class NativeMethods
         byte** range_limit_key,
         nuint* range_limit_key_len,
         byte include_flags,
-        nint sizes,
+        ulong* sizes,
         ref nint errptr);
 
     [LibraryImport(LibName)]
@@ -6458,7 +6458,7 @@ internal static unsafe partial class NativeMethods
         nuint* range_start_key_len,
         byte** range_limit_key,
         nuint* range_limit_key_len,
-        nint sizes,
+        ulong* sizes,
         ref nint errptr);
 
     [LibraryImport(LibName)]
@@ -6472,7 +6472,7 @@ internal static unsafe partial class NativeMethods
         nuint* range_start_key_len,
         byte** range_limit_key,
         nuint* range_limit_key_len,
-        nint sizes,
+        ulong* sizes,
         ref nint errptr);
 
     [LibraryImport(LibName)]
@@ -7324,7 +7324,7 @@ internal static unsafe partial class NativeMethods
 
     [LibraryImport(LibName)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    internal static partial nint rocksdb_wal_iter_get_batch(nint iter, nint seq);
+    internal static partial nint rocksdb_wal_iter_get_batch(nint iter, ulong* seq);
 
     [LibraryImport(LibName)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
