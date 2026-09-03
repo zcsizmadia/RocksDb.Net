@@ -61,7 +61,7 @@ public abstract class CompactionFilterFactory : RocksDbHandle
         }
         catch (Exception ex)
         {
-            RocksDbCallbacks.Report("CompactionFilterFactory destructor", ex);
+            RocksDbCallbacks.Report("CompactionFilterFactory destructor", ex, state);
         }
     }
 
@@ -89,7 +89,7 @@ public abstract class CompactionFilterFactory : RocksDbHandle
         }
         catch (Exception ex)
         {
-            RocksDbCallbacks.Report(nameof(CreateFilter), ex);
+            RocksDbCallbacks.Report(nameof(CreateFilter), ex, state);
 
             // c.cc wraps the returned pointer in std::unique_ptr<CompactionFilter>,
             // and RocksDb treats a null filter as "no filtering for this compaction

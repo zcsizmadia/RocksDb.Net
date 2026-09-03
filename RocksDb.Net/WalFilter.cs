@@ -114,7 +114,7 @@ public abstract class WalFilter : RocksDbHandle
         }
         catch (Exception ex)
         {
-            RocksDbCallbacks.Report("WalFilter destructor", ex);
+            RocksDbCallbacks.Report("WalFilter destructor", ex, state);
         }
     }
 
@@ -157,7 +157,7 @@ public abstract class WalFilter : RocksDbHandle
         catch (Exception ex)
         {
             // RocksDb ignores the outcome of this notification.
-            RocksDbCallbacks.Report(nameof(OnColumnFamilyLogNumberMap), ex);
+            RocksDbCallbacks.Report(nameof(OnColumnFamilyLogNumberMap), ex, state);
         }
     }
 
@@ -190,7 +190,7 @@ public abstract class WalFilter : RocksDbHandle
         }
         catch (Exception ex)
         {
-            RocksDbCallbacks.Report(nameof(LogRecordFound), ex);
+            RocksDbCallbacks.Report(nameof(LogRecordFound), ex, state);
 
             // Continuing leaves the record to be applied as written, which is
             // what would have happened with no filter at all. Reporting the

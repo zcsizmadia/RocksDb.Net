@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 namespace RocksDbNet;
 
 /// <summary>
@@ -44,10 +46,20 @@ public static class RocksDbCallbacks
     /// Raised when a managed callback invoked by RocksDb throws.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// The sender is the wrapper instance whose callback threw, for example the
+    /// <see cref="CompactionFilter"/> or <see cref="EventListener"/> that was
+    /// installed. Use it to tell several installed wrappers apart, since the
+    /// callback name alone does not identify which one failed. It is
+    /// <see langword="null"/> only when the instance cannot be identified, which
+    /// happens when resolving it is itself what failed.
+    /// </para>
+    /// <para>
     /// Handlers run on the thread that raised the exception, which is a RocksDb
     /// background thread for flush, compaction and backup callbacks, so handlers
     /// must be thread-safe. A handler that throws is ignored, to avoid replacing
     /// the original failure with a second one.
+    /// </para>
     /// </remarks>
     public static event EventHandler<CallbackExceptionEventArgs>? UnhandledException;
 
@@ -55,8 +67,14 @@ public static class RocksDbCallbacks
     /// Reports an exception that escaped a callback which can report failure to
     /// RocksDb, or whose result RocksDb does not depend on.
     /// </summary>
-    internal static void Report(string callbackName, Exception exception)
-        => Raise(new CallbackExceptionEventArgs(callbackName, exception, isFatal: false));
+    /// <param name="callbackName">Name of the callback that threw.</param>
+    /// <param name="exception">The exception that escaped it.</param>
+    /// <param name="state">
+    /// The callback pinned state pointer, used to identify the instance that
+    /// threw. Leave unset when the caller has no state pointer.
+    /// </param>
+    internal static void Report(string callbackName, Exception exception, nint state = 0)
+        => Raise(new CallbackExceptionEventArgs(callbackName, exception, isFatal: false), TryResolveSource(state));
 
     /// <summary>
     /// Reports an exception that escaped a callback with no failure channel, then
@@ -68,9 +86,9 @@ public static class RocksDbCallbacks
     /// fast with a clear message is worse than working code and better than silent
     /// corruption or an undiagnosable native crash.
     /// </remarks>
-    internal static void ReportFatal(string callbackName, Exception exception)
+    internal static void ReportFatal(string callbackName, Exception exception, nint state = 0)
     {
-        Raise(new CallbackExceptionEventArgs(callbackName, exception, isFatal: true));
+        Raise(new CallbackExceptionEventArgs(callbackName, exception, isFatal: true), TryResolveSource(state));
 
         Environment.FailFast(
             $"A RocksDb '{callbackName}' callback threw {exception.GetType().FullName}. " +
@@ -80,7 +98,34 @@ public static class RocksDbCallbacks
             exception);
     }
 
-    private static void Raise(CallbackExceptionEventArgs args)
+    /// <summary>
+    /// Recovers the wrapper instance behind a callback pinned state pointer, so
+    /// the event can name what threw.
+    /// </summary>
+    /// <remarks>
+    /// Best effort by design. This runs while a failure is already being handled,
+    /// so a state pointer that no longer resolves yields <see langword="null"/>
+    /// rather than replacing the original exception with a second one.
+    /// </remarks>
+    private static object? TryResolveSource(nint state)
+    {
+        if (state == nint.Zero)
+        {
+            return null;
+        }
+
+        try
+        {
+            GCHandle handle = GCHandle.FromIntPtr(state);
+            return handle.IsAllocated ? handle.Target : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static void Raise(CallbackExceptionEventArgs args, object? source)
     {
         EventHandler<CallbackExceptionEventArgs>? handlers = UnhandledException;
         if (handlers is null)
@@ -92,7 +137,7 @@ public static class RocksDbCallbacks
         {
             try
             {
-                handler(null, args);
+                handler(source, args);
             }
             catch
             {

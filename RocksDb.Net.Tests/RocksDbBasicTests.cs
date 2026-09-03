@@ -179,8 +179,16 @@ public class RocksDbBasicTests
         Assert.NotNull(numKeys);
     }
 
+    /// <summary>
+    /// Cancelling background work is a one-way door. Reads and option changes
+    /// still work afterwards, but anything needing a background thread does not.
+    /// </summary>
+    /// <remarks>
+    /// The column-family behaviour of <c>SuggestCompactRange</c> is covered in
+    /// <see cref="MaintenanceOperationsTests"/>.
+    /// </remarks>
     [Fact]
-    public void AdvancedRuntimeHelpers_DoNotThrow()
+    public void CancelAllBackgroundWork_LeavesTheDatabaseReadableButNotFlushable()
     {
         using var dir = new TempDir();
         using var opts = new DbOptions { CreateIfMissing = true, CreateMissingColumnFamilies = true };
@@ -191,9 +199,21 @@ public class RocksDbBasicTests
 
         db.Put("key", "value", cf1);
         db.Flush(new[] { cf1 });
-        db.SuggestCompactRange(cf1, Encoding.UTF8.GetBytes("a"), Encoding.UTF8.GetBytes("z"));
-        db.CancelAllBackgroundWork(wait: false);
+
+        db.CancelAllBackgroundWork(wait: true);
+
+        // Changing options at runtime still works.
         db.SetOptions(new[] { new KeyValuePair<string, string>("disable_auto_compactions", "true") });
+
+        // So do reads and writes into the memtable.
+        Assert.Equal("value", db.GetString("key", cf1));
+        db.Put("key2", "value2", cf1);
+        Assert.Equal("value2", db.GetString("key2", cf1));
+
+        // Flushing does not, because the database is now shutting down. Worth
+        // pinning: nothing in the method name suggests it is irreversible.
+        RocksDbException ex = Assert.Throws<RocksDbException>(() => db.Flush(new[] { cf1 }));
+        Assert.Contains("Shutdown in progress", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -290,41 +310,6 @@ public class RocksDbBasicTests
 
         Assert.Single(sizes);
         Assert.True(sizes[0] >= 0);
-    }
-
-    [Fact]
-    public void DeleteFilesInRange_DoesNotThrowAndPreservesData()
-    {
-        using var db = new TempDb();
-
-        db.Db.Put("a", "1");
-        db.Db.Put("z", "2");
-        db.Db.Flush();
-
-        db.Db.DeleteFilesInRange("a", "z");
-
-        Assert.Equal("1", db.Db.GetString("a"));
-        Assert.Equal("2", db.Db.GetString("z"));
-    }
-
-    [Fact]
-    public void DeleteFilesInRange_ColumnFamily_DoesNotThrow()
-    {
-        using var dir = new TempDir();
-        using var options = new DbOptions { CreateIfMissing = true, CreateMissingColumnFamilies = true };
-        var cfDescs = new List<ColumnFamilyDescriptor> { new("default"), new("cf1") };
-
-        using var db = RocksDb.Open(options, dir.Path, cfDescs);
-        var cf1 = db.GetColumnFamily("cf1");
-
-        db.Put("a", "1", cf1);
-        db.Put("z", "2", cf1);
-        db.Flush(cf1);
-
-        db.DeleteFilesInRange(cf1, "a", "z");
-
-        Assert.Equal("1", db.GetString("a", cf1));
-        Assert.Equal("2", db.GetString("z", cf1));
     }
 
     [Fact]
@@ -428,17 +413,6 @@ public class RocksDbBasicTests
     }
 
     [Fact]
-    public void ToggleFileDeletions_DoesNotThrow()
-    {
-        using var db = new TempDb();
-
-        db.Db.DisableFileDeletions();
-        db.Db.EnableFileDeletions();
-
-        Assert.True(true);
-    }
-
-    [Fact]
     public void Flush_DoesNotThrow()
     {
         using var db = new TempDb();
@@ -487,15 +461,6 @@ public class RocksDbBasicTests
         db.Db.Flush();
 
         db.Db.CompactRange(opts);
-    }
-
-    [Fact]
-    public void DisableEnableFileDeletions_DoesNotThrow()
-    {
-        using var db = new TempDb();
-
-        db.Db.DisableFileDeletions();
-        db.Db.EnableFileDeletions();
     }
 
     [Fact]

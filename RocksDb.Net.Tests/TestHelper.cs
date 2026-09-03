@@ -222,16 +222,44 @@ public sealed class RecordingListener : EventListener
 /// <see cref="RocksDbCallbacks.UnhandledException"/> for the lifetime of a test.
 /// </summary>
 /// <remarks>
-/// The event is process-wide, so a test using this should not run in parallel
-/// with another that provokes callback exceptions.
+/// <para>
+/// The event is process-wide and xUnit runs test classes in parallel, so an
+/// unfiltered recorder picks up exceptions that unrelated tests provoke on
+/// purpose. Any test asserting that <b>no</b> exception was reported must pass
+/// the instance it cares about, or it will fail intermittently. Filtering by
+/// callback name is not enough, because several test classes throw from
+/// callbacks of the same name.
+/// </para>
+/// <para>
+/// Tests asserting that an exception <b>was</b> reported can leave the filter
+/// off, since those provoke the throw themselves and match on the callback name.
+/// </para>
 /// </remarks>
 public sealed class CallbackExceptionRecorder : IDisposable
 {
     private readonly object _gate = new();
     private readonly List<CallbackExceptionEventArgs> _reported = [];
+    private readonly object? _source;
 
+    /// <summary>Records every reported exception, whatever its source.</summary>
     public CallbackExceptionRecorder()
         => RocksDbCallbacks.UnhandledException += OnUnhandled;
+
+    /// <summary>
+    /// Records only exceptions raised by callbacks on <paramref name="source"/>,
+    /// ignoring those other tests provoke in parallel.
+    /// </summary>
+    /// <param name="source">
+    /// The wrapper whose callbacks are of interest, for example a
+    /// <see cref="CompactionFilter"/> or an <see cref="EventListener"/>. This is
+    /// the sender the event reports.
+    /// </param>
+    public CallbackExceptionRecorder(object source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        _source = source;
+        RocksDbCallbacks.UnhandledException += OnUnhandled;
+    }
 
     public IReadOnlyList<CallbackExceptionEventArgs> Reported
     {
@@ -249,6 +277,11 @@ public sealed class CallbackExceptionRecorder : IDisposable
 
     private void OnUnhandled(object? sender, CallbackExceptionEventArgs e)
     {
+        if (_source is not null && !ReferenceEquals(sender, _source))
+        {
+            return;
+        }
+
         lock (_gate)
         {
             _reported.Add(e);

@@ -780,7 +780,23 @@ public sealed class RocksDb : RocksDbHandle
                 limitKey.IsEmpty ? null : e, (nuint)limitKey.Length);
     }
 
-    /// <summary>Suggests compaction for the specified key range.</summary>
+    /// <summary>
+    /// Marks the files overlapping the given key range for compaction, and asks
+    /// RocksDb to schedule one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A suggestion, not a command. Unlike <see cref="CompactRange(ReadOnlySpan{byte}, ReadOnlySpan{byte})"/> this
+    /// returns immediately and the compaction happens on a background thread, or
+    /// not at all.
+    /// </para>
+    /// <para>
+    /// Two conditions have to hold for anything to happen. Auto compactions must
+    /// be enabled, since a marked file is still only a reason for the automatic
+    /// picker to act. And only levels below the highest non-empty level are
+    /// marked, so a database whose data is all in level 0 has nothing to mark.
+    /// </para>
+    /// </remarks>
     public unsafe void SuggestCompactRange(ReadOnlySpan<byte> startKey, ReadOnlySpan<byte> limitKey)
     {
         nint err = default;
@@ -792,7 +808,14 @@ public sealed class RocksDb : RocksDbHandle
         NativeMethods.ThrowOnError(err);
     }
 
-    /// <summary>Suggests compaction for the specified column family and key range.</summary>
+    /// <summary>
+    /// Marks the files overlapping the given key range for compaction in the
+    /// given column family, and asks RocksDb to schedule one.
+    /// </summary>
+    /// <remarks>
+    /// Carries the same conditions as
+    /// <see cref="SuggestCompactRange(ReadOnlySpan{byte}, ReadOnlySpan{byte})"/>.
+    /// </remarks>
     public unsafe void SuggestCompactRange(ColumnFamilyHandle cf, ReadOnlySpan<byte> startKey, ReadOnlySpan<byte> limitKey)
     {
         ArgumentNullException.ThrowIfNull(cf);
@@ -805,7 +828,27 @@ public sealed class RocksDb : RocksDbHandle
         NativeMethods.ThrowOnError(err);
     }
 
-    /// <summary>Cancels or waits for all background work.</summary>
+    /// <summary>
+    /// Stops the background flush and compaction threads.
+    /// </summary>
+    /// <param name="wait">
+    /// When true, blocks until the running jobs finish. When false, signals
+    /// them to stop and returns.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// This is a one-way door, not a pause. It puts the database into the same
+    /// state as the start of a close, so afterwards reads still work and
+    /// <see cref="SetOptions(IEnumerable{KeyValuePair{string, string}})"/> still
+    /// works, but any operation needing background threads fails with
+    /// "Shutdown in progress". <see cref="Flush(FlushOptions)"/> is the one callers hit.
+    /// </para>
+    /// <para>
+    /// To suspend background work temporarily and resume it, use
+    /// <see cref="PauseBackgroundWork"/> and
+    /// <see cref="ContinueBackgroundWork"/> instead.
+    /// </para>
+    /// </remarks>
     public void CancelAllBackgroundWork(bool wait = false)
     {
         NativeMethods.rocksdb_cancel_all_background_work(Handle, wait ? (byte)1 : (byte)0);
@@ -1563,9 +1606,29 @@ public sealed class RocksDb : RocksDbHandle
 
 
     /// <summary>
-    /// Deletes files in the specified key range from the default column family.
-    /// This is a maintenance operation and does not remove the keys from the database.
+    /// Deletes whole SST files that lie entirely within the given key range, in
+    /// the default column family.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This deletes files, not keys, and it is not a substitute for deleting
+    /// keys. Two consequences follow, and both tend to surprise callers.
+    /// </para>
+    /// <para>
+    /// Keys inside a deleted file are gone, with no tombstone and no way to
+    /// recover them. Keys inside the range that happen to live in a file which
+    /// also extends outside the range stay, because that file is not fully
+    /// contained and so is left alone.
+    /// </para>
+    /// <para>
+    /// Level 0 files are never deleted, whatever the range. Data still in level
+    /// 0 therefore survives this call; run <see cref="CompactRange(ReadOnlySpan{byte}, ReadOnlySpan{byte})"/> first if
+    /// it needs to be considered.
+    /// </para>
+    /// <para>
+    /// Snapshots taken before this call may not see the deleted data.
+    /// </para>
+    /// </remarks>
     public unsafe void DeleteFilesInRange(string startKey, string limitKey)
     {
         ArgumentException.ThrowIfNullOrEmpty(startKey);
@@ -1584,8 +1647,15 @@ public sealed class RocksDb : RocksDbHandle
     }
 
     /// <summary>
-    /// Deletes files in the specified key range from the given column family.
+    /// Deletes whole SST files that lie entirely within the given key range, in
+    /// the given column family.
     /// </summary>
+    /// <remarks>
+    /// Carries the same caveats as
+    /// <see cref="DeleteFilesInRange(string, string)"/>: keys in deleted files
+    /// are lost outright, partially covered files are left alone, and level 0 is
+    /// never touched.
+    /// </remarks>
     public unsafe void DeleteFilesInRange(ColumnFamilyHandle cf, string startKey, string limitKey)
     {
         ArgumentNullException.ThrowIfNull(cf);
@@ -1605,8 +1675,22 @@ public sealed class RocksDb : RocksDbHandle
     }
 
     /// <summary>
-    /// Disables file deletions. Call <see cref="EnableFileDeletions"/> to re-enable.
+    /// Stops RocksDb from deleting obsolete files, so that a consistent set of
+    /// files stays on disk while something outside the database copies them.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the primitive behind external backup tools. Compactions and
+    /// flushes carry on and keep producing new files; what stops is the cleanup
+    /// of the files they supersede, so disk usage grows until deletions are
+    /// enabled again.
+    /// </para>
+    /// <para>
+    /// Always pair this with <see cref="EnableFileDeletions"/>, which performs
+    /// the deferred cleanup. A database left with deletions disabled never
+    /// reclaims space.
+    /// </para>
+    /// </remarks>
     public void DisableFileDeletions()
     {
         nint err = default;
@@ -1685,7 +1769,10 @@ public sealed class RocksDb : RocksDbHandle
 
     // ─────────────────────────────────────────────────────────────────────────
 
-    /// <summary>Re-enables file deletions after a previous <see cref="DisableFileDeletions"/> call.</summary>
+    /// <summary>
+    /// Re-enables file deletions after <see cref="DisableFileDeletions"/>, and
+    /// deletes the obsolete files that accumulated in the meantime.
+    /// </summary>
     public void EnableFileDeletions()
     {
         nint err = default;

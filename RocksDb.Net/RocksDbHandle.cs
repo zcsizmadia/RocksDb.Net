@@ -146,7 +146,7 @@ public abstract class RocksDbHandle : IDisposable
         }
         catch (Exception ex)
         {
-            RocksDbCallbacks.Report("Name", ex);
+            RocksDbCallbacks.Report("Name", ex, state);
             return FallbackNamePtr;
         }
     }

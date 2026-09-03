@@ -77,7 +77,7 @@ public abstract class Logger : RocksDbHandle
             // A dropped log line is the mildest possible consequence, and RocksDb
             // does not check the outcome. Reporting a logging failure through the
             // logger would recurse, so it only goes to the callback event.
-            RocksDbCallbacks.Report(nameof(Log), ex);
+            RocksDbCallbacks.Report(nameof(Log), ex, state);
         }
     }
 

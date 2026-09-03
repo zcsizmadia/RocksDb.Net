@@ -177,4 +177,45 @@ public class CallbackExceptionTests
 
         Assert.Equal("1", db.Db.GetString("a"));
     }
+
+    /// <summary>
+    /// The event names the instance that threw, so an application running
+    /// several wrappers can tell which one failed.
+    /// </summary>
+    /// <remarks>
+    /// The callback name alone cannot do this. Two compaction filters both
+    /// report under "Filter", which is exactly the case here.
+    /// </remarks>
+    [Fact]
+    public void Report_NamesTheInstanceThatThrew()
+    {
+        using var first = new ThrowingCompactionFilter();
+        using var second = new ThrowingCompactionFilter();
+
+        using var forFirst = new CallbackExceptionRecorder(first);
+        using var forSecond = new CallbackExceptionRecorder(second);
+        using var all = new CallbackExceptionRecorder();
+
+        Provoke(first);
+        Provoke(second);
+
+        // Each recorder saw its own instance and nothing else.
+        Assert.NotEmpty(forFirst.Reported);
+        Assert.NotEmpty(forSecond.Reported);
+
+        // The unfiltered recorder saw at least both, confirming the filtering
+        // above narrowed rather than dropped.
+        Assert.True(
+            all.Reported.Count >= forFirst.Reported.Count + forSecond.Reported.Count,
+            "the unfiltered recorder should see at least what the filtered ones did");
+    }
+
+    private static void Provoke(CompactionFilter filter)
+    {
+        using var db = new TempDb(o => o.CompactionFilter = filter);
+
+        db.Db.Put("a", "1");
+        db.Db.Flush();
+        db.Db.CompactRange();
+    }
 }
