@@ -24,6 +24,28 @@ public sealed class RocksDb : RocksDbHandle
     private ColumnFamilyHandle? _defaultColumnFamily;
     private readonly DbOptions _ownedOptions;
 
+    // The descriptors a database was opened with, held for the database's
+    // lifetime.
+    //
+    // ColumnFamilyDescriptor disposes the options it created from its own
+    // finalizer. After Open returned, the descriptor list was unreachable, so
+    // that finalizer ran at the next collection and destroyed the comparator,
+    // compaction filter and logger attached to a column family's options while
+    // the database was still calling them. Holding the descriptors here stops
+    // that, because they cannot become unreachable before the database does.
+    //
+    // Deliberately only held, not disposed. Disposing these options from the
+    // database's own teardown, straight after rocksdb_close, reliably faults:
+    // it took the test host down with an access violation across repeated
+    // runs, in a different test each time. It is not a finalizer-thread
+    // problem either, since restricting the disposal to the explicit Dispose
+    // path faulted the same way. So the per-column-family options have to
+    // outlive the close, and they are released when these descriptors are
+    // themselves collected, which cannot now happen before the database is.
+    // Why the eager release faults is not yet diagnosed, which is why it is
+    // not done rather than done with a guard.
+    private readonly List<ColumnFamilyDescriptor> _descriptors = [];
+
     private RocksDb(nint handle, DbOptions options)
         : base(handle)
     {
@@ -33,10 +55,17 @@ public sealed class RocksDb : RocksDbHandle
     /// <summary>Name RocksDb gives the column family that always exists.</summary>
     private const string DefaultColumnFamilyName = "default";
 
-    private RocksDb(nint handle, nint[] cfHandles, DbOptions options)
+    private RocksDb(nint handle, nint[] cfHandles, DbOptions options,
+        IReadOnlyList<ColumnFamilyDescriptor>? descriptors = null)
         : base(handle)
     {
         _ownedOptions = options;
+
+        if (descriptors is not null)
+        {
+            _descriptors.AddRange(descriptors);
+        }
+
         foreach (var cf in cfHandles)
         {
             ColumnFamilyHandle cfh = new(cf);
@@ -117,7 +146,7 @@ public sealed class RocksDb : RocksDbHandle
         }
         NativeMethods.ThrowOnError(err);
 
-        return new RocksDb(handle, cfHandles, options);
+        return new RocksDb(handle, cfHandles, options, columnFamilies);
     }
 
     /// <summary>Opens an existing database in read-only mode.</summary>
@@ -186,7 +215,7 @@ public sealed class RocksDb : RocksDbHandle
         }
         NativeMethods.ThrowOnError(err);
 
-        return new RocksDb(handle, cfHandles, options);
+        return new RocksDb(handle, cfHandles, options, columnFamilies);
     }
 
     /// <summary>

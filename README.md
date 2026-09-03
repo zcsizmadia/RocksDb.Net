@@ -82,7 +82,7 @@ Important lifetime note:
 
 - `RocksDb.Open*` takes ownership of the `DbOptions` instance you pass in.
 - After opening, do not reuse that same `DbOptions` instance for other operations (for example `Destroy`, `Repair`, or `ListColumnFamilies`).
-- If you need options again, create a new `DbOptions` (or `Clone()` before passing ownership).
+- If you need options again, create a new `DbOptions`, or `Clone()` before passing ownership. A clone shares the original's attached comparator, logger and the rest rather than deep-copying them, and registers itself as another holder, so either can be disposed first.
 
 For static utilities that do not open a DB handle (`Destroy`, `Repair`, `ListColumnFamilies`), ownership is not transferred; dispose those options yourself.
 
@@ -159,9 +159,12 @@ ulong total = BitConverter.ToUInt64(db.Get("visits"));
 
 Nested handle lifetime note:
 
-- `MergeOperator`, `CompactionFilterFactory`, and `EventListener` are transferred to native shared ownership when assigned to `DbOptions`.
-- `Comparator`, `CompactionFilter`, `Logger`, and `RateLimiter` are disposed with `DbOptions`.
+- `MergeOperator`, `CompactionFilterFactory`, `EventListener`, `SliceTransform` and `FilterPolicy` are transferred to native ownership when assigned. RocksDb wraps each in a new shared pointer of its own, so **one instance per options object**: assigning the same one twice would give it two independent owners that each delete it, and the second assignment throws rather than letting that corrupt the heap later.
+- `Comparator`, `CompactionFilter`, `Env`, `WalFilter`, `Logger` and `RateLimiter` are released with the `DbOptions`. These may be shared: attaching one registers a hold and the release happens when the last holder lets go, so disposing one options object never pulls an object out from under another, or from under an open database.
+- Disposing one of these yourself while it is still attached is therefore deferred, not obeyed, which makes the usual `using` shape safe even though the block ends before the database does.
 - In all cases, these objects must outlive the open `RocksDb` instance that uses them.
+
+See [Ownership and lifetime](https://github.com/zcsizmadia/RocksDb.Net/blob/main/docs/articles/ownership.md) for the full rules.
 
 ### Metadata and statistics
 

@@ -145,10 +145,37 @@ public sealed class DbOptions : RocksDbHandle
     {
     }
 
-    /// <summary>Creates a deep copy of this options object.</summary>
+    /// <summary>
+    /// Creates a copy of this options object that shares its attached callback
+    /// objects.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Not a deep copy, which is what this used to claim. The native call behind
+    /// it copies the options struct, so the comparator, compaction filter, env
+    /// and WAL filter are copied as pointers and the merge operator, rate
+    /// limiter, logger and listeners as shared references. Both objects end up
+    /// pointing at the same callback instances.
+    /// </para>
+    /// <para>
+    /// The clone therefore registers itself as another holder of each of them,
+    /// so disposing either options object no longer destroys what the other, or
+    /// a database opened from it, is still calling. Before that, the clone's
+    /// owned-handle set was empty and the original's disposal took the
+    /// comparator and logger with it.
+    /// </para>
+    /// </remarks>
     public DbOptions Clone()
     {
-        return new DbOptions(NativeMethods.rocksdb_options_create_copy(Handle));
+        var clone = new DbOptions(NativeMethods.rocksdb_options_create_copy(Handle));
+
+        foreach (RocksDbHandle handle in _ownedHandles)
+        {
+            handle.AddHolder();
+            clone._ownedHandles.Add(handle);
+        }
+
+        return clone;
     }
 
     private DbOptions(nint handle)
@@ -471,6 +498,7 @@ public sealed class DbOptions : RocksDbHandle
         set
         {
             ArgumentNullException.ThrowIfNull(value);
+            value.AddHolder();
             NativeMethods.rocksdb_options_set_env(Handle, value.Handle);
             _ownedHandles.Add(value);
         }
@@ -727,6 +755,7 @@ public sealed class DbOptions : RocksDbHandle
         set
         {
             ArgumentNullException.ThrowIfNull(value);
+            value.AddHolder();
             NativeMethods.rocksdb_options_set_ratelimiter(Handle, value.Handle);
             _ownedHandles.Add(value);
         }
@@ -902,8 +931,10 @@ public sealed class DbOptions : RocksDbHandle
         set
         {
             ArgumentNullException.ThrowIfNull(value);
+            // Checked before the native call, so a rejected second attachment
+            // does not leave RocksDb holding a pointer it believes it owns.
+            value.AttachExclusively(nameof(PrefixExtractor));
             NativeMethods.rocksdb_options_set_prefix_extractor(Handle, value.Handle);
-            value.TransferOwnership();
         }
     }
 
@@ -924,6 +955,7 @@ public sealed class DbOptions : RocksDbHandle
         set
         {
             ArgumentNullException.ThrowIfNull(value);
+            value.AddHolder();
             NativeMethods.rocksdb_options_set_compaction_filter(Handle, value.Handle);
             _ownedHandles.Add(value);
         }
@@ -945,8 +977,10 @@ public sealed class DbOptions : RocksDbHandle
         set
         {
             ArgumentNullException.ThrowIfNull(value);
+            // Checked before the native call, so a rejected second attachment
+            // does not leave RocksDb holding a pointer it believes it owns.
+            value.AttachExclusively(nameof(CompactionFilterFactory));
             NativeMethods.rocksdb_options_set_compaction_filter_factory(Handle, value.Handle);
-            value.TransferOwnership();
         }
     }
 
@@ -958,8 +992,10 @@ public sealed class DbOptions : RocksDbHandle
         set
         {
             ArgumentNullException.ThrowIfNull(value);
+            // Checked before the native call, so a rejected second attachment
+            // does not leave RocksDb holding a pointer it believes it owns.
+            value.AttachExclusively(nameof(MergeOperator));
             NativeMethods.rocksdb_options_set_merge_operator(Handle, value.Handle);
-            value.TransferOwnership();
         }
     }
 
@@ -971,6 +1007,7 @@ public sealed class DbOptions : RocksDbHandle
         set
         {
             ArgumentNullException.ThrowIfNull(value);
+            value.AddHolder();
             NativeMethods.rocksdb_options_set_comparator(Handle, value.Handle);
             _ownedHandles.Add(value);
         }
@@ -984,6 +1021,7 @@ public sealed class DbOptions : RocksDbHandle
         set
         {
             ArgumentNullException.ThrowIfNull(value);
+            value.AddHolder();
             NativeMethods.rocksdb_options_set_info_log(Handle, value.Handle);
             _ownedHandles.Add(value);
         }
@@ -1005,6 +1043,7 @@ public sealed class DbOptions : RocksDbHandle
     {
         ArgumentNullException.ThrowIfNull(filter);
 
+        filter.AddHolder();
         NativeMethods.rocksdb_options_set_wal_filter(Handle, filter.Handle);
         _ownedHandles.Add(filter);
         return this;
@@ -1032,8 +1071,8 @@ public sealed class DbOptions : RocksDbHandle
         set
         {
             ArgumentNullException.ThrowIfNull(value);
+            value.AttachExclusively(nameof(EventListener));
             NativeMethods.rocksdb_options_add_eventlistener(Handle, value.Handle);
-            value.TransferOwnership();
         }
     }
 
@@ -1049,8 +1088,8 @@ public sealed class DbOptions : RocksDbHandle
             ArgumentNullException.ThrowIfNull(value);
             foreach (var listener in value)
             {
+                listener.AttachExclusively(nameof(EventListeners));
                 NativeMethods.rocksdb_options_add_eventlistener(Handle, listener.Handle);
-                listener.TransferOwnership();
             }
         }
     }
@@ -2415,10 +2454,12 @@ public sealed class DbOptions : RocksDbHandle
     {
         base.DisposeUnmanagedResources();
 
-        // Dispose all owned handles (e.g., RateLimiter, CompactionFilter, etc.)
+        // Release rather than dispose. These objects can be attached to more
+        // than one options object, and to a database opened from one, so the
+        // native release belongs to whichever holder lets go last.
         foreach (var handle in _ownedHandles)
         {
-            handle.Dispose();
+            handle.ReleaseHolder();
         }
         _ownedHandles.Clear();
     }

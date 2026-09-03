@@ -61,6 +61,92 @@ public abstract class RocksDbHandle : IDisposable
     /// </summary>
     internal void TransferOwnership() => Interlocked.Exchange(ref _owned, 0);
 
+    // ── Shared attachment ────────────────────────────────────────────────────
+
+    // How many live objects have attached this handle and will release it.
+    //
+    // RocksDb attaches callback objects in three different ways, and only one
+    // of them is safe to treat as a straight transfer of ownership:
+    //
+    //   * A raw pointer, as for a comparator, compaction filter, env or WAL
+    //     filter. RocksDb never frees these, so the wrapper must, and must not
+    //     do so while anything still points at them.
+    //   * A copy of an existing shared_ptr, as for a logger or rate limiter.
+    //     The native object is genuinely shared and outlives any one holder.
+    //   * A fresh shared_ptr or unique_ptr built from the raw pointer, as for a
+    //     merge operator, event listener, compaction filter factory, prefix
+    //     extractor or filter policy. Those really are transfers, and handing
+    //     the same instance over twice creates two independent native owners
+    //     that both delete it. Those setters reject a second attachment rather
+    //     than count it; see AttachExclusively.
+    //
+    // For the first two, whoever attached the handle releases it, and the
+    // native release happens when the last of them does. That is what stops
+    // one options object destroying a comparator that another options object,
+    // or an open database, is still calling.
+    private int _holders;
+
+    /// <summary>
+    /// Records that a native object now holds this handle and will release it.
+    /// </summary>
+    internal void AddHolder()
+    {
+        ThrowIfDisposed();
+        Interlocked.Increment(ref _holders);
+    }
+
+    /// <summary>
+    /// Releases one holder's claim, disposing the handle when it was the last.
+    /// </summary>
+    internal void ReleaseHolder()
+    {
+        int remaining = Interlocked.Decrement(ref _holders);
+
+        if (remaining > 0)
+        {
+            // Something else still points at this, so releasing it now would
+            // pull it out from under code still using it.
+            return;
+        }
+
+        // The count is now zero, so the deferral in Dispose no longer applies
+        // and this performs the real release.
+        Dispose();
+    }
+
+    /// <summary>
+    /// Attaches this handle to a native object that takes exclusive ownership
+    /// of it, and rejects a second attempt.
+    /// </summary>
+    /// <param name="member">
+    /// The member being assigned, used in the exception message.
+    /// </param>
+    /// <exception cref="InvalidOperationException">
+    /// The handle is already attached somewhere.
+    /// </exception>
+    /// <remarks>
+    /// The native setters this guards each wrap the raw pointer in a
+    /// <c>shared_ptr</c> or <c>unique_ptr</c> of their own, so two options
+    /// objects given the same instance become two independent owners and both
+    /// delete it. That corrupts the heap at teardown, a long way from the
+    /// assignment that caused it, so this turns it into an exception naming the
+    /// mistake instead.
+    /// </remarks>
+    internal void AttachExclusively(string member)
+    {
+        ThrowIfDisposed();
+
+        if (Interlocked.CompareExchange(ref _holders, 1, 0) != 0)
+        {
+            throw new InvalidOperationException(
+                $"This {GetType().Name} is already attached to something else and cannot also be " +
+                $"assigned to {member}. RocksDb takes exclusive ownership of it, so two owners " +
+                "would each destroy it and corrupt the heap. Create a separate instance instead.");
+        }
+
+        TransferOwnership();
+    }
+
     /// <summary>
     /// Pins this instance so native code can hold a pointer to it across
     /// callbacks, optionally alongside a stable copy of its name.
@@ -231,11 +317,37 @@ public abstract class RocksDbHandle : IDisposable
     public virtual void Dispose()
     {
         Dispose(true);
-        GC.SuppressFinalize(this); // Don't bother calling the destructor
+
+        // Only when the release actually happened. While a holder still has
+        // this handle attached, Dispose defers and the finalizer has to stay
+        // registered as the safety net for the case where no holder ever
+        // releases it either.
+        if (IsDisposed)
+        {
+            GC.SuppressFinalize(this);
+        }
     }
 
     protected virtual void Dispose(bool disposing)
     {
+        // Deferred while a native object still holds this handle. The common
+        // shape is `using var cmp = new MyComparator(); opts.Comparator = cmp;`,
+        // where the using block ends long before the options do; releasing the
+        // comparator there would leave RocksDb calling freed memory. Whichever
+        // holder lets go last performs the real release, so nothing is freed
+        // early and nothing is leaked. See AddHolder.
+        //
+        // Checked here rather than only in the public Dispose so that the
+        // finalizer respects it too. That matters more than it looks: an
+        // attached object and the options holding it become unreachable
+        // together and are finalized in no particular order, so without this
+        // the finalizer could release a comparator while the options still
+        // pointed at it. That was an access violation, not a leak.
+        if (Volatile.Read(ref _holders) > 0)
+        {
+            return;
+        }
+
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
         {
             // Already disposed, nothing to do
