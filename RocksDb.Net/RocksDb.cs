@@ -279,6 +279,49 @@ public sealed class RocksDb : RocksDbHandle
         NativeMethods.ThrowOnError(err);
     }
 
+    /// <summary>
+    /// Deletes a key that was written exactly once and never updated.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Cheaper than <see cref="Delete(ReadOnlySpan{byte}, WriteOptions?)"/>,
+    /// because RocksDb may drop the tombstone and the value together as soon as
+    /// it meets them, rather than carrying the tombstone down through every
+    /// level.
+    /// </para>
+    /// <para>
+    /// <b>Only valid for a key written once.</b> If the key was ever
+    /// overwritten, merged into, or deleted and rewritten, the result is
+    /// undefined: an older version may reappear. RocksDb does not detect the
+    /// misuse, so use ordinary <see cref="Delete(ReadOnlySpan{byte}, WriteOptions?)"/>
+    /// unless the write-once property is guaranteed by the application.
+    /// </para>
+    /// </remarks>
+    public unsafe void SingleDelete(ReadOnlySpan<byte> key, WriteOptions? options = null)
+    {
+        nint err = default;
+        fixed (byte* k = key)
+            NativeMethods.rocksdb_singledelete(Handle, (options ?? _defaultWriteOptions).Handle,
+                k, (nuint)key.Length, ref err);
+        NativeMethods.ThrowOnError(err);
+    }
+
+    /// <inheritdoc cref="SingleDelete(ReadOnlySpan{byte}, WriteOptions?)"/>
+    public unsafe void SingleDelete(ReadOnlySpan<byte> key, ColumnFamilyHandle cf, WriteOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(cf);
+
+        nint err = default;
+        fixed (byte* k = key)
+            NativeMethods.rocksdb_singledelete_cf(Handle, (options ?? _defaultWriteOptions).Handle, cf.Handle,
+                k, (nuint)key.Length, ref err);
+        NativeMethods.ThrowOnError(err);
+    }
+
+    /// <inheritdoc cref="SingleDelete(ReadOnlySpan{byte}, WriteOptions?)"/>
+    public void SingleDelete(string key, WriteOptions? options = null)
+        => SingleDelete(Encoding.UTF8.GetBytes(key), options);
+
     /// <summary>Deletes the entry for <paramref name="key"/> from <paramref name="cf"/>.</summary>
     public unsafe void Delete(ReadOnlySpan<byte> key, ColumnFamilyHandle cf, WriteOptions? options = null)
     {
@@ -2274,6 +2317,25 @@ public sealed class RocksDb : RocksDbHandle
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Stops manual compactions from running, and cancels any in progress.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Narrower than <see cref="PauseBackgroundWork"/>, which stops automatic
+    /// work too. This leaves automatic compaction alone and only refuses the
+    /// explicit kind, which is useful while something else needs the disk.
+    /// </para>
+    /// <para>
+    /// Reversible, unlike <see cref="CancelAllBackgroundWork(bool)"/>: call
+    /// <see cref="EnableManualCompaction"/> to allow them again.
+    /// </para>
+    /// </remarks>
+    public void DisableManualCompaction() => NativeMethods.rocksdb_disable_manual_compaction(Handle);
+
+    /// <summary>Allows manual compactions again after <see cref="DisableManualCompaction"/>.</summary>
+    public void EnableManualCompaction() => NativeMethods.rocksdb_enable_manual_compaction(Handle);
 
     /// <summary>
     /// Re-enables file deletions after <see cref="DisableFileDeletions"/>, and

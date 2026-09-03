@@ -618,6 +618,79 @@ public sealed class DbOptions : RocksDbHandle
     }
 
     /// <summary>
+    /// Spreads the database across several directories, each with a size
+    /// target.
+    /// </summary>
+    /// <param name="paths">
+    /// The directories, in the order RocksDb should fill them. The last should
+    /// be the one with room to spare, since data overflows forward.
+    /// </param>
+    /// <remarks>
+    /// The usual reason is mixed storage: give a fast device a modest target so
+    /// the newest levels live there, and let the rest overflow onto slower,
+    /// larger media. RocksDb copies the values, so the
+    /// <see cref="DbPath"/> objects stay yours to dispose.
+    /// </remarks>
+    public unsafe DbOptions SetDbPaths(IReadOnlyList<DbPath> paths)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+
+        if (paths.Count == 0)
+        {
+            throw new ArgumentException("At least one path is required.", nameof(paths));
+        }
+
+        nint[] handles = new nint[paths.Count];
+        for (int i = 0; i < paths.Count; i++)
+        {
+            ArgumentNullException.ThrowIfNull(paths[i]);
+            handles[i] = paths[i].Handle;
+        }
+
+        fixed (nint* p = handles)
+            NativeMethods.rocksdb_options_set_db_paths(Handle, p, (nuint)paths.Count);
+
+        return this;
+    }
+
+    /// <summary>
+    /// Parses RocksDb's own options syntax and applies it on top of these
+    /// options.
+    /// </summary>
+    /// <param name="optionsString">
+    /// Settings in RocksDb's <c>name=value;name=value</c> form, as accepted by
+    /// its own tools.
+    /// </param>
+    /// <returns>A new options object: this one is left unchanged.</returns>
+    /// <remarks>
+    /// For configuration-driven callers that would rather carry a string than a
+    /// list of property assignments. Unknown or malformed settings throw rather
+    /// than being ignored.
+    /// </remarks>
+    public unsafe DbOptions WithOptionsFromString(string optionsString)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(optionsString);
+
+        var result = new DbOptions();
+        try
+        {
+            byte[] bytes = Encoding.UTF8.GetBytes(optionsString + '\0');
+            nint err = default;
+
+            fixed (byte* s = bytes)
+                NativeMethods.rocksdb_get_options_from_string(Handle, s, result.Handle, ref err);
+
+            NativeMethods.ThrowOnError(err);
+            return result;
+        }
+        catch
+        {
+            result.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>
     /// Attaches tuning for universal compaction.
     /// </summary>
     /// <remarks>

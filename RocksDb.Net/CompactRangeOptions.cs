@@ -33,19 +33,53 @@ public sealed class CompactRangeOptions : RocksDbHandle
     /// <summary>If true, allow compaction to change the output level.</summary>
     public bool ChangeLevel
     {
+        get => NativeMethods.rocksdb_compactoptions_get_change_level(Handle) != 0;
         set => NativeMethods.rocksdb_compactoptions_set_change_level(Handle, value ? (byte)1 : (byte)0);
     }
 
     /// <summary>Target output level for the compacted files.</summary>
     public int TargetLevel
     {
+        get => NativeMethods.rocksdb_compactoptions_get_target_level(Handle);
         set => NativeMethods.rocksdb_compactoptions_set_target_level(Handle, value);
     }
 
     /// <summary>Maximum number of subcompactions for this compaction.</summary>
     public int MaxSubcompactions
     {
+        get => NativeMethods.rocksdb_compactoptions_get_max_subcompactions(Handle);
         set => NativeMethods.rocksdb_compactoptions_set_max_subcompactions(Handle, value);
+    }
+
+    /// <summary>
+    /// Whether the compaction may proceed even if it would stall writes.
+    /// Default is <see langword="false"/>, which makes RocksDb wait instead.
+    /// </summary>
+    /// <remarks>
+    /// A manual compaction competes with incoming writes for the same write
+    /// buffers. Left false, RocksDb defers the compaction rather than blocking
+    /// writers; set true when finishing the compaction matters more than write
+    /// latency.
+    /// </remarks>
+    public bool AllowWriteStall
+    {
+        get => NativeMethods.rocksdb_compactoptions_get_allow_write_stall(Handle) != 0;
+        set => NativeMethods.rocksdb_compactoptions_set_allow_write_stall(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>
+    /// Which of the configured database paths the output is written to, by
+    /// index. Default is zero, the first path.
+    /// </summary>
+    /// <remarks>
+    /// Only meaningful when several paths are configured through
+    /// <see cref="DbOptions.SetDbPaths(System.Collections.Generic.IReadOnlyList{DbPath})"/>.
+    /// It is how a caller moves compacted output onto a chosen device.
+    /// </remarks>
+    public int TargetPathId
+    {
+        get => NativeMethods.rocksdb_compactoptions_get_target_path_id(Handle);
+        set => NativeMethods.rocksdb_compactoptions_set_target_path_id(Handle, value);
     }
 
     /// <summary>

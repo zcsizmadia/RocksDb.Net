@@ -471,6 +471,33 @@ public sealed class BlockBasedTableOptions : RocksDbHandle
         return this;
     }
 
+    /// <summary>
+    /// Which top-level index blocks stay pinned in the block cache.
+    /// </summary>
+    /// <remarks>
+    /// Write-only: RocksDb exposes no getter. Default is
+    /// <see cref="RocksDbNet.PinningTier.Fallback"/>, which defers to the older
+    /// boolean pinning options.
+    /// </remarks>
+    public PinningTier TopLevelIndexPinningTier
+    {
+        set => NativeMethods.rocksdb_block_based_options_set_top_level_index_pinning_tier(Handle, (int)value);
+    }
+
+    /// <summary>Which partitioned index and filter blocks stay pinned.</summary>
+    /// <inheritdoc cref="TopLevelIndexPinningTier" path="/remarks"/>
+    public PinningTier PartitionPinningTier
+    {
+        set => NativeMethods.rocksdb_block_based_options_set_partition_pinning_tier(Handle, (int)value);
+    }
+
+    /// <summary>Which unpartitioned index and filter blocks stay pinned.</summary>
+    /// <inheritdoc cref="TopLevelIndexPinningTier" path="/remarks"/>
+    public PinningTier UnpartitionedPinningTier
+    {
+        set => NativeMethods.rocksdb_block_based_options_set_unpartitioned_pinning_tier(Handle, (int)value);
+    }
+
     protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_block_based_options_destroy(Handle);
