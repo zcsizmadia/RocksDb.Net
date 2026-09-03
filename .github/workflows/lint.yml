@@ -27,6 +27,40 @@ jobs:
       # .markdownlint.jsonc, which markdownlint-cli2 discovers on its own.
       run: npx --yes markdownlint-cli2@0.23.2 "**/*.md" "#**/node_modules/**"
 
+  generated:
+    name: Generated code
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Setup .NET SDK
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: 10.0.x
+
+    - name: Check NativeMethods.g.cs is up to date
+      # Regenerate from the pinned RocksDb version and fail if the result
+      # differs from what is committed. This catches three things a build cannot:
+      # a hand edit to the generated file, a generator change that was never
+      # regenerated, and a RocksDbVersion bump where the bindings were left
+      # behind. The last one matters most, since the P/Invoke signatures would
+      # then describe a different native library than the one being loaded.
+      shell: bash
+      run: |
+        version="$(dotnet msbuild RocksDb.Net/ -getProperty:RocksDbVersion -nologo -v:q | tr -d '\r' | xargs)"
+        echo "Regenerating bindings for RocksDb $version"
+
+        dotnet run --project NativeMethodsGenerator -c Release -- \
+          --version "$version" \
+          --output RocksDb.Net/Native/NativeMethods.g.cs
+
+        if ! git diff --exit-code -- RocksDb.Net/Native/NativeMethods.g.cs; then
+          echo "::error::NativeMethods.g.cs does not match a fresh generation for RocksDb $version. Re-run the generator and commit the result."
+          exit 1
+        fi
+
+        echo "Bindings match the generator output."
+
   actions:
     name: Workflows
     runs-on: ubuntu-latest

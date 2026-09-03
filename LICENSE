@@ -19,3 +19,9 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+This licence covers the RocksDb.Net wrapper only. RocksDB itself is developed by
+Meta Platforms, Inc. and is dual-licensed under the GPLv2 and Apache 2.0
+Licence. See THIRD-PARTY-NOTICES.md for attribution and details.

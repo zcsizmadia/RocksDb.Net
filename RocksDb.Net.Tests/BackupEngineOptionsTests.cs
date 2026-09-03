@@ -287,42 +287,24 @@ public class BackupEngineOptionsTests
         db.Db.Put("a", "1");
         db.Db.Flush();
 
-        var reported = new List<string>();
-        void OnUnhandled(object? sender, CallbackExceptionEventArgs e)
+        using var reported = new CallbackExceptionRecorder();
+
+        using var engineOpts = new BackupEngineOptions(backupDir.Path)
         {
-            lock (reported)
-            {
-                reported.Add(e.CallbackName);
-            }
-        }
+            ShareTableFiles = true,
+            ShareFilesWithChecksum = true,
+            SchemaVersion = 2, // Required by the exclude-files callback.
+        };
+        using var engine = BackupEngine.Open(engineOpts);
 
-        RocksDbCallbacks.UnhandledException += OnUnhandled;
-        try
-        {
-            using var engineOpts = new BackupEngineOptions(backupDir.Path)
-            {
-                ShareTableFiles = true,
-                ShareFilesWithChecksum = true,
-                SchemaVersion = 2, // Required by the exclude-files callback.
-            };
-            using var engine = BackupEngine.Open(engineOpts);
+        using var backupOpts = new CreateBackupOptions { FlushBeforeBackup = true };
+        backupOpts.SetExcludeFilesCallback(_ => throw new InvalidOperationException("exclude boom"));
 
-            using var backupOpts = new CreateBackupOptions { FlushBeforeBackup = true };
-            backupOpts.SetExcludeFilesCallback(_ => throw new InvalidOperationException("exclude boom"));
+        // The backup still succeeds: a throwing callback excludes nothing.
+        engine.CreateNewBackup(db.Db, backupOpts);
 
-            // The backup still succeeds: a throwing callback excludes nothing.
-            engine.CreateNewBackup(db.Db, backupOpts);
-
-            Assert.Single(engine.AsEnumerable());
-            lock (reported)
-            {
-                Assert.Contains("SetExcludeFilesCallback", reported);
-            }
-        }
-        finally
-        {
-            RocksDbCallbacks.UnhandledException -= OnUnhandled;
-        }
+        Assert.Single(engine.AsEnumerable());
+        Assert.True(reported.Contains("SetExcludeFilesCallback"));
     }
 
     [Fact]

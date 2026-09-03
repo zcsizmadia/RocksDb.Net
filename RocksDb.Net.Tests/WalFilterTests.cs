@@ -13,21 +13,6 @@ namespace RocksDbNet.Tests;
 /// </remarks>
 public class WalFilterTests
 {
-    /// <summary>
-    /// Writes records and closes without flushing, leaving them in the WAL for
-    /// the next open to replay.
-    /// </summary>
-    private static void WriteRecordsLeftInTheWal(string path, params (string Key, string Value)[] records)
-    {
-        using var opts = new DbOptions { CreateIfMissing = true, AvoidFlushDuringShutdown = true };
-        using var db = RocksDb.Open(opts, path);
-
-        foreach ((string key, string value) in records)
-        {
-            db.Put(key, value);
-        }
-    }
-
     private sealed class RecordingFilter(WalProcessingOption decision) : WalFilter("recording-filter")
     {
         private readonly List<string> _logFileNames = [];
@@ -71,7 +56,7 @@ public class WalFilterTests
     public void ContinueProcessing_AppliesEveryRecord()
     {
         using var dir = new TempDir();
-        WriteRecordsLeftInTheWal(dir.Path, ("a", "1"), ("b", "2"));
+        TestDb.WriteRecordsLeftInTheWal(dir.Path, ("a", "1"), ("b", "2"));
 
         var filter = new RecordingFilter(WalProcessingOption.ContinueProcessing);
         using var opts = new DbOptions { CreateIfMissing = true };
@@ -88,7 +73,7 @@ public class WalFilterTests
     public void IgnoreCurrentRecord_DropsEveryRecord()
     {
         using var dir = new TempDir();
-        WriteRecordsLeftInTheWal(dir.Path, ("a", "1"), ("b", "2"));
+        TestDb.WriteRecordsLeftInTheWal(dir.Path, ("a", "1"), ("b", "2"));
 
         var filter = new RecordingFilter(WalProcessingOption.IgnoreCurrentRecord);
         using var opts = new DbOptions { CreateIfMissing = true };
@@ -106,7 +91,7 @@ public class WalFilterTests
     public void StopReplay_DiscardsEverythingFromThatRecordOn()
     {
         using var dir = new TempDir();
-        WriteRecordsLeftInTheWal(dir.Path, ("a", "1"), ("b", "2"), ("c", "3"));
+        TestDb.WriteRecordsLeftInTheWal(dir.Path, ("a", "1"), ("b", "2"), ("c", "3"));
 
         var filter = new StopAfterFirstFilter();
         using var opts = new DbOptions { CreateIfMissing = true };
@@ -139,7 +124,7 @@ public class WalFilterTests
     public void ReplacementBatch_IsAppliedInPlaceOfTheOriginal()
     {
         using var dir = new TempDir();
-        WriteRecordsLeftInTheWal(dir.Path, ("a", "original"));
+        TestDb.WriteRecordsLeftInTheWal(dir.Path, ("a", "original"));
 
         var filter = new RewritingFilter();
         using var opts = new DbOptions { CreateIfMissing = true };
@@ -177,7 +162,7 @@ public class WalFilterTests
     public void CorruptedRecord_FailsTheOpenUnderAbsoluteConsistency()
     {
         using var dir = new TempDir();
-        WriteRecordsLeftInTheWal(dir.Path, ("a", "1"));
+        TestDb.WriteRecordsLeftInTheWal(dir.Path, ("a", "1"));
 
         var filter = new RecordingFilter(WalProcessingOption.CorruptedRecord);
         using var opts = new DbOptions
@@ -194,7 +179,7 @@ public class WalFilterTests
     public void CorruptedRecord_UnderTheDefaultMode_StopsReplayInstead()
     {
         using var dir = new TempDir();
-        WriteRecordsLeftInTheWal(dir.Path, ("a", "1"));
+        TestDb.WriteRecordsLeftInTheWal(dir.Path, ("a", "1"));
 
         var filter = new RecordingFilter(WalProcessingOption.CorruptedRecord);
         using var opts = new DbOptions { CreateIfMissing = true };
@@ -211,7 +196,7 @@ public class WalFilterTests
     public void ColumnFamilyLogNumberMap_ReportsTheDefaultColumnFamily()
     {
         using var dir = new TempDir();
-        WriteRecordsLeftInTheWal(dir.Path, ("a", "1"));
+        TestDb.WriteRecordsLeftInTheWal(dir.Path, ("a", "1"));
 
         var filter = new RecordingFilter(WalProcessingOption.ContinueProcessing);
         using var opts = new DbOptions { CreateIfMissing = true };
@@ -230,7 +215,7 @@ public class WalFilterTests
     public void LogFileName_IsReportedForEachRecord()
     {
         using var dir = new TempDir();
-        WriteRecordsLeftInTheWal(dir.Path, ("a", "1"), ("b", "2"));
+        TestDb.WriteRecordsLeftInTheWal(dir.Path, ("a", "1"), ("b", "2"));
 
         var filter = new RecordingFilter(WalProcessingOption.ContinueProcessing);
         using var opts = new DbOptions { CreateIfMissing = true };
@@ -245,7 +230,7 @@ public class WalFilterTests
     public void BatchContents_AreReadableInsideTheCallback()
     {
         using var dir = new TempDir();
-        WriteRecordsLeftInTheWal(dir.Path, ("a", "1"));
+        TestDb.WriteRecordsLeftInTheWal(dir.Path, ("a", "1"));
 
         var filter = new BatchInspectingFilter();
         using var opts = new DbOptions { CreateIfMissing = true };
@@ -281,39 +266,21 @@ public class WalFilterTests
     public void ThrowingFilter_AppliesTheRecordAndReports()
     {
         using var dir = new TempDir();
-        WriteRecordsLeftInTheWal(dir.Path, ("a", "1"));
+        TestDb.WriteRecordsLeftInTheWal(dir.Path, ("a", "1"));
 
-        var reported = new List<string>();
-        void OnUnhandled(object? sender, CallbackExceptionEventArgs e)
-        {
-            lock (reported)
-            {
-                reported.Add(e.CallbackName);
-            }
-        }
+        using var reported = new CallbackExceptionRecorder();
 
-        RocksDbCallbacks.UnhandledException += OnUnhandled;
-        try
-        {
-            var filter = new ThrowingFilter();
-            using var opts = new DbOptions { CreateIfMissing = true };
-            opts.SetWalFilter(filter);
+        var filter = new ThrowingFilter();
+        using var opts = new DbOptions { CreateIfMissing = true };
+        opts.SetWalFilter(filter);
 
-            using var db = RocksDb.Open(opts, dir.Path);
+        using var db = RocksDb.Open(opts, dir.Path);
 
-            // Continuing is the safe fallback: the record is applied as written,
-            // exactly as it would have been with no filter at all.
-            Assert.Equal("1", db.GetString("a"));
+        // Continuing is the safe fallback: the record is applied as written,
+        // exactly as it would have been with no filter at all.
+        Assert.Equal("1", db.GetString("a"));
 
-            lock (reported)
-            {
-                Assert.Contains("LogRecordFound", reported);
-            }
-        }
-        finally
-        {
-            RocksDbCallbacks.UnhandledException -= OnUnhandled;
-        }
+        Assert.True(reported.Contains("LogRecordFound"));
     }
 
     private sealed class ThrowingFilter() : WalFilter("throwing-filter")

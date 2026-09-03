@@ -314,6 +314,14 @@ dotnet run --project NativeMethodsGenerator -- \
     --output RocksDb.Net/Native/NativeMethods.g.cs
 ```
 
+## Acknowledgements
+
+[RocksDB](https://rocksdb.org/) is developed and maintained by **Meta Platforms, Inc.** (formerly Facebook, Inc.) and contributors, at [github.com/facebook/rocksdb](https://github.com/facebook/rocksdb). This project is a wrapper around their work and would not exist without it.
+
+RocksDb.Net is not affiliated with, endorsed by, or sponsored by Meta Platforms, Inc.
+
 ## License
 
-MIT. See [LICENSE](https://github.com/zcsizmadia/RocksDb.Net/blob/main/LICENSE) for details.
+The wrapper is MIT. See [LICENSE](https://github.com/zcsizmadia/RocksDb.Net/blob/main/LICENSE).
+
+RocksDB is dual-licensed under the GPLv2 and Apache 2.0 License, and its terms apply to the native library and to the generated bindings derived from its C header. See [THIRD-PARTY-NOTICES.md](https://github.com/zcsizmadia/RocksDb.Net/blob/main/THIRD-PARTY-NOTICES.md) for attribution and detail, and RocksDB's own licence files for the authoritative terms.

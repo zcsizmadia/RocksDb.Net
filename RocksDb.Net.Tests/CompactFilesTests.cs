@@ -10,25 +10,6 @@ namespace RocksDbNet.Tests;
 /// </summary>
 public class CompactFilesTests
 {
-    /// <summary>
-    /// Writes two SST files whose key ranges overlap, so a compaction of both
-    /// has to merge them rather than trivially moving either.
-    /// </summary>
-    private static string[] WriteTwoOverlappingSstFiles(RocksDb db)
-    {
-        db.Put("a", "1");
-        db.Put("b", "2");
-        db.Flush();
-        db.Put("a", "1-updated");
-        db.Put("b", "2-updated");
-        db.Flush();
-
-        using LiveFiles? live = db.GetLiveFiles();
-        Assert.NotNull(live);
-
-        return [.. live!.Files.Select(f => f.Name)];
-    }
-
     // ── CompactFilesOptions ──────────────────────────────────────────────────
 
     [Fact]
@@ -102,7 +83,7 @@ public class CompactFilesTests
     {
         using var db = new TempDb();
 
-        string[] inputs = WriteTwoOverlappingSstFiles(db.Db);
+        string[] inputs = db.Db.WriteOverlappingSstFiles();
         Assert.Equal(2, inputs.Length);
 
         using var opts = new CompactFilesOptions { Compression = Compression.None };
@@ -125,7 +106,7 @@ public class CompactFilesTests
     {
         using var db = new TempDb();
 
-        string[] inputs = WriteTwoOverlappingSstFiles(db.Db);
+        string[] inputs = db.Db.WriteOverlappingSstFiles();
         string[] outputs = db.Db.CompactFiles(null, inputs, outputLevel: 1);
 
         Assert.NotEmpty(outputs);
@@ -136,7 +117,7 @@ public class CompactFilesTests
     {
         using var db = new TempDb();
 
-        string[] inputs = WriteTwoOverlappingSstFiles(db.Db);
+        string[] inputs = db.Db.WriteOverlappingSstFiles();
 
         using var opts = new CompactFilesOptions();
         string[] outputs = db.Db.CompactFiles(opts, inputs, outputLevel: 1, out CompactionJobInfo? jobInfo);
@@ -187,7 +168,7 @@ public class CompactFilesTests
     {
         using var db = new TempDb();
 
-        string[] inputs = WriteTwoOverlappingSstFiles(db.Db);
+        string[] inputs = db.Db.WriteOverlappingSstFiles();
 
         using var flag = new CompactionCancellationFlag();
         flag.Set(true);

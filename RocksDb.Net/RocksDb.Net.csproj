@@ -39,6 +39,8 @@
     <None Include="../LICENSE" Pack="true" PackagePath="" />
     <None Include="../README.md" Pack="true" PackagePath="" />
     <None Include="../logo-128.png" Pack="true" PackagePath="" />
+    <!-- RocksDB's attribution travels with the package, not just the repo. -->
+    <None Include="../THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="" />
   </ItemGroup>
 
 

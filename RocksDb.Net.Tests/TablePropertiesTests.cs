@@ -163,8 +163,7 @@ public class TablePropertiesTests
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.EventListener = listener;
-        opts.EnableBlobFiles = true;
-        opts.MinBlobSize = 0; // Send every value to a blob file.
+        opts.EnableBlobs();
 
         using (var db = RocksDb.Open(opts, dir.Path))
         {
@@ -210,8 +209,7 @@ public class TablePropertiesTests
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.EventListener = listener;
-        opts.EnableBlobFiles = true;
-        opts.MinBlobSize = 0;
+        opts.EnableBlobs();
 
         using (var db = RocksDb.Open(opts, dir.Path))
         {
