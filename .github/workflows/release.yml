@@ -54,7 +54,7 @@ jobs:
           echo "Tagged commit $GITHUB_SHA is on main."
 
       - name: Download nupkg built from the tagged commit
-        uses: dawidd6/action-download-artifact@v23
+        uses: dawidd6/action-download-artifact@v24
         with:
           workflow: build.yml
           workflow_conclusion: success
