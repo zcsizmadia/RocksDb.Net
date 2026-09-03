@@ -1637,16 +1637,24 @@ public sealed class RocksDb : RocksDbHandle
     /// <paramref name="sequenceNumber"/>.
     /// </summary>
     /// <param name="sequenceNumber">
-    /// Where to start. 0 means the oldest record still retained.
+    /// Where to start. <b>Inclusive:</b> the batch containing this sequence
+    /// number is returned, so passing <see cref="LatestSequenceNumber"/> replays
+    /// the most recent write again. To resume after a known point, pass one more
+    /// than the last sequence number already consumed. Zero means the oldest
+    /// record still retained.
     /// </param>
-    /// <param name="options">
-    /// Read settings, or <c>null</c> for RocksDb's defaults.
-    /// </param>
+    /// <param name="options">Read options for the log, or <see langword="null"/> for the defaults.</param>
     /// <remarks>
+    /// <para>
     /// The basis for replication and change-data-capture: each step yields the
-    /// batch that was written and the sequence number it started at. Only
-    /// records still in the WAL are visible, so a sequence number older than the
-    /// oldest retained log fails rather than returning nothing.
+    /// batch that was written and the sequence number it started at. Read what
+    /// is inside a batch with <see cref="WriteBatch.Entries"/>.
+    /// </para>
+    /// <para>
+    /// Only records still in the write-ahead log are visible, so a sequence
+    /// number older than the oldest retained log fails rather than returning
+    /// nothing.
+    /// </para>
     /// </remarks>
     /// <exception cref="RocksDbException">
     /// The requested sequence number is no longer available, or reading the log
