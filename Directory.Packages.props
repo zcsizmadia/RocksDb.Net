@@ -7,6 +7,17 @@
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />
-    <PackageVersion Include="RocksDb.Net.Runtimes" Version="$(RocksDbVersion).1" />
+    <!--
+      Bounded, not open-ended. The P/Invoke declarations in NativeMethods.g.cs
+      are generated from exactly this RocksDb version's c.h, so a runtimes
+      package built from a different RocksDb version can disagree with them
+      about the native ABI. That disagreement would not be caught at build or
+      load time; it would be wrong argument marshalling at the first call.
+
+      The range admits revisions of this same RocksDb version, which is what a
+      packaging or rebuild fix ships as, and excludes the next one, which needs
+      regenerated bindings and a new release of this package.
+    -->
+    <PackageVersion Include="RocksDb.Net.Runtimes" Version="[$(RocksDbVersion).1, $(RocksDbVersionNextPatch))" />
   </ItemGroup>
 </Project>

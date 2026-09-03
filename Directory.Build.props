@@ -12,6 +12,13 @@
   <PropertyGroup>
     <RocksDbVersion>11.8.1</RocksDbVersion>
     <Version>$(RocksDbVersion).1</Version>
+
+    <!--
+      The next RocksDb patch version, used to put an exclusive upper bound on
+      the native runtimes dependency. Derived rather than written out, so a
+      RocksDbVersion bump cannot leave a stale bound behind.
+    -->
+    <RocksDbVersionNextPatch>$([System.Version]::Parse('$(RocksDbVersion)').Major).$([System.Version]::Parse('$(RocksDbVersion)').Minor).$([MSBuild]::Add($([System.Version]::Parse('$(RocksDbVersion)').Build), 1))</RocksDbVersionNextPatch>
     <PackageVersion>$(Version)</PackageVersion>
     <Authors>Zoltan Csizmadia</Authors>
   </PropertyGroup>
