@@ -17,7 +17,13 @@
       The range admits revisions of this same RocksDb version, which is what a
       packaging or rebuild fix ships as, and excludes the next one, which needs
       regenerated bindings and a new release of this package.
+
+      The floor is revision 2, not 1. Revision 1 shipped the native binaries
+      with no attribution for the third-party libraries alongside them, and
+      those licences ask for their notices to travel with the binaries. Since
+      revision 2 is what carries them, anyone installing this package should
+      get it rather than being free to resolve the revision that does not.
     -->
-    <PackageVersion Include="RocksDb.Net.Runtimes" Version="[$(RocksDbVersion).1, $(RocksDbVersionNextPatch))" />
+    <PackageVersion Include="RocksDb.Net.Runtimes" Version="[$(RocksDbVersion).2, $(RocksDbVersionNextPatch))" />
   </ItemGroup>
 </Project>
