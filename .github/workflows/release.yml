@@ -11,8 +11,13 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
-    # This ensures the job only runs if the tag was created from the main branch
-    if: github.event.release.target_commitish == 'main' || github.ref == 'refs/heads/main'
+    # No `if:` guard here on purpose. This job used to be skipped unless
+    # `github.event.release.target_commitish` was exactly 'main', which failed
+    # by doing nothing: a release created against a SHA or another branch
+    # produced a green, empty run and never published. The equivalent check now
+    # runs as a step below, where it can fail loudly instead. The old condition
+    # also carried `|| github.ref == 'refs/heads/main'`, which is dead on a
+    # release event because github.ref is the tag ref.
     permissions:
       actions: read     # To download from build.yml
       contents: write   # To upload assets to the Release
@@ -20,6 +25,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Needed for the ancestry check below, which compares the tagged
+          # commit against main.
+          fetch-depth: 0
 
       - name: Install .NET SDKs
         uses: actions/setup-dotnet@v6
@@ -27,12 +36,35 @@ jobs:
           dotnet-version: |
             10.0.x
 
-      - name: Download nupkg from build workflow
+      - name: Check the tag is on main
+        shell: bash
+        run: |
+          # The intent is that only commits that reached main get published.
+          # Asking git whether the tagged commit is an ancestor of main states
+          # that directly, and unlike reading target_commitish it holds however
+          # the release was created: that field can be a branch name, a tag
+          # name, or a SHA depending on how the release was made, so comparing
+          # it to the string 'main' both missed valid releases and would have
+          # accepted a tag that had been force-moved off main.
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::The tagged commit $GITHUB_SHA is not an ancestor of main, so it is not published."
+            exit 1
+          fi
+          echo "Tagged commit $GITHUB_SHA is on main."
+
+      - name: Download nupkg built from the tagged commit
         uses: dawidd6/action-download-artifact@v23
         with:
           workflow: build.yml
           workflow_conclusion: success
-          branch: main             # Strictly target the main branch
+          # Pinned to the tagged commit, which is the whole point. Taking the
+          # latest successful build on main instead meant anything merged
+          # between tagging and publishing changed what shipped, while the
+          # version string still matched and the check below still passed.
+          # Pinning also keeps the guarantee that what is published is exactly
+          # what CI tested, rather than a fresh build made here.
+          commit: ${{ github.sha }}
           name: nuget-package
           path: ./nupkgs
           check_artifacts: true    # Ensures the workflow actually has the named artifact

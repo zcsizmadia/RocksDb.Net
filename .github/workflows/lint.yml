@@ -61,6 +61,60 @@ jobs:
 
         echo "Bindings match the generator output."
 
+    - name: Check the docs match the pinned version and function count
+      # The RocksDb version and the binding count appear in prose in several
+      # files. Nothing generates those files, so the numbers went stale: the
+      # README claimed 1,047 functions when there were 1,745. Rather than
+      # templating the markdown, this asserts the numbers still agree with the
+      # single sources of truth, so drift fails CI instead of shipping.
+      #
+      # Historical CHANGELOG entries are deliberately not checked. An entry
+      # records what a past release contained and must keep its own numbers.
+      shell: bash
+      run: |
+        version="$(dotnet msbuild RocksDb.Net/ -getProperty:RocksDbVersion -nologo -v:q | tr -d '\r' | xargs)"
+        count="$(grep -c 'LibraryImport' RocksDb.Net/Native/NativeMethods.g.cs)"
+        # The prose writes the count both bare and comma-grouped. Grouping with
+        # sed rather than printf "%'d", because that format depends on the
+        # locale and the runner's C.UTF-8 would produce no separator at all.
+        grouped="$(echo "$count" | sed -E ':a;s/([0-9])([0-9]{3})($|,)/\1,\2\3/;ta')"
+
+        echo "Expecting RocksDb $version and $count bindings ($grouped)."
+
+        failed=0
+
+        check() {
+          local file="$1" needle="$2" what="$3"
+          if ! grep -qF -- "$needle" "$file"; then
+            echo "::error file=$file::Expected to find $what here. Looked for '$needle'."
+            failed=1
+          fi
+        }
+
+        # The version badge and the build instructions in the README.
+        check README.md "RocksDb-${version}-blue" "the current version in the RocksDb badge"
+        check README.md "--version ${version}" "the current version in the generator instructions"
+
+        # The binding count, where each file happens to format it.
+        check README.md "(${grouped} functions)" "the current binding count"
+        check docs/api/index.md "There are ${count} of them" "the current binding count"
+
+        # Every stale mention of a version this project no longer pins is worth
+        # catching too, since a bump leaves the old number behind in prose.
+        stale="$(grep -rn --include='*.md' -E 'RocksDb-[0-9]+\.[0-9]+\.[0-9]+-blue|--version [0-9]+\.[0-9]+\.[0-9]+' . \
+                   | grep -vF "$version" || true)"
+        if [ -n "$stale" ]; then
+          echo "::error::These mention a RocksDb version other than the pinned $version:"
+          echo "$stale"
+          failed=1
+        fi
+
+        if [ "$failed" -ne 0 ]; then
+          exit 1
+        fi
+
+        echo "Docs agree with RocksDb $version and $count bindings."
+
   actions:
     name: Workflows
     runs-on: ubuntu-latest
