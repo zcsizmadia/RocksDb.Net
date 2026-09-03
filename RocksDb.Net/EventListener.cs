@@ -717,9 +717,16 @@ public abstract class EventListener : RocksDbHandle
             outputFiles[i] = NativeMethods.PtrToStringUTF8(p, len) ?? string.Empty;
         }
 
+        // The status arrives through SaveError, which strdups the message, so it
+        // has to be freed once copied. Leaked one string per failing compaction.
         nint errptr = default;
         NativeMethods.rocksdb_compactionjobinfo_status(info, ref errptr);
-        var status = errptr != nint.Zero ? Marshal.PtrToStringAnsi(errptr) : "OK";
+        string? status = "OK";
+        if (errptr != nint.Zero)
+        {
+            status = Marshal.PtrToStringAnsi(errptr);
+            NativeMethods.rocksdb_free(errptr);
+        }
 
         return new CompactionJobInfo(
             ColumnFamilyName: columnFamilyName,
@@ -818,9 +825,15 @@ public abstract class EventListener : RocksDbHandle
         byte* str = NativeMethods.rocksdb_subcompactionjobinfo_cf_name(info, out length);
         var columnFamilyName = NativeMethods.PtrToStringUTF8(str, length);
 
+        // Freed for the same reason as in CompactionJobInfo above.
         nint errStr = nint.Zero;
         NativeMethods.rocksdb_subcompactionjobinfo_status(info, ref errStr);
-        var status = errStr != nint.Zero ? Marshal.PtrToStringAnsi(errStr) : "OK";
+        string? status = "OK";
+        if (errStr != nint.Zero)
+        {
+            status = Marshal.PtrToStringAnsi(errStr);
+            NativeMethods.rocksdb_free(errStr);
+        }
 
         return new SubCompactionJobInfo(columnFamilyName, status)
         {

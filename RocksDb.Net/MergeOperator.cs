@@ -236,12 +236,15 @@ public abstract class MergeOperator : RocksDbHandle
             // Get the pointer to the operand
             nint operandPtr = Marshal.ReadIntPtr(operands, i * nint.Size);
 
-            // Get the length of the operand
-            long operandLen = Marshal.ReadInt64(operandsLen, i * sizeof(long));
+            // The lengths are a `const size_t*`, so the element width is the
+            // pointer width, not 8. Reading them as Int64 put every index after
+            // the first at the wrong offset on 32-bit, which win-x86 is, fusing
+            // pairs of lengths and reading past the end of the array.
+            nuint operandLen = (nuint)Marshal.ReadIntPtr(operandsLen, i * nint.Size);
 
             // Copy the operand data into a managed byte array
             byte[] operandData = new byte[operandLen];
-            Marshal.Copy(operandPtr, operandData, 0, (int)operandLen);
+            Marshal.Copy(operandPtr, operandData, 0, checked((int)operandLen));
 
             yield return operandData;
         }

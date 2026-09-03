@@ -858,8 +858,20 @@ public sealed class RocksDb : RocksDbHandle
     public void WaitForCompact(WaitForCompactOptions? options = null)
     {
         nint err = default;
-        using var compactOptions = options ?? new WaitForCompactOptions();
-        NativeMethods.rocksdb_wait_for_compact(Handle, compactOptions.Handle, ref err);
+
+        // Only dispose what this method created. Disposing a caller-supplied
+        // instance left it unusable, so a second call with the same options
+        // passed a zero handle into native code.
+        WaitForCompactOptions? owned = options is null ? new WaitForCompactOptions() : null;
+        try
+        {
+            NativeMethods.rocksdb_wait_for_compact(Handle, (options ?? owned!).Handle, ref err);
+        }
+        finally
+        {
+            owned?.Dispose();
+        }
+
         NativeMethods.ThrowOnError(err);
     }
 

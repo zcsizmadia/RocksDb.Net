@@ -345,4 +345,27 @@ public class PerOperationOptionsTests
         using var cf = db.Db.CreateColumnFamily(cfOpts, "extra");
         db.Db.SetOptions(cf, new Dictionary<string, string> { ["write_buffer_size"] = "131072" });
     }
+
+    /// <summary>
+    /// Passing options to <c>WaitForCompact</c> must not consume them. The method
+    /// used to dispose whatever it was given, so a second call with the same
+    /// instance passed a zero handle into native code.
+    /// </summary>
+    [Fact]
+    public void WaitForCompact_DoesNotDisposeCallerSuppliedOptions()
+    {
+        using var db = new TempDb();
+        using var waitOpts = new WaitForCompactOptions { Flush = true };
+
+        db.Db.Put("key", "value");
+
+        db.Db.WaitForCompact(waitOpts);
+
+        // Still usable, which is the whole point.
+        Assert.True(waitOpts.Flush);
+
+        db.Db.WaitForCompact(waitOpts);
+
+        Assert.Equal("value", db.Db.GetString("key"));
+    }
 }

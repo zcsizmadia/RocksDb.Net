@@ -26,13 +26,16 @@ The removed `DbOptions` setters were the `rocksdb-sharp` compatibility surface. 
 
 ### Fixed
 
-Found by an independent pre-release review before the release was cut. All five predate this release.
+Found by an independent pre-release review before the release was cut. All of them predate this release.
 
 - **Four event-listener enums did not match the native values.** `CompactionReason`, `FlushReason` and `BackgroundErrorReason` were shifted from the third member onward and carried several names that do not exist in RocksDb, so a manual compaction was reported as `FilesMarkedForCompaction` and an explicit flush as `WriteBufferManager`. Worst of the four, `WriteStallCondition` was inverted: RocksDb declares `kDelayed, kStopped, kNormal` in that order, because it adds new conditions before `kNormal`, so the onset of a write stall was reported as `Normal` and recovery as `Stopped`. Any application reacting to stalls acted on the opposite signal. The enums now match RocksDb 11.8.1 exactly and the tests assert every member against the header rather than spot-checking the wrapper's own numbers.
 - **A `MergeOperator` that did not override `PartialMerge` terminated the process on flush.** RocksDb invokes the partial-merge slot through an unchecked function pointer, unlike the delete-value slot beside it, and reaches it on any flush or non-bottommost compaction that collapses two or more operands for one key. The wrapper installed a null pointer whenever the method was not overridden. The slot is now always installed; the base implementation returns false, which tells RocksDb to keep the operands and merge them later. Same defect class as the `EventListener` null callbacks.
 - **Three functions returning a struct by value were declared as returning a pointer.** `rocksdb_iter_key_slice`, `rocksdb_iter_value_slice` and `rocksdb_iter_timestamp_slice` return a 16-byte `rocksdb_slice_t`, which Windows x64 returns through a hidden pointer argument. Calling one would have written over the iterator and read the wrong register as its argument. Nothing in the wrapper called them yet.
 - **Four functions returning C `bool` were declared as returning a pointer-sized integer**, which reads register bits no ABI requires the callee to define, so a false result could read as true. Seven `bool` parameters had the same declaration. Nothing in the wrapper called them yet.
 - **Pointer-to-array parameters were declared as untyped integers** in thirteen functions, including `rocksdb_open_column_families` and `rocksdb_multi_get_cf`. These worked, because a pointer is a pointer, but the declaration gave no protection against passing the wrong thing.
+- **Merge operands were unusable on 32-bit.** The operand lengths are a `size_t` array, but the wrapper read each element as 64 bits, so on win-x86 every index after the first came from the wrong offset and the last read ran past the end of the array. Multi-operand merges failed or returned wrong data.
+- **`RocksDb.WaitForCompact` disposed the options it was given.** A caller reusing a `WaitForCompactOptions` passed a zero handle into native code on the second call.
+- **Compaction and sub-compaction status strings leaked.** RocksDb allocates them with `strdup`, and the wrapper copied them without freeing. One string per failing compaction.
 
 Found earlier in the 11.8.1 work:
 
