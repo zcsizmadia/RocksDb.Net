@@ -1,7 +1,7 @@
 namespace RocksDbNet.Tests;
 
 /// <summary>
-/// Round-trip coverage for the DbOptions properties added in RocksDb 11.8.1.
+/// Round-trip coverage for the DbOptions properties.
 /// See issue #25.
 /// </summary>
 /// <remarks>
@@ -10,7 +10,7 @@ namespace RocksDbNet.Tests;
 /// only honoured when the database is opened, so a round trip is all that can
 /// be asserted here.
 /// </remarks>
-public class DbOptions118Tests
+public class DbOptionsPropertyTests
 {
     [Fact]
     public void Allow2Pc_GetSet()

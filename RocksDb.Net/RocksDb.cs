@@ -1161,7 +1161,7 @@ public sealed class RocksDb : RocksDbHandle
 
             nint err = default;
             fixed (byte** pp = pathPtrs)
-                NativeMethods.rocksdb_ingest_external_file(Handle, pp, (nint)count, options.Handle, ref err);
+                NativeMethods.rocksdb_ingest_external_file(Handle, pp, (nuint)count, options.Handle, ref err);
             NativeMethods.ThrowOnError(err);
         }
         finally
@@ -1194,7 +1194,7 @@ public sealed class RocksDb : RocksDbHandle
 
             nint err = default;
             fixed (byte** pp = pathPtrs)
-                NativeMethods.rocksdb_ingest_external_file_cf(Handle, cf.Handle, pp, (nint)count, options.Handle, ref err);
+                NativeMethods.rocksdb_ingest_external_file_cf(Handle, cf.Handle, pp, (nuint)count, options.Handle, ref err);
             NativeMethods.ThrowOnError(err);
         }
         finally

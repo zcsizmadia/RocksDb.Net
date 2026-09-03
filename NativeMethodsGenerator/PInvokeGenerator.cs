@@ -160,6 +160,14 @@ public static class PInvokeGenerator
         if (t.Contains("(*)") || t.Contains("(*"))
             return "nint";
 
+        // `const` on a by-value scalar says nothing about the ABI, but it does
+        // stop the exact-match switch below from recognising the type, which
+        // silently mapped e.g. `const uint32_t` to the nint fallback. Drop it for
+        // non-pointer types only: for pointers, const distinguishes cases the
+        // switch handles separately (`char*` vs `const char*`).
+        if (!t.Contains('*') && t.StartsWith("const ", StringComparison.Ordinal))
+            t = t["const ".Length..].Trim();
+
         // Exact well-known types
         return t switch
         {

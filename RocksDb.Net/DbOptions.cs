@@ -867,7 +867,7 @@ public sealed class DbOptions : RocksDbHandle
         DbLogDir = path;
         return this;
     }
-    // ── RocksDb 11.8.1 additions ─────────────────────────────────────────────
+    // ── Additional column-family and database settings ───────────────────────
     // Note: nearly every option here is read once when the database is opened.
     // Changing it on a DbOptions instance afterwards has no effect; use
     // RocksDb.SetDbOptions for the options that can change at runtime.

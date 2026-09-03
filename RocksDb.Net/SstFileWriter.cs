@@ -26,6 +26,24 @@ public sealed class SstFileWriter : RocksDbHandle
         return new SstFileWriter(writer);
     }
 
+    /// <summary>
+    /// Creates a new <see cref="SstFileWriter"/> with explicit environment
+    /// options, for control over how the file is written: direct or memory
+    /// mapped I/O, preallocation, sync behaviour and rate limiting.
+    /// </summary>
+    /// <remarks>
+    /// Both arguments are read here and not retained, so the caller keeps
+    /// ownership of each and may dispose them once the writer exists.
+    /// </remarks>
+    public static SstFileWriter Create(EnvOptions envOptions, DbOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(envOptions);
+        ArgumentNullException.ThrowIfNull(options);
+
+        nint writer = NativeMethods.rocksdb_sstfilewriter_create(envOptions.Handle, options.Handle);
+        return new SstFileWriter(writer);
+    }
+
     /// <summary>Opens <paramref name="filePath"/> for writing. Call before any <c>Put</c>/<c>Merge</c>/<c>Delete</c>.</summary>
     public void Open(string filePath)
     {

@@ -185,7 +185,7 @@ public sealed class ReadOptions : RocksDbHandle
         set => NativeMethods.rocksdb_readoptions_set_ignore_range_deletions(Handle, value ? (byte)1 : (byte)0);
     }
 
-    // ── RocksDb 11.8.1 additions ─────────────────────────────────────────────
+    // ── Readahead, prefix and I/O accounting ─────────────────────────────────
 
     /// <summary>
     /// If true, readahead size grows automatically as sequential reading
