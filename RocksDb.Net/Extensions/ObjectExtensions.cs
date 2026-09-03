@@ -1,15 +1,15 @@
-﻿using System.Reflection;
+using System.Reflection;
 
 namespace RocksDbNet.Extensions;
 
-public static class ObjectExtensions
+internal static class ObjectExtensions
 {
-    public static bool CheckIfMethodOverridden<T>(this object instance, string methodName)
+    internal static bool CheckIfMethodOverridden<T>(this object instance, string methodName)
     {
         return instance.CheckIfMethodOverridden(typeof(T), methodName);
     }
 
-    public static bool CheckIfMethodOverridden(this object instance, Type baseType, string methodName)
+    internal static bool CheckIfMethodOverridden(this object instance, Type baseType, string methodName)
     {
         if (instance == null)
         {

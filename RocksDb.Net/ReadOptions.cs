@@ -125,15 +125,14 @@ public sealed class ReadOptions : RocksDbHandle
     }
 
     /// <summary>
-    /// Specify if this read request should process data that ALREADY resides on a
-    /// particular cache. If the required data is not found at the specified cache tier,
-    /// an empty value is returned.
-    /// 0 = read all tiers, 1 = block cache only, 2 = persisted tier.
+    /// Which tiers of storage the read is allowed to reach into. A read that
+    /// cannot be answered from the permitted tiers returns no value rather than
+    /// falling through to a slower one.
     /// </summary>
-    public int ReadTier
+    public ReadTier ReadTier
     {
-        get => NativeMethods.rocksdb_readoptions_get_read_tier(Handle);
-        set => NativeMethods.rocksdb_readoptions_set_read_tier(Handle, value);
+        get => (ReadTier)NativeMethods.rocksdb_readoptions_get_read_tier(Handle);
+        set => NativeMethods.rocksdb_readoptions_set_read_tier(Handle, (int)value);
     }
 
     /// <summary>Specify to create a non-snapshot-based tailing iterator.</summary>

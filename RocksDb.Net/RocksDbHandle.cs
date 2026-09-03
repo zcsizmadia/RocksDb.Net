@@ -1,4 +1,4 @@
-﻿using System.Runtime.InteropServices;
+using System.Runtime.InteropServices;
 
 namespace RocksDbNet;
 
@@ -59,7 +59,7 @@ public abstract class RocksDbHandle : IDisposable
     /// </summary>
     internal void TransferOwnership() => Interlocked.Exchange(ref _owned, 0);
 
-    public GCHandle PinGarbageCollector(string? name = null)
+    protected GCHandle PinGarbageCollector(string? name = null)
     {
         if (_gcHandle.IsAllocated)
         {
@@ -73,7 +73,7 @@ public abstract class RocksDbHandle : IDisposable
         return _gcHandle;
     }
 
-    public nint GetPinnedIntPtr()
+    protected nint GetPinnedIntPtr()
     {
         if (!_gcHandle.IsAllocated)
         {
@@ -82,7 +82,7 @@ public abstract class RocksDbHandle : IDisposable
         return GCHandle.ToIntPtr(_gcHandle);
     }
 
-    public nint GetPinnedNameIntPtr()
+    protected nint GetPinnedNameIntPtr()
     {
         if (!_gcHandle.IsAllocated)
         {
@@ -91,7 +91,7 @@ public abstract class RocksDbHandle : IDisposable
         return _namePtr;
     }
 
-    public void UnpinGarbageCollector()
+    protected internal void UnpinGarbageCollector()
     {
         if (!_gcHandle.IsAllocated)
         {
@@ -107,7 +107,7 @@ public abstract class RocksDbHandle : IDisposable
         }
     }
 
-    public static T GetSelfFromPinnedIntPtr<T>(nint state) where T : RocksDbHandle
+    protected static T GetSelfFromPinnedIntPtr<T>(nint state) where T : RocksDbHandle
     {
         if (state == IntPtr.Zero)
         {
@@ -121,7 +121,7 @@ public abstract class RocksDbHandle : IDisposable
         return self;
     }
 
-    public static nint GetNameFromPinnedIntPtr(nint state)
+    protected static nint GetNameFromPinnedIntPtr(nint state)
     {
         var self = GetSelfFromPinnedIntPtr<RocksDbHandle>(state);
         return self._namePtr;

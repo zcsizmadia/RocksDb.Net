@@ -85,6 +85,34 @@ public enum RateLimiterPriority
 }
 
 /// <summary>
+/// Which tiers of storage a read is allowed to reach into.
+/// </summary>
+/// <remarks>
+/// Mirrored from <c>include/rocksdb/options.h</c> because the C API declares
+/// this parameter as a plain <c>int</c>.
+/// </remarks>
+public enum ReadTier
+{
+    /// <summary>
+    /// Memtable, block cache, operating system cache or storage. The default,
+    /// and the only tier that always answers.
+    /// </summary>
+    ReadAllTier = 0,
+
+    /// <summary>Memtable or block cache only, so the read never touches storage.</summary>
+    BlockCacheTier = 1,
+
+    /// <summary>
+    /// Persisted data only. With the write-ahead log disabled this also skips
+    /// the memtable. RocksDb supports this for point lookups only, not iterators.
+    /// </summary>
+    PersistedTier = 2,
+
+    /// <summary>Memtable only, for memtable-only iterators.</summary>
+    MemtableTier = 3,
+}
+
+/// <summary>
 /// Whether a manual compaction should collect blob-file garbage.
 /// </summary>
 /// <remarks>
