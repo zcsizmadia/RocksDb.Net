@@ -56,8 +56,15 @@ public sealed class Env : RocksDbHandle
     }
 
     /// <summary>
-    /// Gets or sets the number of background threads used by RocksDb for compaction and flush operations. 
+    /// Gets or sets the size of the low-priority thread pool, which is the pool
+    /// that runs compactions.
     /// </summary>
+    /// <remarks>
+    /// This does not size a combined compaction-and-flush pool. The C API sends
+    /// it to the default pool, which is the low-priority one, so it is the same
+    /// setting as <see cref="LowPriorityBackgroundThreads"/>. Flushes run on the
+    /// high-priority pool; see <see cref="HighPriorityBackgroundThreads"/>.
+    /// </remarks>
     public int BackgroundThreads
     {
         get => NativeMethods.rocksdb_env_get_background_threads(Handle);
@@ -65,8 +72,13 @@ public sealed class Env : RocksDbHandle
     }
 
     /// <summary>
-    /// Gets or sets the number of high-priority background threads used by RocksDb for compaction and flush operations.
+    /// Gets or sets the size of the high-priority thread pool, which is the pool
+    /// that runs flushes.
     /// </summary>
+    /// <remarks>
+    /// Compactions do not use this pool. If it is set to zero, flushes fall back
+    /// to the low-priority pool and compete with compaction there.
+    /// </remarks>
     public int HighPriorityBackgroundThreads
     {
         get => NativeMethods.rocksdb_env_get_high_priority_background_threads(Handle);
@@ -74,8 +86,13 @@ public sealed class Env : RocksDbHandle
     }
 
     /// <summary>
-    /// Gets or sets the number of low-priority background threads used by RocksDb for compaction and flush operations.
+    /// Gets or sets the size of the low-priority thread pool, which is the pool
+    /// that runs compactions.
     /// </summary>
+    /// <remarks>
+    /// The same pool as <see cref="BackgroundThreads"/>, named explicitly.
+    /// Flushes do not use it unless the high-priority pool has no threads.
+    /// </remarks>
     public int LowPriorityBackgroundThreads
     {
         get => NativeMethods.rocksdb_env_get_low_priority_background_threads(Handle);
@@ -83,8 +100,15 @@ public sealed class Env : RocksDbHandle
     }
 
     /// <summary>
-    /// Gets or sets the number of bottom-priority background threads used by RocksDb for compaction and flush operations.
+    /// Gets or sets the size of the bottom-priority thread pool, which runs
+    /// compactions into the bottommost level.
     /// </summary>
+    /// <remarks>
+    /// Separating the bottommost level matters because those compactions are the
+    /// largest and longest-running; giving them their own pool stops them
+    /// starving the smaller compactions that keep write amplification in check.
+    /// Flushes never use this pool.
+    /// </remarks>
     public int BottomPriorityBackgroundThreads
     {
         get => NativeMethods.rocksdb_env_get_bottom_priority_background_threads(Handle);

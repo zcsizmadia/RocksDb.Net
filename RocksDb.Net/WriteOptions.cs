@@ -48,8 +48,14 @@ public sealed class WriteOptions : RocksDbHandle
 
     /// <summary>
     /// Per-key checksum bytes added to the write batch so that corruption in
-    /// memory is detected before the data is written. 0 disables it.
+    /// memory is detected before the data is written. Only 0 and 8 are
+    /// supported.
     /// </summary>
+    /// <remarks>
+    /// Zero, the default, disables the check; eight enables it. RocksDb accepts
+    /// no other width, so a value such as 4 is not a weaker setting but an
+    /// invalid one.
+    /// </remarks>
     public ulong ProtectionBytesPerKey
     {
         get => (ulong)NativeMethods.rocksdb_writeoptions_get_protection_bytes_per_key(Handle);

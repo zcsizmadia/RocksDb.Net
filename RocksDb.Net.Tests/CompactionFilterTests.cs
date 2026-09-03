@@ -84,8 +84,6 @@ public class CompactionFilterTests
     {
         using var dir = new TempDir();
         var filter = new PrefixFilter();
-        filter.IgnoreSnapshots = true;
-
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.CompactionFilter = filter;
 
@@ -109,8 +107,6 @@ public class CompactionFilterTests
     {
         using var dir = new TempDir();
         var filter = new ChangeValueFilter();
-        filter.IgnoreSnapshots = true;
-
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.CompactionFilter = filter;
 
@@ -133,12 +129,40 @@ public class CompactionFilterTests
         Assert.Throws<ArgumentNullException>(() => new NameValidatingFilter(null!));
     }
 
+    /// <summary>
+    /// Setting <c>IgnoreSnapshots</c> to false is refused.
+    /// </summary>
+    /// <remarks>
+    /// This test used to set it to false, compact, and assert that a key the
+    /// filter removes was still present, under the name "FalsePath_Works". That
+    /// assertion held for the wrong reason. RocksDb fails table file creation
+    /// when a filter reports false, so the compaction never ran and the filter
+    /// never applied. <c>rocksdb_compact_range</c> has no error output, so
+    /// nothing surfaced: the key survived because compaction had silently
+    /// failed, not because the false path worked.
+    /// </remarks>
     [Fact]
-    public void CompactionFilter_IgnoreSnapshots_FalsePath_Works()
+    [Obsolete("Exercises the obsolete IgnoreSnapshots setter deliberately.")]
+    public void CompactionFilter_IgnoreSnapshots_RefusesFalse()
+    {
+        using var filter = new PrefixFilter();
+
+        NotSupportedException ex = Assert.Throws<NotSupportedException>(
+            () => filter.IgnoreSnapshots = false);
+
+        Assert.Contains("table file creation", ex.Message);
+    }
+
+    /// <summary>
+    /// And with the setting left alone, which is the same as true, the filter
+    /// does apply. This is the behaviour the old false-path test appeared to be
+    /// asserting.
+    /// </summary>
+    [Fact]
+    public void CompactionFilter_ByDefault_TheFilterApplies()
     {
         using var dir = new TempDir();
         var filter = new PrefixFilter();
-        filter.IgnoreSnapshots = false;
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.CompactionFilter = filter;
@@ -149,7 +173,7 @@ public class CompactionFilterTests
         db.Flush();
         db.CompactRange();
 
-        Assert.Equal("v1", db.GetString("tmp_1"));
+        Assert.Null(db.GetString("tmp_1"));
     }
 
     [Fact]
@@ -157,8 +181,6 @@ public class CompactionFilterTests
     {
         using var dir = new TempDir();
         var filter = new AlwaysChangeValueFilter();
-        filter.IgnoreSnapshots = true;
-
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.CompactionFilter = filter;
 

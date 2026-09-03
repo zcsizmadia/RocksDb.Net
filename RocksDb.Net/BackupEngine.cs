@@ -133,7 +133,22 @@ public sealed class BackupEngine : RocksDbHandle
     /// Asks a backup running on another thread to stop early. The
     /// <see cref="CreateNewBackup(RocksDb, CreateBackupOptions)"/> call it
     /// interrupts fails with an error rather than returning a partial backup.
+    /// This retires the engine permanently.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// One-way, and this is the part worth knowing before calling it: every
+    /// later <c>CreateNewBackup</c> on this engine also fails, not just the one
+    /// being interrupted. To take backups again, dispose this engine and open a
+    /// new one against the same directory.
+    /// </para>
+    /// <para>
+    /// Returns immediately without waiting for the backup to wind down. The
+    /// interrupted backup leaves its partial state behind, which stays
+    /// consistent and is cleaned up by the next <c>CreateNewBackup</c> or
+    /// garbage collection on a new engine for that directory.
+    /// </para>
+    /// </remarks>
     public void StopBackup()
         => NativeMethods.rocksdb_backup_engine_stop_backup(Handle);
 

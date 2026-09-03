@@ -101,7 +101,13 @@ public sealed class BlockBasedTableOptions : RocksDbHandle
     {
     }
 
-    /// <summary>Sets the block cache to use for this table. Pass <c>null</c> to disable.</summary>
+    /// <summary>Sets the block cache to use for this table.</summary>
+    /// <remarks>
+    /// Passing <see langword="null"/> does nothing at all; it does not disable
+    /// caching and it does not clear a cache set earlier, because the C API
+    /// ignores a null argument here. To run without a block cache, leave this
+    /// unset, or set <see cref="NoBlockCache"/>.
+    /// </remarks>
     public BlockBasedTableOptions SetBlockCache(Cache? cache)
     {
         NativeMethods.rocksdb_block_based_options_set_block_cache(Handle, cache?.Handle ?? nint.Zero);
