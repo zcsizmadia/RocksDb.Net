@@ -404,3 +404,9 @@ Some RocksDb C API calls transfer ownership of native handles. After calling the
 | `BlockBasedTableOptions.SetFilterPolicy()` | `FilterPolicy` |
 
 Callback-based objects (`MergeOperator`, `CompactionFilter`, `CompactionFilterFactory`, `Comparator`) handle ownership automatically via their native destructor callbacks.
+
+### Caller-provided buffers
+
+Most methods that take a key or value copy it, or use it only for the duration of the call, so the caller does not have to keep the buffer alive afterwards.
+
+The iteration bounds are the case worth knowing about, because RocksDb stores them by reference rather than by value. `ReadOptions.SetIterateUpperBound` and `SetIterateLowerBound` copy the key into unmanaged memory owned by the `ReadOptions` instance, and that copy is released when the bound is replaced and when the options are disposed. Passing an empty span clears the bound. Callers do not need to pin or retain their own buffer.

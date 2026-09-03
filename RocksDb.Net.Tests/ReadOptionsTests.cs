@@ -1,3 +1,6 @@
+using System.Runtime.CompilerServices;
+using System.Text;
+
 namespace RocksDbNet.Tests;
 
 public class ReadOptionsTests
@@ -146,5 +149,130 @@ public class ReadOptionsTests
         }
 
         Assert.Equal(["b", "c"], keys);
+    }
+
+    /// <summary>
+    /// RocksDb keeps a Slice pointing at the bound buffer and dereferences it on
+    /// every Seek/Next. The bound must therefore survive the caller's buffer going
+    /// out of scope and a compacting collection. See issue #28.
+    /// </summary>
+    [Fact]
+    public void SetIterateBounds_SurviveGarbageCollection()
+    {
+        using var db = new TempDb();
+        db.Db.Put("a", "1");
+        db.Db.Put("b", "2");
+        db.Db.Put("c", "3");
+        db.Db.Put("d", "4");
+
+        using var readOpts = new ReadOptions();
+        SetBoundsFromTemporaryBuffers(readOpts);
+
+        // Drop the buffers and provoke a compacting collection so that anything
+        // still pointing into managed memory reads freed or relocated bytes.
+        for (int i = 0; i < 4; i++)
+        {
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+            GC.WaitForPendingFinalizers();
+            _ = new byte[2 * 1024 * 1024];
+        }
+
+        using var iter = db.Db.NewIterator(readOpts);
+        iter.SeekToFirst();
+
+        var keys = new List<string>();
+        while (iter.IsValid())
+        {
+            keys.Add(iter.KeyAsString());
+            iter.Next();
+        }
+
+        Assert.Equal(["b", "c"], keys);
+    }
+
+    /// <summary>
+    /// Sets both bounds from buffers that are unreachable once this returns, so the
+    /// options are the only thing that could still be keeping them alive.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void SetBoundsFromTemporaryBuffers(ReadOptions readOpts)
+    {
+        // Freshly allocated arrays, not UTF-8 literals: literals live in
+        // non-moving static data and would mask the bug.
+        readOpts.SetIterateLowerBound(Encoding.UTF8.GetBytes("b"));
+        readOpts.SetIterateUpperBound(Encoding.UTF8.GetBytes("d"));
+    }
+
+    [Fact]
+    public void SetIterateBounds_Replaced_UsesLatestBound()
+    {
+        using var db = new TempDb();
+        db.Db.Put("a", "1");
+        db.Db.Put("b", "2");
+        db.Db.Put("c", "3");
+
+        using var readOpts = new ReadOptions();
+        readOpts.SetIterateUpperBound(Encoding.UTF8.GetBytes("b"));
+        readOpts.SetIterateUpperBound(Encoding.UTF8.GetBytes("c"));
+
+        using var iter = db.Db.NewIterator(readOpts);
+        iter.SeekToFirst();
+
+        var keys = new List<string>();
+        while (iter.IsValid())
+        {
+            keys.Add(iter.KeyAsString());
+            iter.Next();
+        }
+
+        Assert.Equal(["a", "b"], keys);
+    }
+
+    [Fact]
+    public void SetIterateBounds_EmptySpan_ClearsBound()
+    {
+        using var db = new TempDb();
+        db.Db.Put("a", "1");
+        db.Db.Put("b", "2");
+        db.Db.Put("c", "3");
+
+        using var readOpts = new ReadOptions();
+        readOpts.SetIterateUpperBound(Encoding.UTF8.GetBytes("b"));
+        readOpts.SetIterateUpperBound([]);
+
+        using var iter = db.Db.NewIterator(readOpts);
+        iter.SeekToFirst();
+
+        var keys = new List<string>();
+        while (iter.IsValid())
+        {
+            keys.Add(iter.KeyAsString());
+            iter.Next();
+        }
+
+        Assert.Equal(["a", "b", "c"], keys);
+    }
+
+    [Fact]
+    public void SetIterateBounds_RepeatedSets_DoNotLeak()
+    {
+        using var readOpts = new ReadOptions();
+
+        // Each set must free the previous copy; without that this grows without bound.
+        for (int i = 0; i < 10_000; i++)
+        {
+            readOpts.SetIterateUpperBound(Encoding.UTF8.GetBytes($"key{i:D8}"));
+            readOpts.SetIterateLowerBound(Encoding.UTF8.GetBytes($"key{i:D8}"));
+        }
+    }
+
+    [Fact]
+    public void SetIterateBounds_AfterDispose_Throws()
+    {
+        var readOpts = new ReadOptions();
+        readOpts.Dispose();
+
+        Assert.Throws<ObjectDisposedException>(() => readOpts.SetIterateUpperBound("z"u8));
+        Assert.Throws<ObjectDisposedException>(() => readOpts.SetIterateLowerBound("a"u8));
     }
 }
