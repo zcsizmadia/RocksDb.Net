@@ -656,6 +656,29 @@ public sealed class RocksDb : RocksDbHandle
         return meta == nint.Zero ? null : new ColumnFamilyMetadata(meta);
     }
 
+    /// <summary>
+    /// Returns metadata for the default column family, restricted to the level
+    /// and key range in <paramref name="options"/>.
+    /// </summary>
+    public ColumnFamilyMetadata? GetColumnFamilyMetadata(ColumnFamilyMetadataOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        nint meta = NativeMethods.rocksdb_get_column_family_metadata_with_options(Handle, options.Handle);
+        return meta == nint.Zero ? null : new ColumnFamilyMetadata(meta);
+    }
+
+    /// <summary>
+    /// Returns metadata for <paramref name="cf"/>, restricted to the level and
+    /// key range in <paramref name="options"/>.
+    /// </summary>
+    public ColumnFamilyMetadata? GetColumnFamilyMetadata(ColumnFamilyHandle cf, ColumnFamilyMetadataOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(cf);
+        ArgumentNullException.ThrowIfNull(options);
+        nint meta = NativeMethods.rocksdb_get_column_family_metadata_cf_with_options(Handle, cf.Handle, options.Handle);
+        return meta == nint.Zero ? null : new ColumnFamilyMetadata(meta);
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Flush / Compact
     // ─────────────────────────────────────────────────────────────────────────
