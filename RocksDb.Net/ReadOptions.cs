@@ -496,6 +496,118 @@ public sealed class ReadOptions : RocksDbHandle
         }
     }
 
+    // ── Deadlines and limits ─────────────────────────────────────────────────
+
+    /// <summary>
+    /// The point in time by which the read should give up, or
+    /// <see langword="null"/> for no deadline. Default is <see langword="null"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is an absolute time, not a duration. RocksDb takes microseconds
+    /// since the Unix epoch, so the natural mistake is to set it to how long the
+    /// read may take and get a deadline in 1970, which has already passed. Use
+    /// <see cref="SetDeadlineAfter"/> to express it as a duration from now.
+    /// </para>
+    /// <para>
+    /// Best effort. A read can overrun the deadline when the file system does
+    /// not support deadlines, and a batch read checks periodically rather than
+    /// per key.
+    /// </para>
+    /// </remarks>
+    public DateTimeOffset? Deadline
+    {
+        get
+        {
+            ulong micros = NativeMethods.rocksdb_readoptions_get_deadline(Handle);
+            return micros == 0 ? null : DateTimeOffset.UnixEpoch.AddTicks(checked((long)micros) * TicksPerMicrosecond);
+        }
+
+        set => NativeMethods.rocksdb_readoptions_set_deadline(Handle, value is null ? 0 : ToUnixMicroseconds(value.Value));
+    }
+
+    /// <summary>
+    /// Sets <see cref="Deadline"/> to <paramref name="timeout"/> from now.
+    /// </summary>
+    /// <param name="timeout">
+    /// How long the read may take. <see cref="TimeSpan.Zero"/> or less clears
+    /// the deadline rather than setting one in the past, because a deadline that
+    /// has already passed is almost never what a caller means.
+    /// </param>
+    /// <remarks>
+    /// The form callers actually want. It exists because <see cref="Deadline"/>
+    /// is absolute and converting a timeout into an epoch offset by hand is easy
+    /// to get wrong.
+    /// </remarks>
+    public ReadOptions SetDeadlineAfter(TimeSpan timeout)
+    {
+        Deadline = timeout > TimeSpan.Zero ? DateTimeOffset.UtcNow + timeout : null;
+        return this;
+    }
+
+    /// <summary>
+    /// How long a single file read may take, or <see cref="TimeSpan.Zero"/> for
+    /// no limit. Default is <see cref="TimeSpan.Zero"/>.
+    /// </summary>
+    /// <remarks>
+    /// A duration, unlike <see cref="Deadline"/>, and it applies per file read
+    /// rather than to the operation as a whole. One get or seek can issue
+    /// several reads, and each may take this long.
+    /// </remarks>
+    public TimeSpan IoTimeout
+    {
+        get => TimeSpan.FromTicks(checked((long)NativeMethods.rocksdb_readoptions_get_io_timeout(Handle)) * TicksPerMicrosecond);
+        set => NativeMethods.rocksdb_readoptions_set_io_timeout(Handle, ToMicroseconds(value));
+    }
+
+    /// <summary>
+    /// How many internal keys an iterator seek may skip before failing as
+    /// incomplete. Zero, the default, means never fail.
+    /// </summary>
+    /// <remarks>
+    /// The defence against a pathological seek. A large deleted range leaves
+    /// tombstones behind until it is compacted away, and a seek into it walks
+    /// every one, so a single seek can turn into an unbounded scan. Setting a
+    /// limit makes that fail fast instead.
+    /// </remarks>
+    public ulong MaxSkippableInternalKeys
+    {
+        get => NativeMethods.rocksdb_readoptions_get_max_skippable_internal_keys(Handle);
+        set => NativeMethods.rocksdb_readoptions_set_max_skippable_internal_keys(Handle, value);
+    }
+
+    /// <summary>
+    /// Whether obsolete files are deleted on a background thread when an
+    /// iterator is cleaned up, rather than on the thread disposing it. Default
+    /// is <see langword="false"/>.
+    /// </summary>
+    /// <remarks>
+    /// Worth setting when iterators are disposed on threads that should not
+    /// block on file deletion. RocksDb's database-level
+    /// <c>avoid_unnecessary_blocking_io</c> overrides this one when enabled;
+    /// that option is not exposed by this wrapper yet.
+    /// </remarks>
+    public bool BackgroundPurgeOnIteratorCleanup
+    {
+        get => NativeMethods.rocksdb_readoptions_get_background_purge_on_iterator_cleanup(Handle) != 0;
+        set => NativeMethods.rocksdb_readoptions_set_background_purge_on_iterator_cleanup(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    private const long TicksPerMicrosecond = TimeSpan.TicksPerMillisecond / 1000;
+
+    private static ulong ToUnixMicroseconds(DateTimeOffset value)
+    {
+        long micros = (value.ToUniversalTime() - DateTimeOffset.UnixEpoch).Ticks / TicksPerMicrosecond;
+
+        // A deadline before the epoch cannot be expressed, and zero is how
+        // RocksDb spells "no deadline", so clamp rather than wrap into a
+        // deadline the caller did not ask for.
+        return micros <= 0 ? 0 : (ulong)micros;
+    }
+
+    private static ulong ToMicroseconds(TimeSpan value)
+        => value <= TimeSpan.Zero ? 0 : (ulong)(value.Ticks / TicksPerMicrosecond);
+
     protected override void DisposeHandle()
     {
         // Destroying the options runs the table filter destructor, which frees
