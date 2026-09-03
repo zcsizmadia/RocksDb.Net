@@ -29,7 +29,10 @@ string? value = db.GetString("key");
 ## Where to go next
 
 - **[API reference](xref:RocksDbNet)** for the full surface, generated from the source.
-- **[Guides](articles/ownership.md)** for the things worth reading before writing much code: what owns which native handle, how callbacks behave, and which options are only honoured at open time.
+- **[Your first database](articles/getting-started.md)** if you have not used RocksDb before: keys and values, iteration, batches, durability and column families.
+- **[Ownership and lifetime](articles/ownership.md)** for what owns which native handle. Worth reading before attaching a comparator or logger, because the rules are not uniform.
+- **[Writing callbacks](articles/writing-callbacks.md)** for comparators, merge operators, loggers and event listeners, and **[Compaction filters](articles/compaction-filters.md)** for transforming data as it is rewritten.
+- **[Callbacks and exceptions](articles/callbacks.md)** for what happens when one of those throws, which differs per callback and in one case terminates the process.
 - **[Samples](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples)** in the repository, one per feature area.
 
 ## Versioning
