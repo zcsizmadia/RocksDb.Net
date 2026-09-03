@@ -58,11 +58,42 @@ jobs:
         #
         # The whole suite takes well under a minute on every runner, so five
         # minutes is generous enough not to fire on a slow machine.
+        #
+        # --blame-crash covers the other failure, which the hang settings alone
+        # could not explain. An Ubuntu net10.0 run died after 968 of 979 tests
+        # with "Test host process crashed", and because the crash left the run
+        # dangling the hang timer then elapsed on top of it, so the job looked
+        # like a hang and was really a crash. Blame named no test, meaning none
+        # was executing and the fault came from a background thread, most
+        # likely the finalizer. With no crash dump there was nothing further to
+        # go on.
+        #
+        # Mini rather than full: a full dump of a test host with a native
+        # database engine loaded is enormous, and the faulting stack is what is
+        # actually wanted.
         dotnet test -c Release --no-build \
+          --blame-crash \
+          --blame-crash-dump-type mini \
           --blame-hang-timeout 5m \
           --blame-hang-dump-type none \
           --collect:"XPlat Code Coverage" \
           --results-directory TestResults
+
+    - name: Upload test results on failure
+      # Only on failure, so a green run carries no cost. This is what makes the
+      # crash settings above worth having: the sequence file records the order
+      # tests ran in, which narrows an unattributed crash to the tests around
+      # it, and any dump carries the faulting stack.
+      if: failure()
+      uses: actions/upload-artifact@v7
+      with:
+        name: test-results-${{ matrix.os }}
+        path: |
+          TestResults/**/Sequence_*.xml
+          TestResults/**/*.dmp
+          TestResults/**/*.core*
+        if-no-files-found: ignore
+        retention-days: 14
 
     - name: Check coverage
       # Linux only: one check is enough, and the number does not vary by OS.
