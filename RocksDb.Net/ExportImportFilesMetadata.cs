@@ -88,13 +88,15 @@ public sealed class ExportImportFilesMetadata : RocksDbHandle
         }
     }
 
-    /// <summary>Returns a copy of the file list.</summary>
+    /// <summary>Returns the file list.</summary>
     /// <remarks>
-    /// A copy, so the returned object is the caller's to dispose. Changing it
-    /// does not change this metadata, which is read-only.
+    /// Read in full, so the result needs no disposal and does not depend on
+    /// this metadata staying alive. Changing it does not change this metadata,
+    /// which is read-only.
     /// </remarks>
-    public LiveFiles GetFiles()
-        => new(NativeMethods.rocksdb_export_import_files_metadata_get_files(Handle));
+    public IReadOnlyList<LiveFileMetadata> GetFiles()
+        => LiveFileMetadata.ReadAndDestroy(
+            NativeMethods.rocksdb_export_import_files_metadata_get_files(Handle));
 
     protected override void DisposeHandle()
     {

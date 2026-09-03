@@ -247,7 +247,7 @@ public class ListenerDetailTests
         db.Db.Flush();
 
         using var options = new ColumnFamilyMetadataOptions();
-        using ColumnFamilyMetadata? metadata = db.Db.GetColumnFamilyMetadata(options);
+        ColumnFamilyMetadata? metadata = db.Db.GetColumnFamilyMetadata(options);
 
         Assert.NotNull(metadata);
         Assert.Equal("default", metadata!.Name);
@@ -263,12 +263,12 @@ public class ListenerDetailTests
         db.Db.Flush();
 
         using var allLevels = new ColumnFamilyMetadataOptions();
-        using ColumnFamilyMetadata? everything = db.Db.GetColumnFamilyMetadata(allLevels);
+        ColumnFamilyMetadata? everything = db.Db.GetColumnFamilyMetadata(allLevels);
 
         // The single flushed file lives in level 0, so asking for a level that
         // has no files must report none.
         using var emptyLevel = new ColumnFamilyMetadataOptions { Level = 5 };
-        using ColumnFamilyMetadata? narrowed = db.Db.GetColumnFamilyMetadata(emptyLevel);
+        ColumnFamilyMetadata? narrowed = db.Db.GetColumnFamilyMetadata(emptyLevel);
 
         Assert.NotNull(everything);
         Assert.NotNull(narrowed);
@@ -288,7 +288,7 @@ public class ListenerDetailTests
         db.Db.Flush(cf);
 
         using var options = new ColumnFamilyMetadataOptions();
-        using ColumnFamilyMetadata? metadata = db.Db.GetColumnFamilyMetadata(cf, options);
+        ColumnFamilyMetadata? metadata = db.Db.GetColumnFamilyMetadata(cf, options);
 
         Assert.NotNull(metadata);
         Assert.Equal("extra", metadata!.Name);

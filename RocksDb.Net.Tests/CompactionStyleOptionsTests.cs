@@ -119,7 +119,7 @@ public class CompactionStyleOptionsTests
 
         Assert.Equal(new string('v', 256), db.GetString("key0300"));
 
-        using ColumnFamilyMetadata? metadata = db.GetColumnFamilyMetadata();
+        ColumnFamilyMetadata? metadata = db.GetColumnFamilyMetadata();
         Assert.NotNull(metadata);
         Assert.True(metadata.FileCount > 0);
     }

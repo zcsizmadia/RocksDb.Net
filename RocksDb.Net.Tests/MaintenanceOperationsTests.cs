@@ -17,7 +17,7 @@ public class MaintenanceOperationsTests
     /// <summary>Number of SST files RocksDb currently counts as live.</summary>
     private static int LiveFileCount(RocksDb db, ColumnFamilyHandle? cf = null)
     {
-        using ColumnFamilyMetadata? metadata = cf is null
+        ColumnFamilyMetadata? metadata = cf is null
             ? db.GetColumnFamilyMetadata()
             : db.GetColumnFamilyMetadata(cf);
 
@@ -120,12 +120,10 @@ public class MaintenanceOperationsTests
         db.Put("m0000", "2");
         db.Flush();
 
-        using (ColumnFamilyMetadata? metadata = db.GetColumnFamilyMetadata())
-        {
-            Assert.NotNull(metadata);
-            ColumnFamilyLevelMetadata level0 = metadata.Levels.Single(l => l.Level == 0);
-            Assert.Equal(2, level0.FileCount);
-        }
+        ColumnFamilyMetadata? metadata = db.GetColumnFamilyMetadata();
+        Assert.NotNull(metadata);
+        ColumnFamilyLevelMetadata level0 = metadata.Levels.Single(l => l.Level == 0);
+        Assert.Equal(2, level0.FileCount);
 
         db.DeleteFilesInRange("m", "m9999");
 
@@ -232,7 +230,7 @@ public class MaintenanceOperationsTests
             $"expected a compaction after the suggestion, still at {before}");
 
         // The level 0 file was merged away.
-        using ColumnFamilyMetadata? metadata = db.GetColumnFamilyMetadata();
+        ColumnFamilyMetadata? metadata = db.GetColumnFamilyMetadata();
         Assert.NotNull(metadata);
         Assert.Equal(0, metadata.Levels.Single(l => l.Level == 0).FileCount);
     }
@@ -267,7 +265,7 @@ public class MaintenanceOperationsTests
             WaitUntil(() => listener.CompactionCompleted.Count > before),
             $"expected a compaction after the suggestion, still at {before}");
 
-        using ColumnFamilyMetadata? metadata = db.GetColumnFamilyMetadata(cf1);
+        ColumnFamilyMetadata? metadata = db.GetColumnFamilyMetadata(cf1);
         Assert.NotNull(metadata);
         Assert.Equal(0, metadata.Levels.Single(l => l.Level == 0).FileCount);
     }

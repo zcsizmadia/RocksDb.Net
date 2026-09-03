@@ -107,6 +107,14 @@ Event listener info objects, and the `TableProperties` and `CompactionJobStats` 
 
 `ReadOptions.SetTableFilter` is the one place that hands you a live view rather than a snapshot. `TablePropertiesView` reads straight from RocksDb's structure, which dies when the callback returns, so using it afterwards throws. Call `ToSnapshot()` inside the callback to keep the values.
 
-`LiveFileMetadata` is the same shape: every property reads through the parent `LiveFiles` on each access, so an instance is only valid while that parent is alive.
-
 The same applies to the two batches a `WalFilter` receives: both belong to RocksDb and must not be disposed or retained.
+
+## The rule for reading native data back
+
+A borrowed view is not an acceptable public shape in this library, with `TablePropertiesView` as the single exception. It earns that place because it sits in a per-file read callback where copying the whole property set would be real cost, and because it is explicitly invalidated: using it late throws rather than reading freed memory. Lazy is only allowed when it also fails fast.
+
+Everything else copies. `ColumnFamilyMetadata` and its levels and files, `LiveFileMetadata`, `LiveFileStorageInfo`, `TableProperties`, `CompactionJobStats` and the event listener info records are all read in full before you get them, so none of them need disposing and all of them can be kept and passed between threads.
+
+Merge operands follow the same rule. RocksDb builds those arrays as call-scoped locals, so the operand list is materialised before the callback runs and may be stored beyond it. That costs one array allocation, because each operand was already being copied into a managed array.
+
+The naming convention carries the distinction: a type whose name ends in `View` is a window that stops working when its source goes, and anything else is a copy that does not.

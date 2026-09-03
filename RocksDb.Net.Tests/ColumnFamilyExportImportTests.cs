@@ -57,8 +57,7 @@ public class ColumnFamilyExportImportTests
 
         Assert.False(string.IsNullOrEmpty(metadata.DbComparatorName));
 
-        using LiveFiles files = metadata.GetFiles();
-        Assert.NotEmpty(files.Files);
+        Assert.NotEmpty(metadata.GetFiles());
     }
 
     /// <summary>

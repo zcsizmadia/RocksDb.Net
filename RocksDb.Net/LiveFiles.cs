@@ -3,137 +3,103 @@ using System.Runtime.InteropServices;
 namespace RocksDbNet;
 
 /// <summary>Metadata for a single live SST file in the database.</summary>
+/// <param name="Name">The SST file name, without a directory part.</param>
+/// <param name="Directory">
+/// The directory holding the file, which is not always the database directory
+/// when several paths are configured.
+/// </param>
+/// <param name="Level">
+/// The LSM level the file sits at. Zero is the newest level, written directly
+/// by flushes, and higher numbers hold older, larger, compacted data.
+/// </param>
+/// <param name="Size">The file size in bytes.</param>
+/// <param name="SmallestKey">
+/// The lowest key in the file, or <see langword="null"/> if RocksDb reported
+/// none.
+/// </param>
+/// <param name="LargestKey">
+/// The highest key in the file, or <see langword="null"/> if RocksDb reported
+/// none.
+/// </param>
+/// <param name="SmallestSequenceNumber">
+/// The lowest sequence number in the file. With
+/// <paramref name="LargestSequenceNumber"/> this bounds when the file's writes
+/// happened relative to the rest of the database.
+/// </param>
+/// <param name="LargestSequenceNumber">The highest sequence number in the file.</param>
+/// <param name="Entries">
+/// How many entries the file holds, counting tombstones as entries. Subtract
+/// <paramref name="Deletions"/> for a rough live-key count.
+/// </param>
+/// <param name="Deletions">
+/// How many of the file's entries are tombstones. A file that is mostly
+/// tombstones is a candidate for compaction, since every read across its key
+/// range has to walk them.
+/// </param>
 /// <remarks>
-/// <para>
-/// Every property here reads through the parent <see cref="LiveFiles"/> on
-/// each access rather than having been copied out, so an instance is only
-/// valid while that parent is alive. Reading one after the parent has been
-/// disposed reads freed native memory. Copy out what you need before
-/// disposing the parent, or keep the parent alive for as long as you hold
-/// these.
-/// </para>
-/// <para>
-/// The values describe the file as of when the parent was obtained. They do
-/// not update as compaction changes the file set.
-/// </para>
+/// A snapshot, read in full before it is handed over, so it needs no disposal
+/// and can be kept and passed around freely. It used to read through its
+/// parent on every property access, which meant an instance was only valid
+/// while that parent was alive. See the ownership guide for why this library
+/// copies rather than lending.
 /// </remarks>
-public sealed unsafe class LiveFileMetadata
+public sealed record LiveFileMetadata(
+    string Name,
+    string Directory,
+    int Level,
+    ulong Size,
+    byte[]? SmallestKey,
+    byte[]? LargestKey,
+    ulong SmallestSequenceNumber,
+    ulong LargestSequenceNumber,
+    ulong Entries,
+    ulong Deletions)
 {
-    private readonly nint _liveFilesHandle;
-    private readonly int _index;
-
-    internal LiveFileMetadata(nint liveFilesHandle, int index)
+    /// <summary>
+    /// Reads every entry out of a native live-files handle and destroys it.
+    /// </summary>
+    internal static unsafe IReadOnlyList<LiveFileMetadata> ReadAndDestroy(nint handle)
     {
-        _liveFilesHandle = liveFilesHandle;
-        _index = index;
-    }
-
-    /// <summary>The SST file name, without a directory part.</summary>
-    public string Name => Marshal.PtrToStringUTF8((nint)NativeMethods.rocksdb_livefiles_name(_liveFilesHandle, _index)) ?? string.Empty;
-
-    /// <summary>
-    /// The directory holding the file, which is not always the database
-    /// directory when several paths are configured.
-    /// </summary>
-    public string Directory => Marshal.PtrToStringUTF8((nint)NativeMethods.rocksdb_livefiles_directory(_liveFilesHandle, _index)) ?? string.Empty;
-
-    /// <summary>
-    /// The LSM level the file sits at. Zero is the newest level, written
-    /// directly by flushes, and higher numbers hold older, larger, compacted
-    /// data.
-    /// </summary>
-    public int Level => NativeMethods.rocksdb_livefiles_level(_liveFilesHandle, _index);
-
-    /// <summary>The file size in bytes.</summary>
-    public ulong Size => NativeMethods.rocksdb_livefiles_size(_liveFilesHandle, _index);
-
-    /// <summary>
-    /// The lowest key in the file, or <see langword="null"/> if RocksDb
-    /// reported none. A fresh copy on each access.
-    /// </summary>
-    public byte[]? SmallestKey
-    {
-        get
+        try
         {
-            byte* ptr = NativeMethods.rocksdb_livefiles_smallestkey(_liveFilesHandle, _index, out nuint len);
-            return ptr == null ? null : CopyBytes((nint)ptr, len);
-        }
-    }
+            int count = NativeMethods.rocksdb_livefiles_count(handle);
+            var files = new LiveFileMetadata[count];
 
-    /// <summary>
-    /// The highest key in the file, or <see langword="null"/> if RocksDb
-    /// reported none. A fresh copy on each access.
-    /// </summary>
-    public byte[]? LargestKey
-    {
-        get
-        {
-            byte* ptr = NativeMethods.rocksdb_livefiles_largestkey(_liveFilesHandle, _index, out nuint len);
-            return ptr == null ? null : CopyBytes((nint)ptr, len);
-        }
-    }
-
-    /// <summary>
-    /// The lowest sequence number in the file. Together with
-    /// <see cref="LargestSequenceNumber"/> this bounds when the file's writes
-    /// happened relative to the rest of the database.
-    /// </summary>
-    public ulong SmallestSequenceNumber => NativeMethods.rocksdb_livefiles_smallest_seqno(_liveFilesHandle, _index);
-
-    /// <summary>The highest sequence number in the file.</summary>
-    public ulong LargestSequenceNumber => NativeMethods.rocksdb_livefiles_largest_seqno(_liveFilesHandle, _index);
-
-    /// <summary>
-    /// How many entries the file holds, counting tombstones as entries.
-    /// Subtract <see cref="Deletions"/> for a rough live-key count.
-    /// </summary>
-    public ulong Entries => NativeMethods.rocksdb_livefiles_entries(_liveFilesHandle, _index);
-
-    /// <summary>
-    /// How many of the file's entries are tombstones. A file that is mostly
-    /// tombstones is a candidate for compaction, since every read across its
-    /// key range has to walk them.
-    /// </summary>
-    public ulong Deletions => NativeMethods.rocksdb_livefiles_deletions(_liveFilesHandle, _index);
-
-    private static byte[] CopyBytes(nint ptr, nuint len)
-    {
-        if (len == 0) return [];
-        var bytes = new byte[checked((int)len)];
-        Marshal.Copy(ptr, bytes, 0, bytes.Length);
-        return bytes;
-    }
-}
-
-/// <summary>Container for live file metadata returned by RocksDB.</summary>
-public sealed class LiveFiles : RocksDbHandle
-{
-    internal LiveFiles(nint handle)
-        : base(handle)
-    {
-    }
-
-    /// <summary>
-    /// The files in the set. Each element borrows this object, so none of them
-    /// may be used after this <see cref="LiveFiles"/> is disposed.
-    /// </summary>
-    public IReadOnlyList<LiveFileMetadata> Files
-    {
-        get
-        {
-            int count = NativeMethods.rocksdb_livefiles_count(Handle);
-            var files = new List<LiveFileMetadata>(count);
             for (int i = 0; i < count; i++)
             {
-                files.Add(new LiveFileMetadata(Handle, i));
+                byte* smallest = NativeMethods.rocksdb_livefiles_smallestkey(handle, i, out nuint smallestLen);
+                byte* largest = NativeMethods.rocksdb_livefiles_largestkey(handle, i, out nuint largestLen);
+
+                files[i] = new LiveFileMetadata(
+                    Name: Marshal.PtrToStringUTF8(
+                        (nint)NativeMethods.rocksdb_livefiles_name(handle, i)) ?? string.Empty,
+                    Directory: Marshal.PtrToStringUTF8(
+                        (nint)NativeMethods.rocksdb_livefiles_directory(handle, i)) ?? string.Empty,
+                    Level: NativeMethods.rocksdb_livefiles_level(handle, i),
+                    Size: NativeMethods.rocksdb_livefiles_size(handle, i),
+                    SmallestKey: ReadKey(smallest, smallestLen),
+                    LargestKey: ReadKey(largest, largestLen),
+                    SmallestSequenceNumber: NativeMethods.rocksdb_livefiles_smallest_seqno(handle, i),
+                    LargestSequenceNumber: NativeMethods.rocksdb_livefiles_largest_seqno(handle, i),
+                    Entries: NativeMethods.rocksdb_livefiles_entries(handle, i),
+                    Deletions: NativeMethods.rocksdb_livefiles_deletions(handle, i));
             }
 
             return files;
         }
+        finally
+        {
+            NativeMethods.rocksdb_livefiles_destroy(handle);
+        }
     }
 
-    protected override void DisposeHandle()
+    private static unsafe byte[]? ReadKey(byte* ptr, nuint len)
     {
-        NativeMethods.rocksdb_livefiles_destroy(Handle);
+        if (ptr is null)
+        {
+            return null;
+        }
+
+        return len == 0 ? [] : new ReadOnlySpan<byte>(ptr, checked((int)len)).ToArray();
     }
 }

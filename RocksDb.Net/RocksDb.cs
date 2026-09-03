@@ -34,16 +34,21 @@ public sealed class RocksDb : RocksDbHandle
     // the database was still calling them. Holding the descriptors here stops
     // that, because they cannot become unreachable before the database does.
     //
-    // Deliberately only held, not disposed. Disposing these options from the
-    // database's own teardown, straight after rocksdb_close, reliably faults:
-    // it took the test host down with an access violation across repeated
-    // runs, in a different test each time. It is not a finalizer-thread
-    // problem either, since restricting the disposal to the explicit Dispose
-    // path faulted the same way. So the per-column-family options have to
-    // outlive the close, and they are released when these descriptors are
-    // themselves collected, which cannot now happen before the database is.
-    // Why the eager release faults is not yet diagnosed, which is why it is
-    // not done rather than done with a guard.
+    // Deliberately only held, not disposed. Releasing those options from the
+    // database's own teardown faulted reproducibly, an access violation in a
+    // different test on every run, and restricting it to the explicit Dispose
+    // path faulted the same way.
+    //
+    // The trigger is not identified. Disposing per-column-family options after
+    // rocksdb_close is not unsafe in itself: doing exactly that by hand
+    // survives, including with a native merge operator attached to them and
+    // with the database options doubling as a descriptor's. So something
+    // narrower is at fault and this comment does not know what.
+    //
+    // Holding the descriptors is what fixes the bug this list exists for.
+    // Releasing them eagerly would only add deterministic cleanup, which is
+    // not worth a fault, so it is left undone rather than done behind a guard
+    // that would hide the problem.
     private readonly List<ColumnFamilyDescriptor> _descriptors = [];
 
     private RocksDb(nint handle, DbOptions options)
@@ -1365,7 +1370,7 @@ public sealed class RocksDb : RocksDbHandle
     public ColumnFamilyMetadata? GetColumnFamilyMetadata()
     {
         nint meta = NativeMethods.rocksdb_get_column_family_metadata(Handle);
-        return meta == nint.Zero ? null : new ColumnFamilyMetadata(meta);
+        return meta == nint.Zero ? null : ColumnFamilyMetadata.ReadAndDestroy(meta);
     }
 
     /// <summary>Returns metadata for <paramref name="cf"/>.</summary>
@@ -1373,7 +1378,7 @@ public sealed class RocksDb : RocksDbHandle
     {
         ArgumentNullException.ThrowIfNull(cf);
         nint meta = NativeMethods.rocksdb_get_column_family_metadata_cf(Handle, cf.Handle);
-        return meta == nint.Zero ? null : new ColumnFamilyMetadata(meta);
+        return meta == nint.Zero ? null : ColumnFamilyMetadata.ReadAndDestroy(meta);
     }
 
     /// <summary>
@@ -1384,7 +1389,7 @@ public sealed class RocksDb : RocksDbHandle
     {
         ArgumentNullException.ThrowIfNull(options);
         nint meta = NativeMethods.rocksdb_get_column_family_metadata_with_options(Handle, options.Handle);
-        return meta == nint.Zero ? null : new ColumnFamilyMetadata(meta);
+        return meta == nint.Zero ? null : ColumnFamilyMetadata.ReadAndDestroy(meta);
     }
 
     /// <summary>
@@ -1396,7 +1401,7 @@ public sealed class RocksDb : RocksDbHandle
         ArgumentNullException.ThrowIfNull(cf);
         ArgumentNullException.ThrowIfNull(options);
         nint meta = NativeMethods.rocksdb_get_column_family_metadata_cf_with_options(Handle, cf.Handle, options.Handle);
-        return meta == nint.Zero ? null : new ColumnFamilyMetadata(meta);
+        return meta == nint.Zero ? null : ColumnFamilyMetadata.ReadAndDestroy(meta);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1794,10 +1799,16 @@ public sealed class RocksDb : RocksDbHandle
     }
 
     /// <summary>Returns metadata about the currently live SST files in the database.</summary>
-    public LiveFiles? GetLiveFiles()
+    /// <remarks>
+    /// Read in full before returning, so the result needs no disposal and stays
+    /// valid for as long as you hold it. It used to hand back a disposable
+    /// container whose elements read through it on every property access, which
+    /// meant they were only valid while it was alive.
+    /// </remarks>
+    public IReadOnlyList<LiveFileMetadata> GetLiveFiles()
     {
-        nint liveFilesHandle = NativeMethods.rocksdb_livefiles(Handle);
-        return liveFilesHandle == nint.Zero ? null : new LiveFiles(liveFilesHandle);
+        nint handle = NativeMethods.rocksdb_livefiles(Handle);
+        return handle == nint.Zero ? [] : LiveFileMetadata.ReadAndDestroy(handle);
     }
 
     /// <summary>
