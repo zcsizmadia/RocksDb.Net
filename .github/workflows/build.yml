@@ -54,17 +54,22 @@ jobs:
           --collect:"XPlat Code Coverage" \
           --results-directory TestResults
 
-    - name: Summarise coverage
-      # Linux only: one summary is enough, and the number does not vary by OS.
+    - name: Check coverage
+      # Linux only: one check is enough, and the number does not vary by OS.
       if: matrix.os == 'ubuntu-latest'
       shell: bash
+      env:
+        # A ratchet, not a target. Raise it when coverage rises so it cannot
+        # quietly fall back; never lower it to make a change pass. Changing this
+        # number is a deliberate, reviewable edit.
+        MINIMUM_LINE_COVERAGE: 92
       run: |
         # Read the line rate straight out of the Cobertura report rather than
         # taking a dependency on a coverage action.
         report=$(find TestResults -name 'coverage.cobertura.xml' | head -1)
         if [ -z "$report" ]; then
-          echo "No coverage report was produced." >> "$GITHUB_STEP_SUMMARY"
-          exit 0
+          echo "::error::No coverage report was produced."
+          exit 1
         fi
 
         rate=$(sed -n 's/.*line-rate="\([0-9.]*\)".*/\1/p' "$report" | head -1)
@@ -73,10 +78,17 @@ jobs:
         {
           echo "## Coverage"
           echo
-          echo "Line coverage: **${percent}%**"
+          echo "Line coverage: **${percent}%** (floor ${MINIMUM_LINE_COVERAGE}%)"
           echo
           echo "Full Cobertura report is attached as the \`coverage\` artifact."
         } >> "$GITHUB_STEP_SUMMARY"
+
+        if awk -v p="$percent" -v m="$MINIMUM_LINE_COVERAGE" 'BEGIN { exit !(p < m) }'; then
+          echo "::error::Line coverage ${percent}% is below the ${MINIMUM_LINE_COVERAGE}% floor."
+          exit 1
+        fi
+
+        echo "Line coverage ${percent}% meets the ${MINIMUM_LINE_COVERAGE}% floor."
 
     - name: Upload coverage report
       if: matrix.os == 'ubuntu-latest'

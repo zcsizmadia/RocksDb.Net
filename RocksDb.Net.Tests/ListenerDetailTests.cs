@@ -8,50 +8,13 @@ namespace RocksDbNet.Tests;
 /// </summary>
 public class ListenerDetailTests
 {
-    private sealed class CapturingListener : EventListener
-    {
-        private readonly object _gate = new();
-        private readonly List<FlushJobInfo> _flushes = [];
-        private readonly List<CompactionJobInfo> _compactions = [];
-        private readonly List<ExternalFileIngestionInfo> _ingestions = [];
-        private readonly List<MemTableInfo> _memTables = [];
-
-        public override void OnFlushCompleted(FlushJobInfo info)
-        {
-            lock (_gate) { _flushes.Add(info); }
-        }
-
-        public override void OnCompactionCompleted(CompactionJobInfo info)
-        {
-            lock (_gate) { _compactions.Add(info); }
-        }
-
-        public override void OnExternalFileIngested(ExternalFileIngestionInfo info)
-        {
-            lock (_gate) { _ingestions.Add(info); }
-        }
-
-        public override void OnMemTableSealed(MemTableInfo info)
-        {
-            lock (_gate) { _memTables.Add(info); }
-        }
-
-        public IReadOnlyList<FlushJobInfo> Flushes { get { lock (_gate) { return [.. _flushes]; } } }
-
-        public IReadOnlyList<CompactionJobInfo> Compactions { get { lock (_gate) { return [.. _compactions]; } } }
-
-        public IReadOnlyList<ExternalFileIngestionInfo> Ingestions { get { lock (_gate) { return [.. _ingestions]; } } }
-
-        public IReadOnlyList<MemTableInfo> MemTables { get { lock (_gate) { return [.. _memTables]; } } }
-    }
-
     // ── FlushJobInfo ─────────────────────────────────────────────────────────
 
     [Fact]
     public void FlushJobInfo_IdentifiesTheJobAndFile()
     {
         using var dir = new TempDir();
-        var listener = new CapturingListener();
+        var listener = new RecordingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.EventListener = listener;
@@ -62,7 +25,7 @@ public class ListenerDetailTests
             db.Flush();
         }
 
-        FlushJobInfo flush = Assert.Single(listener.Flushes);
+        FlushJobInfo flush = Assert.Single(listener.FlushCompleted);
 
         Assert.True(flush.JobId > 0);
         Assert.True(flush.ThreadId > 0);
@@ -75,12 +38,11 @@ public class ListenerDetailTests
     public void FlushJobInfo_ReportsOldestBlobFileNumberWhenBlobsAreUsed()
     {
         using var dir = new TempDir();
-        var listener = new CapturingListener();
+        var listener = new RecordingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.EventListener = listener;
-        opts.EnableBlobFiles = true;
-        opts.MinBlobSize = 0;
+        opts.EnableBlobs();
 
         using (var db = RocksDb.Open(opts, dir.Path))
         {
@@ -88,7 +50,7 @@ public class ListenerDetailTests
             db.Flush();
         }
 
-        FlushJobInfo flush = Assert.Single(listener.Flushes);
+        FlushJobInfo flush = Assert.Single(listener.FlushCompleted);
 
         Assert.True(flush.OldestBlobFileNumber > 0);
         Assert.Single(flush.BlobFileAdditions);
@@ -100,7 +62,7 @@ public class ListenerDetailTests
     public void CompactionJobInfo_IdentifiesTheJobAndItsFiles()
     {
         using var dir = new TempDir();
-        var listener = new CapturingListener();
+        var listener = new RecordingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true, Compression = Compression.None };
         opts.EventListener = listener;
@@ -119,8 +81,8 @@ public class ListenerDetailTests
             db.CompactRange();
         }
 
-        Assert.NotEmpty(listener.Compactions);
-        CompactionJobInfo compaction = listener.Compactions[0];
+        Assert.NotEmpty(listener.CompactionCompleted);
+        CompactionJobInfo compaction = listener.CompactionCompleted[0];
 
         Assert.True(compaction.JobId > 0);
         Assert.True(compaction.ThreadId > 0);
@@ -144,7 +106,7 @@ public class ListenerDetailTests
     public void CompactionJobInfo_TablePropertiesByFile_CoversInputsAndOutputs()
     {
         using var dir = new TempDir();
-        var listener = new CapturingListener();
+        var listener = new RecordingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.EventListener = listener;
@@ -161,7 +123,7 @@ public class ListenerDetailTests
             db.CompactRange();
         }
 
-        CompactionJobInfo compaction = listener.Compactions[0];
+        CompactionJobInfo compaction = listener.CompactionCompleted[0];
 
         // Two inputs plus one output.
         Assert.Equal(3, compaction.TablePropertiesByFile.Count);
@@ -192,7 +154,7 @@ public class ListenerDetailTests
             writer.Finish();
         }
 
-        var listener = new CapturingListener();
+        var listener = new RecordingListener();
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.EventListener = listener;
 
@@ -202,7 +164,7 @@ public class ListenerDetailTests
             db.IngestExternalFile([sstPath], ingestOpts);
         }
 
-        ExternalFileIngestionInfo ingestion = Assert.Single(listener.Ingestions);
+        ExternalFileIngestionInfo ingestion = Assert.Single(listener.Ingested);
 
         Assert.Equal(sstPath, ingestion.ExternalFilePath);
         Assert.False(string.IsNullOrEmpty(ingestion.InternalFilePath));
@@ -217,7 +179,7 @@ public class ListenerDetailTests
     public void MemTableInfo_NewestUdt_IsEmptyWithoutUserDefinedTimestamps()
     {
         using var dir = new TempDir();
-        var listener = new CapturingListener();
+        var listener = new RecordingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.EventListener = listener;
@@ -230,8 +192,8 @@ public class ListenerDetailTests
 
         // Sealing happens on flush. The column family has no user-defined
         // timestamps, so RocksDb reports none.
-        Assert.NotEmpty(listener.MemTables);
-        Assert.All(listener.MemTables, m => Assert.Empty(m.NewestUdt));
+        Assert.NotEmpty(listener.MemTablesSealed);
+        Assert.All(listener.MemTablesSealed, m => Assert.Empty(m.NewestUdt));
     }
 
     // ── ColumnFamilyMetadataOptions ──────────────────────────────────────────

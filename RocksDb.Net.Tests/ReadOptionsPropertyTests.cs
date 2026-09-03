@@ -336,38 +336,20 @@ public class ReadOptionsPropertyTests
         db.Db.Put("a", "1");
         db.Db.Flush();
 
-        var reported = new List<string>();
-        void OnUnhandled(object? sender, CallbackExceptionEventArgs e)
-        {
-            lock (reported)
-            {
-                reported.Add(e.CallbackName);
-            }
-        }
+        using var reported = new CallbackExceptionRecorder();
 
-        RocksDbCallbacks.UnhandledException += OnUnhandled;
-        try
-        {
-            using var opts = new ReadOptions();
-            opts.SetTableFilter(_ => throw new InvalidOperationException("filter boom"));
+        using var opts = new ReadOptions();
+        opts.SetTableFilter(_ => throw new InvalidOperationException("filter boom"));
 
-            using var iter = db.Db.NewIterator(opts);
-            iter.SeekToFirst();
+        using var iter = db.Db.NewIterator(opts);
+        iter.SeekToFirst();
 
-            // Excluding the file would silently hide data, so a throwing filter
-            // includes it.
-            Assert.True(iter.IsValid());
-            Assert.Equal("a", iter.KeyAsString());
+        // Excluding the file would silently hide data, so a throwing filter
+        // includes it.
+        Assert.True(iter.IsValid());
+        Assert.Equal("a", iter.KeyAsString());
 
-            lock (reported)
-            {
-                Assert.Contains("SetTableFilter", reported);
-            }
-        }
-        finally
-        {
-            RocksDbCallbacks.UnhandledException -= OnUnhandled;
-        }
+        Assert.True(reported.Contains("SetTableFilter"));
     }
 
     [Fact]

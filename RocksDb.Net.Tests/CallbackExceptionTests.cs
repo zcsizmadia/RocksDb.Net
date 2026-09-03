@@ -14,41 +14,6 @@ namespace RocksDbNet.Tests;
 [Collection(nameof(CallbackExceptionTests))]
 public class CallbackExceptionTests
 {
-    /// <summary>
-    /// Subscribes to the reporting event for the duration of a test and collects
-    /// what was reported. The event is process-wide, hence the test collection.
-    /// </summary>
-    private sealed class ExceptionRecorder : IDisposable
-    {
-        private readonly List<CallbackExceptionEventArgs> _reported = [];
-        private readonly object _gate = new();
-
-        public ExceptionRecorder()
-            => RocksDbCallbacks.UnhandledException += OnUnhandled;
-
-        private void OnUnhandled(object? sender, CallbackExceptionEventArgs e)
-        {
-            lock (_gate)
-            {
-                _reported.Add(e);
-            }
-        }
-
-        public IReadOnlyList<CallbackExceptionEventArgs> Reported
-        {
-            get
-            {
-                lock (_gate)
-                {
-                    return [.. _reported];
-                }
-            }
-        }
-
-        public void Dispose()
-            => RocksDbCallbacks.UnhandledException -= OnUnhandled;
-    }
-
     private sealed class ThrowingCompactionFilter() : CompactionFilter("throwing-filter")
     {
         public int Calls;
@@ -63,7 +28,7 @@ public class CallbackExceptionTests
     [Fact]
     public void CompactionFilter_Throwing_KeepsDataAndReports()
     {
-        using var recorder = new ExceptionRecorder();
+        using var recorder = new CallbackExceptionRecorder();
         using var filter = new ThrowingCompactionFilter();
         using var db = new TempDb(o => o.CompactionFilter = filter);
 
@@ -91,7 +56,7 @@ public class CallbackExceptionTests
     [Fact]
     public void MergeOperator_Throwing_FailsMergeAndReports()
     {
-        using var recorder = new ExceptionRecorder();
+        using var recorder = new CallbackExceptionRecorder();
         using var merge = new ThrowingMergeOperator();
         using var db = new TempDb(o => o.MergeOperator = merge);
 
@@ -115,7 +80,7 @@ public class CallbackExceptionTests
     [Fact]
     public void Logger_Throwing_DoesNotBreakDatabaseAndReports()
     {
-        using var recorder = new ExceptionRecorder();
+        using var recorder = new CallbackExceptionRecorder();
         using var logger = new ThrowingLogger();
         using var db = new TempDb(o => o.InfoLog = logger);
 
@@ -140,7 +105,7 @@ public class CallbackExceptionTests
     [Fact]
     public void EventListener_Throwing_DoesNotBreakFlushAndReports()
     {
-        using var recorder = new ExceptionRecorder();
+        using var recorder = new CallbackExceptionRecorder();
         var listener = new ThrowingEventListener();
         using var db = new TempDb(o => o.EventListener = listener);
 
@@ -161,7 +126,7 @@ public class CallbackExceptionTests
     [Fact]
     public void CompactionFilterFactory_Throwing_KeepsDataAndReports()
     {
-        using var recorder = new ExceptionRecorder();
+        using var recorder = new CallbackExceptionRecorder();
         using var factory = new ThrowingCompactionFilterFactory();
         using var db = new TempDb(o => o.CompactionFilterFactory = factory);
 
@@ -184,7 +149,7 @@ public class CallbackExceptionTests
         RocksDbCallbacks.UnhandledException += Faulty;
         try
         {
-            using var recorder = new ExceptionRecorder();
+            using var recorder = new CallbackExceptionRecorder();
             using var logger = new ThrowingLogger();
             using var db = new TempDb(o => o.InfoLog = logger);
 
