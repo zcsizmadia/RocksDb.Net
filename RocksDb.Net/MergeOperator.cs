@@ -29,7 +29,7 @@ public abstract class MergeOperator : RocksDbHandle
     private delegate void DestructorDelegate(nint state);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    public unsafe delegate nint FullMergeDelegate(
+    private unsafe delegate nint FullMergeDelegate(
         nint state,                                 // User-defined state
         byte* key, nuint keyLen,                    // The key being operated on
         byte* existingVal, nuint existingValLen,    // The current value (can be IntPtr.Zero)
@@ -40,7 +40,7 @@ public abstract class MergeOperator : RocksDbHandle
         nuint* newValLen);                          // Set to the length of the returned buffer
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    public unsafe delegate nint PartialMergeDelegate(
+    private unsafe delegate nint PartialMergeDelegate(
         nint state,                                 // User-defined state
         byte* key, nuint keyLen,                    // The key being operated on
         nint operands,                              // Pointer to an array of const char*
@@ -50,7 +50,7 @@ public abstract class MergeOperator : RocksDbHandle
         nuint* newValLen);                          // Set to the length of the returned buffer
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    public unsafe delegate void DeleteValueDelegate(
+    private unsafe delegate void DeleteValueDelegate(
         nint state,
         nint value, nuint valueLen);
 
@@ -200,6 +200,13 @@ public abstract class MergeOperator : RocksDbHandle
 
     // ── Construction ─────────────────────────────────────────────────────────
 
+    /// <summary>Creates a merge operator with the given name.</summary>
+    /// <param name="name">
+    /// Identifies this operator in RocksDb's logs and options output. Unlike
+    /// a comparator name it is not enforced on reopen, so a mismatch will not
+    /// be caught for you: opening a database with a different merge operator
+    /// than the one that wrote its operands silently produces wrong merges.
+    /// </param>
     protected unsafe MergeOperator(string name)
     {
         ArgumentException.ThrowIfNullOrEmpty(name);

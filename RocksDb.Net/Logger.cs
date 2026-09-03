@@ -2,6 +2,10 @@ using System.Runtime.InteropServices;
 
 namespace RocksDbNet;
 
+/// <summary>
+/// Severity threshold for RocksDb's own informational log. Records below
+/// the configured level are not written.
+/// </summary>
 public enum InfoLogLevel : int
 {
     /// <summary>

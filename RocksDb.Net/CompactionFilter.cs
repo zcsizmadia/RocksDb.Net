@@ -173,6 +173,11 @@ public abstract class CompactionFilter : RocksDbHandle
 
     // ── Construction ─────────────────────────────────────────────────────────
 
+    /// <summary>Creates a compaction filter with the given name.</summary>
+    /// <param name="name">
+    /// Identifies the filter in RocksDb's logs and options output. Not
+    /// enforced on reopen.
+    /// </param>
     protected unsafe CompactionFilter(string name)
     {
         ArgumentException.ThrowIfNullOrEmpty(name);

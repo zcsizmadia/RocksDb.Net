@@ -6,30 +6,129 @@ namespace RocksDbNet;
 /// <summary>Compression algorithm used by RocksDb.</summary>
 public enum Compression
 {
+    /// <summary>No compression. Fastest, largest on disk.</summary>
     None = 0,
+
+    /// <summary>
+    /// Snappy. Fast with modest ratios, and the traditional default.
+    /// </summary>
     Snappy = 1,
+
+    /// <summary>
+    /// Zlib. Better ratios than <see cref="Snappy"/> at a noticeably higher
+    /// CPU cost.
+    /// </summary>
     Zlib = 2,
+
+    /// <summary>
+    /// Bzip2. Strong ratios but slow enough that it is rarely the right
+    /// choice for live data.
+    /// </summary>
     Bz2 = 3,
+
+    /// <summary>
+    /// LZ4. Comparable ratios to <see cref="Snappy"/> and usually faster;
+    /// a good default for the upper levels.
+    /// </summary>
     Lz4 = 4,
+
+    /// <summary>
+    /// LZ4 in high-compression mode. Compresses harder and slower than
+    /// <see cref="Lz4"/> while decompressing just as fast, which suits data
+    /// written once and read often.
+    /// </summary>
     Lz4Hc = 5,
+
+    /// <summary>
+    /// Microsoft Xpress. Available only where the platform provides it, so
+    /// not portable.
+    /// </summary>
     Xpress = 6,
+
+    /// <summary>
+    /// Zstandard. The usual choice for the bottommost level: ratios near
+    /// <see cref="Zlib"/> with decompression closer to <see cref="Lz4"/>.
+    /// </summary>
     Zstd = 7,
 }
+
+// Whether a build actually supports a given algorithm depends on how the
+// native library was compiled. Selecting one that is missing fails at open
+// time rather than falling back silently.
 
 /// <summary>Compaction style.</summary>
 public enum CompactionStyle
 {
+    /// <summary>
+    /// Levelled compaction, the default. Keeps read amplification low and
+    /// space overhead small, at the cost of writing data several times as it
+    /// moves down the levels.
+    /// </summary>
     Level = 0,
+
+    /// <summary>
+    /// Universal compaction. Writes each piece of data far fewer times, so
+    /// write-heavy workloads go faster, but it can transiently need close to
+    /// twice the database size in free space and reads touch more files.
+    /// </summary>
     Universal = 1,
+
+    /// <summary>
+    /// First-in, first-out. Never really compacts; it deletes the oldest
+    /// files once a size or age bound is passed. For time-series and cache
+    /// data where losing the oldest entries is acceptable, and wrong for
+    /// anything that must be kept.
+    /// </summary>
     Fifo = 2,
 }
 
 /// <summary>WAL recovery mode.</summary>
 public enum WalRecoveryMode
 {
+    /// <summary>
+    /// Tolerates an incomplete final record in any log, which is what a crash
+    /// mid-write leaves behind, and refuses to open if corruption is found
+    /// anywhere else.
+    /// </summary>
+    /// <remarks>
+    /// Choose this when an applied update must never be rolled back, even by
+    /// a crash. The difference from <see cref="PointInTime"/> is what happens
+    /// on real corruption: this refuses to open, rather than recovering up to
+    /// the damage and discarding the rest.
+    /// </remarks>
     TolerateCorruptedTailRecords = 0,
+
+    /// <summary>
+    /// Expects a clean shutdown and treats any corruption at all, including an
+    /// incomplete tail record, as a failure to open.
+    /// </summary>
+    /// <remarks>
+    /// The strictest mode. Good for tests and for applications that would
+    /// rather fail loudly than start with less data than they wrote.
+    /// </remarks>
     AbsoluteConsistency = 1,
+
+    /// <summary>
+    /// Replays the log until the first inconsistency and stops there,
+    /// discarding everything after it. RocksDb's default.
+    /// </summary>
+    /// <remarks>
+    /// The recovered state is a real point in time, so it is consistent, but
+    /// writes after the damage are silently lost. Suited to storage that can
+    /// lose a tail of writes, such as a disk with a volatile write cache.
+    /// </remarks>
     PointInTime = 2,
+
+    /// <summary>
+    /// Ignores corruption wherever it appears and salvages whatever records
+    /// can still be read.
+    /// </summary>
+    /// <remarks>
+    /// A last resort. The result is not a point in time: records from after a
+    /// corrupt stretch can be applied while earlier ones are lost, so the
+    /// database can come back in a state no writer ever produced. Use it to
+    /// rescue data, not to run on.
+    /// </remarks>
     SkipAnyCorruptedRecords = 3,
 }
 

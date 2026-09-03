@@ -3,6 +3,24 @@ namespace RocksDbNet;
 /// <summary>
 /// Metadata for a single backup entry.
 /// </summary>
+/// <param name="BackupId">
+/// The backup's identifier, used to restore or verify this particular backup.
+/// </param>
+/// <param name="Timestamp">
+/// When the backup was created, in seconds since the Unix epoch in UTC.
+/// Seconds, not milliseconds or ticks, so convert with
+/// <see cref="DateTimeOffset.FromUnixTimeSeconds(long)"/>.
+/// </param>
+/// <param name="Size">
+/// Total size of the backup in bytes, counting file payloads only. Filesystem
+/// overhead and the backup's own metadata file are excluded, so this reads
+/// lower than the space the backup directory actually occupies.
+/// </param>
+/// <param name="NumberFiles">
+/// How many files the backup comprises, excluding its metadata file. Backups
+/// share unchanged files, so summing this across backups overcounts the files
+/// on disk.
+/// </param>
 public sealed record BackupInfo(
     uint BackupId,
     long Timestamp,

@@ -19,6 +19,8 @@ public abstract class RocksDbHandle : IDisposable
     {
     }
 
+    /// <summary>Takes over an already-created native handle.</summary>
+    /// <param name="handle">The native handle to own.</param>
     protected RocksDbHandle(nint handle)
     {
         _handle = handle;
@@ -59,6 +61,22 @@ public abstract class RocksDbHandle : IDisposable
     /// </summary>
     internal void TransferOwnership() => Interlocked.Exchange(ref _owned, 0);
 
+    /// <summary>
+    /// Pins this instance so native code can hold a pointer to it across
+    /// callbacks, optionally alongside a stable copy of its name.
+    /// </summary>
+    /// <param name="name">
+    /// A name to keep in unmanaged memory for the native name callback to
+    /// return, or <see langword="null"/> if the type has no name callback.
+    /// </param>
+    /// <returns>The allocated handle, already stored on this instance.</returns>
+    /// <remarks>
+    /// Call this before handing any function pointer to RocksDb. Without it
+    /// the garbage collector is free to move or collect the instance while
+    /// native code still holds its address, and the callback then runs against
+    /// freed memory. Release it from the native destructor callback with
+    /// <see cref="UnpinGarbageCollector"/>.
+    /// </remarks>
     protected GCHandle PinGarbageCollector(string? name = null)
     {
         if (_gcHandle.IsAllocated)
@@ -73,6 +91,14 @@ public abstract class RocksDbHandle : IDisposable
         return _gcHandle;
     }
 
+    /// <summary>
+    /// The pointer to pass to RocksDb as the callback state, which comes back
+    /// to <see cref="GetSelfFromPinnedIntPtr{T}"/> on every callback.
+    /// </summary>
+    /// <returns>A pointer to the pinned handle for this instance.</returns>
+    /// <exception cref="InvalidOperationException">
+    /// <see cref="PinGarbageCollector"/> has not been called.
+    /// </exception>
     protected nint GetPinnedIntPtr()
     {
         if (!_gcHandle.IsAllocated)
@@ -82,6 +108,18 @@ public abstract class RocksDbHandle : IDisposable
         return GCHandle.ToIntPtr(_gcHandle);
     }
 
+    /// <summary>
+    /// The unmanaged copy of this instance's name, for a native name callback
+    /// to return directly.
+    /// </summary>
+    /// <returns>A pointer to a null-terminated copy of the name.</returns>
+    /// <exception cref="InvalidOperationException">
+    /// <see cref="PinGarbageCollector"/> has not been called.
+    /// </exception>
+    /// <remarks>
+    /// The name has to live in unmanaged memory because RocksDb keeps the
+    /// pointer it is given rather than copying the string.
+    /// </remarks>
     protected nint GetPinnedNameIntPtr()
     {
         if (!_gcHandle.IsAllocated)
@@ -91,6 +129,15 @@ public abstract class RocksDbHandle : IDisposable
         return _namePtr;
     }
 
+    /// <summary>
+    /// Releases the pin taken by <see cref="PinGarbageCollector"/> and frees
+    /// the unmanaged name copy.
+    /// </summary>
+    /// <remarks>
+    /// Call this from the native destructor callback, which RocksDb invokes
+    /// when it is finished with the object. Unpinning earlier leaves native
+    /// code holding a dangling state pointer.
+    /// </remarks>
     protected internal void UnpinGarbageCollector()
     {
         if (!_gcHandle.IsAllocated)
@@ -107,6 +154,17 @@ public abstract class RocksDbHandle : IDisposable
         }
     }
 
+    /// <summary>
+    /// Recovers the managed instance from the state pointer RocksDb passes to
+    /// a callback.
+    /// </summary>
+    /// <typeparam name="T">The expected instance type.</typeparam>
+    /// <param name="state">The state pointer given to the callback.</param>
+    /// <returns>The instance the pointer refers to.</returns>
+    /// <exception cref="InvalidOperationException">
+    /// The pointer is null, the handle is no longer allocated, or the target is
+    /// not a <typeparamref name="T"/>.
+    /// </exception>
     protected static T GetSelfFromPinnedIntPtr<T>(nint state) where T : RocksDbHandle
     {
         if (state == IntPtr.Zero)
@@ -121,6 +179,12 @@ public abstract class RocksDbHandle : IDisposable
         return self;
     }
 
+    /// <summary>
+    /// Recovers the unmanaged name pointer for the instance behind a callback
+    /// state pointer.
+    /// </summary>
+    /// <param name="state">The state pointer given to the callback.</param>
+    /// <returns>A pointer to the null-terminated name.</returns>
     protected static nint GetNameFromPinnedIntPtr(nint state)
     {
         var self = GetSelfFromPinnedIntPtr<RocksDbHandle>(state);

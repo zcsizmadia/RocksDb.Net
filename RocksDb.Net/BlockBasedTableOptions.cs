@@ -6,8 +6,28 @@ namespace RocksDbNet;
 /// <summary>Index type for block-based table.</summary>
 public enum BlockBasedTableIndexType
 {
+    /// <summary>
+    /// One sorted index searched by bisection. The default, and the right
+    /// answer unless the index has grown large enough to be a problem.
+    /// </summary>
     BinarySearch = 0,
+
+    /// <summary>
+    /// A hash index keyed on the key prefix, which turns a prefix lookup into
+    /// a direct hit rather than a search. Needs a prefix extractor to be
+    /// configured and costs extra space.
+    /// </summary>
     HashSearch = 1,
+
+    /// <summary>
+    /// A partitioned index: a small top-level index locates the index
+    /// partition, which is then searched.
+    /// </summary>
+    /// <remarks>
+    /// The point is that only the top level and the one partition needed have
+    /// to be resident, so a large index no longer has to be loaded whole.
+    /// Worth it for big files; unnecessary overhead for small ones.
+    /// </remarks>
     TwoLevelIndexSearch = 2,
 }
 
