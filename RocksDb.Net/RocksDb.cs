@@ -962,6 +962,48 @@ public sealed class RocksDb : RocksDbHandle
         return RegisterColumnFamily(name, new ColumnFamilyHandle(handle));
     }
 
+    /// <summary>
+    /// Creates a column family from files previously exported with
+    /// <see cref="Checkpoint.ExportColumnFamily(ColumnFamilyHandle, string)"/>.
+    /// </summary>
+    /// <param name="name">Name for the new column family. It must not already exist.</param>
+    /// <param name="options">Options for the new column family.</param>
+    /// <param name="metadata">Metadata returned by the export.</param>
+    /// <param name="importOptions">
+    /// How the files are taken from the export directory, or
+    /// <see langword="null"/> to copy them.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// The receiving column family must use the same comparator the export was
+    /// written with, since the files are ordered by it, and the files must still
+    /// be where the metadata says they are.
+    /// </para>
+    /// <para>
+    /// The returned handle is registered like any other, so
+    /// <see cref="GetColumnFamily"/> finds it and the database disposes it.
+    /// </para>
+    /// </remarks>
+    public ColumnFamilyHandle CreateColumnFamilyWithImport(
+        string name,
+        DbOptions options,
+        ExportImportFilesMetadata metadata,
+        ImportColumnFamilyOptions? importOptions = null)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(name);
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(metadata);
+
+        using ImportColumnFamilyOptions? owned = importOptions is null ? new ImportColumnFamilyOptions() : null;
+
+        nint err = default;
+        nint handle = NativeMethods.rocksdb_create_column_family_with_import(
+            Handle, options.Handle, name, (importOptions ?? owned!).Handle, metadata.Handle, ref err);
+        NativeMethods.ThrowOnError(err);
+
+        return RegisterColumnFamily(name, new ColumnFamilyHandle(handle));
+    }
+
     /// <summary>Creates a new column family with TTL.</summary>
     public ColumnFamilyHandle CreateColumnFamilyWithTtl(DbOptions options, string name, int ttlSeconds)
     {
