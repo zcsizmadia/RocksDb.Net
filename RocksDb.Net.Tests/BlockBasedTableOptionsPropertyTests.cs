@@ -275,7 +275,7 @@ public class BlockBasedTableOptionsPropertyTests
             DataBlockHashTableUtilRatio = 0.75,
         };
 
-        dbOpts.SetBlockBasedTableFactory(tableOpts);
+        dbOpts.BlockBasedTableFactory = tableOpts;
 
         using var db = RocksDb.Open(dbOpts, dir.Path);
         db.Put("a", "1");

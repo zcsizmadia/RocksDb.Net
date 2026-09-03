@@ -65,7 +65,7 @@ public class CallbackExceptionTests
     {
         using var recorder = new ExceptionRecorder();
         using var filter = new ThrowingCompactionFilter();
-        using var db = new TempDb(o => o.SetCompactionFilter(filter));
+        using var db = new TempDb(o => o.CompactionFilter = filter);
 
         db.Db.Put("a", "1");
         db.Db.Put("b", "2");
@@ -93,7 +93,7 @@ public class CallbackExceptionTests
     {
         using var recorder = new ExceptionRecorder();
         using var merge = new ThrowingMergeOperator();
-        using var db = new TempDb(o => o.SetMergeOperator(merge));
+        using var db = new TempDb(o => o.MergeOperator = merge);
 
         db.Db.Merge("k", "v");
 
@@ -117,7 +117,7 @@ public class CallbackExceptionTests
     {
         using var recorder = new ExceptionRecorder();
         using var logger = new ThrowingLogger();
-        using var db = new TempDb(o => o.SetInfoLog(logger));
+        using var db = new TempDb(o => o.InfoLog = logger);
 
         db.Db.Put("a", "1");
         db.Db.Flush();
@@ -163,7 +163,7 @@ public class CallbackExceptionTests
     {
         using var recorder = new ExceptionRecorder();
         using var factory = new ThrowingCompactionFilterFactory();
-        using var db = new TempDb(o => o.SetCompactionFilterFactory(factory));
+        using var db = new TempDb(o => o.CompactionFilterFactory = factory);
 
         db.Db.Put("a", "1");
         db.Db.Flush();
@@ -186,7 +186,7 @@ public class CallbackExceptionTests
         {
             using var recorder = new ExceptionRecorder();
             using var logger = new ThrowingLogger();
-            using var db = new TempDb(o => o.SetInfoLog(logger));
+            using var db = new TempDb(o => o.InfoLog = logger);
 
             db.Db.Put("a", "1");
             db.Db.Flush();
@@ -205,7 +205,7 @@ public class CallbackExceptionTests
     {
         // The guard must not depend on anyone listening.
         using var logger = new ThrowingLogger();
-        using var db = new TempDb(o => o.SetInfoLog(logger));
+        using var db = new TempDb(o => o.InfoLog = logger);
 
         db.Db.Put("a", "1");
         db.Db.Flush();

@@ -23,7 +23,9 @@ jobs:
       shell: bash
       run: |
         dotnet restore
-        dotnet build -c Release --no-restore
+        # -warnaserror keeps the build warning-free: a new warning fails CI
+        # rather than accumulating unnoticed.
+        dotnet build -c Release --no-restore -warnaserror
 
     - name: Test
       shell: bash
