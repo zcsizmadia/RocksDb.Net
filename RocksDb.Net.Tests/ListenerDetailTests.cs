@@ -10,7 +10,7 @@ public class ListenerDetailTests
 {
     private sealed class CapturingListener : EventListener
     {
-        private readonly Lock _gate = new();
+        private readonly object _gate = new();
         private readonly List<FlushJobInfo> _flushes = [];
         private readonly List<CompactionJobInfo> _compactions = [];
         private readonly List<ExternalFileIngestionInfo> _ingestions = [];

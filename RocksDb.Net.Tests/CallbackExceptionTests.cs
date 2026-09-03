@@ -21,7 +21,7 @@ public class CallbackExceptionTests
     private sealed class ExceptionRecorder : IDisposable
     {
         private readonly List<CallbackExceptionEventArgs> _reported = [];
-        private readonly Lock _gate = new();
+        private readonly object _gate = new();
 
         public ExceptionRecorder()
             => RocksDbCallbacks.UnhandledException += OnUnhandled;
