@@ -482,3 +482,7 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Test results and coverage reports
+TestResults/
+nupkgs/

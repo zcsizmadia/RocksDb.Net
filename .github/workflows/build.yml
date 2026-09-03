@@ -8,15 +8,26 @@ on:
 
 jobs:
   build:
-    name: Build
-    runs-on: ubuntu-latest
+    # The native library is platform-specific, so the tests have to run on every
+    # OS the runtimes package ships for, not just Linux.
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, windows-latest, macos-latest ]
+
     steps:
     - uses: actions/checkout@v7
 
     - name: Setup .NET SDKs
       uses: actions/setup-dotnet@v6
       with:
+        # The 8 and 9 runtimes are needed to *run* the tests for those target
+        # frameworks, not just to build them.
         dotnet-version: |
+          8.0.x
+          9.0.x
           10.0.x
 
     - name: Build
@@ -30,14 +41,49 @@ jobs:
     - name: Test
       shell: bash
       run: |
-        dotnet test -c Release --no-build
+        dotnet test -c Release --no-build \
+          --collect:"XPlat Code Coverage" \
+          --results-directory TestResults
+
+    - name: Summarise coverage
+      # Linux only: one summary is enough, and the number does not vary by OS.
+      if: matrix.os == 'ubuntu-latest'
+      shell: bash
+      run: |
+        # Read the line rate straight out of the Cobertura report rather than
+        # taking a dependency on a coverage action.
+        report=$(find TestResults -name 'coverage.cobertura.xml' | head -1)
+        if [ -z "$report" ]; then
+          echo "No coverage report was produced." >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+        fi
+
+        rate=$(sed -n 's/.*line-rate="\([0-9.]*\)".*/\1/p' "$report" | head -1)
+        percent=$(awk -v r="$rate" 'BEGIN { printf "%.1f", r * 100 }')
+
+        {
+          echo "## Coverage"
+          echo
+          echo "Line coverage: **${percent}%**"
+          echo
+          echo "Full Cobertura report is attached as the \`coverage\` artifact."
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Upload coverage report
+      if: matrix.os == 'ubuntu-latest'
+      uses: actions/upload-artifact@v7
+      with:
+        name: coverage
+        path: TestResults/**/coverage.cobertura.xml
 
     - name: Pack NuGet package
+      if: matrix.os == 'ubuntu-latest'
       shell: bash
       run: |
         dotnet pack -c Release --no-build -o nupkgs
 
     - name: Upload NuGet package artifact
+      if: matrix.os == 'ubuntu-latest'
       uses: actions/upload-artifact@v7
       with:
         name: nuget-package
