@@ -598,6 +598,43 @@ public sealed class DbOptions : RocksDbHandle
         }
     }
 
+    /// <summary>
+    /// Attaches a disk-space governor, capping how much space the database may
+    /// use and how fast it may delete files.
+    /// </summary>
+    /// <remarks>
+    /// RocksDb takes a shared reference rather than ownership, so the instance
+    /// may be disposed once assigned, and the same one may be given to several
+    /// databases to place them under a common budget. That is why it is not
+    /// added to the owned handles.
+    /// </remarks>
+    public SstFileManager SstFileManager
+    {
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            NativeMethods.rocksdb_options_set_sst_file_manager(Handle, value.Handle);
+        }
+    }
+
+    /// <summary>
+    /// Attaches a memtable memory budget shared across column families, and
+    /// across databases if the same instance is given to each.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="WriteBufferSize"/> bounds one memtable; this bounds their
+    /// total. RocksDb takes a shared reference rather than ownership, so the
+    /// instance may be disposed once assigned.
+    /// </remarks>
+    public WriteBufferManager WriteBufferManager
+    {
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            NativeMethods.rocksdb_options_set_write_buffer_manager(Handle, value.Handle);
+        }
+    }
+
     /// <summary>Attaches a prefix extractor (slice transform).</summary>
 
     public SliceTransform PrefixExtractor
