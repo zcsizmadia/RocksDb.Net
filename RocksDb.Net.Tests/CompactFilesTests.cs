@@ -289,10 +289,32 @@ public class CompactFilesTests
         using var options = new LiveFilesStorageInfoOptions { IncludeChecksumInfo = true };
         IReadOnlyList<LiveFileStorageInfo> files = db.GetLiveFilesStorageInfo(options);
 
-        LiveFileStorageInfo sst = files.First(f => f.FileType == FileType.TableFile);
+        // This assertion has failed intermittently in CI, on both net9.0 and
+        // net10.0, with nothing but "Collection was empty" to go on, and it has
+        // never reproduced locally. So the failure message carries the whole
+        // file list: whether there was no table file at all, or one whose
+        // checksum came back empty, decides where to look next.
+        string diagnostic = string.Join(
+            Environment.NewLine,
+            files.Select(f =>
+                $"  {f.FileType,-12} {f.RelativeFilename,-24} size={f.Size,-10} " +
+                $"checksum={f.FileChecksum.Length}B func='{f.FileChecksumFuncName}'"));
 
-        Assert.NotEmpty(sst.FileChecksum);
-        Assert.False(string.IsNullOrEmpty(sst.FileChecksumFuncName));
+        LiveFileStorageInfo[] tableFiles = [.. files.Where(f => f.FileType == FileType.TableFile)];
+
+        Assert.True(
+            tableFiles.Length > 0,
+            $"expected at least one table file, saw {files.Count} files:{Environment.NewLine}{diagnostic}");
+
+        LiveFileStorageInfo sst = tableFiles[0];
+
+        Assert.True(
+            sst.FileChecksum.Length > 0,
+            $"expected a checksum on {sst.RelativeFilename}, saw {files.Count} files:{Environment.NewLine}{diagnostic}");
+
+        Assert.False(
+            string.IsNullOrEmpty(sst.FileChecksumFuncName),
+            $"expected a checksum function name, saw:{Environment.NewLine}{diagnostic}");
     }
 
     [Fact]
