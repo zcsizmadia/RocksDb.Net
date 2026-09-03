@@ -151,8 +151,8 @@ public sealed class BlockBasedTableOptions : RocksDbHandle
     /// <summary>Attaches a filter policy (e.g. Bloom filter).</summary>
     public BlockBasedTableOptions SetFilterPolicy(FilterPolicy? policy)
     {
+        policy?.AttachExclusively(nameof(SetFilterPolicy));
         NativeMethods.rocksdb_block_based_options_set_filter_policy(Handle, policy?.Handle ?? nint.Zero);
-        policy?.TransferOwnership();
         return this;
     }
 
