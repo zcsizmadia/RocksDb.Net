@@ -38,22 +38,17 @@ jobs:
         # rather than accumulating unnoticed.
         dotnet build -c Release --no-restore -warnaserror
 
-    # The tests create and delete a RocksDb database per test, which is a few
-    # thousand short-lived files per run. Defender's real-time scanning of those
-    # dominated the Windows job: 148s in the Test step against 13s on Linux,
-    # while the same tests take about 11s on a local Windows machine. Excluding
-    # the temp directory the tests use removes that scanning cost.
-    - name: Exclude the test temp directory from Defender
-      if: runner.os == 'Windows'
-      shell: pwsh
-      run: |
-        $tempPath = [System.IO.Path]::GetTempPath()
-        Add-MpPreference -ExclusionPath $tempPath -ErrorAction SilentlyContinue
-        Add-MpPreference -ExclusionProcess 'dotnet.exe' -ErrorAction SilentlyContinue
-        Write-Host "Excluded $tempPath and dotnet.exe from real-time scanning."
-
     - name: Test
       shell: bash
+      env:
+        # Each test creates and deletes its own RocksDb database, so a run is a
+        # few thousand short-lived files, and the three target frameworks run
+        # concurrently. On the Windows runner the default temp directory is on
+        # the OS volume, which is markedly slower than the workspace volume that
+        # RUNNER_TEMP points at. Path.GetTempPath honours TMP and TEMP, so this
+        # moves that churn onto the faster disk.
+        TMP: ${{ runner.temp }}
+        TEMP: ${{ runner.temp }}
       run: |
         dotnet test -c Release --no-build \
           --collect:"XPlat Code Coverage" \
