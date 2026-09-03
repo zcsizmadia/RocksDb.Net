@@ -54,7 +54,17 @@ public sealed record FlushJobInfo(
     bool TriggeredWritesStop,
     ulong LargestSeqno,
     ulong SmallestSeqno,
-    FlushReason FlushReason);
+    FlushReason FlushReason)
+{
+    /// <summary>
+    /// Properties of the SST file this flush produced, or <c>null</c> if RocksDb
+    /// reported none.
+    /// </summary>
+    public TableProperties? TableProperties { get; init; }
+
+    /// <summary>Blob files created by this flush. Empty when blob files are disabled.</summary>
+    public IReadOnlyList<BlobFileAdditionInfo> BlobFileAdditions { get; init; } = [];
+}
 
 /// <summary>Information about a completed compaction job.</summary>
 public sealed record CompactionJobInfo(
@@ -69,7 +79,21 @@ public sealed record CompactionJobInfo(
     ulong NumOfCorruptKeys,
     int BaseInputLevel,
     CompactionReason CompactionReason,
-    string? Status);
+    string? Status)
+{
+    /// <summary>
+    /// Detailed statistics for the compaction, or <c>null</c> if RocksDb reported
+    /// none. Supersedes the individual totals on this record, which remain for
+    /// compatibility.
+    /// </summary>
+    public CompactionJobStats? Stats { get; init; }
+
+    /// <summary>Blob files created by this compaction. Empty when blob files are disabled.</summary>
+    public IReadOnlyList<BlobFileAdditionInfo> BlobFileAdditions { get; init; } = [];
+
+    /// <summary>Blob-file garbage discovered by this compaction.</summary>
+    public IReadOnlyList<BlobFileGarbageInfo> BlobFileGarbage { get; init; } = [];
+}
 
 /// <summary>Information about a sub-compaction job.</summary>
 public sealed record SubCompactionJobInfo(
@@ -422,7 +446,53 @@ public abstract class EventListener : RocksDbHandle
             TriggeredWritesStop: NativeMethods.rocksdb_flushjobinfo_triggered_writes_stop(info) != 0,
             LargestSeqno: NativeMethods.rocksdb_flushjobinfo_largest_seqno(info),
             SmallestSeqno: NativeMethods.rocksdb_flushjobinfo_smallest_seqno(info),
-            FlushReason: (FlushReason)NativeMethods.rocksdb_flushjobinfo_flush_reason(info));
+            FlushReason: (FlushReason)NativeMethods.rocksdb_flushjobinfo_flush_reason(info))
+        {
+            // Both are borrowed views into `info` and are only valid for the
+            // duration of this callback, so copy them now.
+            TableProperties = TableProperties.Copy(NativeMethods.rocksdb_flushjobinfo_table_properties(info)),
+            BlobFileAdditions = ReadBlobFileAdditions(
+                NativeMethods.rocksdb_flushjobinfo_blob_file_addition_infos_count(info),
+                pos => NativeMethods.rocksdb_flushjobinfo_blob_file_addition_info_at(info, pos)),
+        };
+    }
+
+    private static IReadOnlyList<BlobFileAdditionInfo> ReadBlobFileAdditions(nuint count, Func<nuint, nint> at)
+    {
+        if (count == 0)
+        {
+            return [];
+        }
+
+        var result = new List<BlobFileAdditionInfo>(checked((int)count));
+        for (nuint i = 0; i < count; i++)
+        {
+            if (BlobFileAdditionInfo.Copy(at(i)) is { } addition)
+            {
+                result.Add(addition);
+            }
+        }
+
+        return result;
+    }
+
+    private static IReadOnlyList<BlobFileGarbageInfo> ReadBlobFileGarbage(nuint count, Func<nuint, nint> at)
+    {
+        if (count == 0)
+        {
+            return [];
+        }
+
+        var result = new List<BlobFileGarbageInfo>(checked((int)count));
+        for (nuint i = 0; i < count; i++)
+        {
+            if (BlobFileGarbageInfo.Copy(at(i)) is { } garbage)
+            {
+                result.Add(garbage);
+            }
+        }
+
+        return result;
     }
 
     // ── CompactionJobInfo ──────────────────────────────────────────────────
@@ -467,7 +537,18 @@ public abstract class EventListener : RocksDbHandle
             NumOfCorruptKeys: NativeMethods.rocksdb_compactionjobinfo_num_corrupt_keys(info),
             BaseInputLevel: NativeMethods.rocksdb_compactionjobinfo_base_input_level(info),
             CompactionReason: (CompactionReason)NativeMethods.rocksdb_compactionjobinfo_compaction_reason(info),
-            Status: status);
+            Status: status)
+        {
+            // All three are borrowed views into `info`, valid only for the
+            // duration of this callback, so copy them now.
+            Stats = CompactionJobStats.Copy(NativeMethods.rocksdb_compactionjobinfo_stats(info)),
+            BlobFileAdditions = ReadBlobFileAdditions(
+                NativeMethods.rocksdb_compactionjobinfo_blob_file_addition_infos_count(info),
+                pos => NativeMethods.rocksdb_compactionjobinfo_blob_file_addition_info_at(info, pos)),
+            BlobFileGarbage = ReadBlobFileGarbage(
+                NativeMethods.rocksdb_compactionjobinfo_blob_file_garbage_infos_count(info),
+                pos => NativeMethods.rocksdb_compactionjobinfo_blob_file_garbage_info_at(info, pos)),
+        };
     }
 
     // ── SubCompactionJobInfo ───────────────────────────────────────────────
