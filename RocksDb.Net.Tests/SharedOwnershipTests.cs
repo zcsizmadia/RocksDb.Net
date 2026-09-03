@@ -296,4 +296,64 @@ public class SharedOwnershipTests
     // Separated so the descriptors cannot stay alive in a local of the test.
     private static RocksDb OpenWithAbandonedDescriptors(DbOptions opts, string path)
         => RocksDb.Open(opts, path, [new("default"), new("cf1")]);
+
+    // ── Opening with disposed options fails cleanly ─────────────────────────
+
+    /// <summary>
+    /// A disposed <see cref="DbOptions"/> reports a null handle, and RocksDb
+    /// requires every pointer argument to be non-null, so passing one through
+    /// dereferenced null inside the native open and took the process down with
+    /// an access violation that named nothing useful.
+    /// </summary>
+    [Fact]
+    public void Open_WithDisposedOptions_Throws()
+    {
+        using var dir = new TempDir();
+        var opts = new DbOptions { CreateIfMissing = true };
+        opts.Dispose();
+
+        Assert.Throws<ObjectDisposedException>(() => RocksDb.Open(opts, dir.Path));
+    }
+
+    /// <summary>
+    /// And the route that actually bit: a descriptor whose options have been
+    /// disposed. This is how a caller reaches the null handle without touching
+    /// a <see cref="DbOptions"/> directly.
+    /// </summary>
+    [Fact]
+    public void Open_WithADisposedDescriptorOptions_Throws()
+    {
+        using var dir = new TempDir();
+        using var opts = new DbOptions { CreateIfMissing = true, CreateMissingColumnFamilies = true };
+
+        var descriptors = new List<ColumnFamilyDescriptor> { new("default"), new("cf1") };
+        descriptors[1].Options.Dispose();
+
+        Assert.Throws<ObjectDisposedException>(() => RocksDb.Open(opts, dir.Path, descriptors));
+    }
+
+    /// <summary>
+    /// Reusing one descriptor list across two databases is supported, and is
+    /// exactly why closing a database must not dispose the options its
+    /// descriptors own.
+    /// </summary>
+    [Fact]
+    public void ADescriptorList_CanBeReusedForASecondDatabase()
+    {
+        using var dir = new TempDir();
+        var descriptors = new List<ColumnFamilyDescriptor> { new("default"), new("cf1") };
+
+        using (var opts = new DbOptions { CreateIfMissing = true, CreateMissingColumnFamilies = true })
+        using (var db = RocksDb.Open(opts, dir.Path, descriptors))
+        {
+            db.Put("key", "value", db.GetColumnFamily("cf1"));
+        }
+
+        // The same descriptors again. Had closing the first database disposed
+        // their options, this would hand RocksDb a null pointer.
+        using var roOpts = new DbOptions();
+        using var reopened = RocksDb.OpenReadOnly(roOpts, dir.Path, descriptors);
+
+        Assert.Equal("value", reopened.GetString("key", reopened.GetColumnFamily("cf1")));
+    }
 }

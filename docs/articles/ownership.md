@@ -67,7 +67,9 @@ The native call copies the options struct, so a clone points at the **same** com
 
 A `ColumnFamilyDescriptor` built from a name alone creates its own `DbOptions` and disposes them from its finalizer. A database opened with descriptors holds on to them, so those options cannot be finalized while it is open. Without that, the descriptor list became unreachable as soon as `Open` returned and the next collection destroyed the comparator or compaction filter attached to a column family's options underneath a live database.
 
-They are released when the descriptors are themselves collected, which cannot now happen before the database is. Releasing them eagerly when the database closes is **not** done: it faults, reproducibly and in a different place each run, and the reason is not yet understood.
+They are released when the descriptors are themselves collected, not when the database closes, and that is deliberate rather than a compromise. A descriptor and the options it owns belong to you, and the same list can be handed to a second database: create one, close it, reopen read-only with the same descriptors. Disposing those options as a side effect of closing one database would destroy something you still own and are about to reuse.
+
+Passing a disposed `DbOptions` to any `Open` overload now throws `ObjectDisposedException`, including one reached through a descriptor. Previously the null handle a disposed instance reports went straight into the native open, which requires every pointer argument to be non-null, and the result was an access violation rather than a message naming the mistake.
 
 ## Caller-provided buffers
 

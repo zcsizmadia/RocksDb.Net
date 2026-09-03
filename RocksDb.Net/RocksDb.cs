@@ -34,21 +34,24 @@ public sealed class RocksDb : RocksDbHandle
     // the database was still calling them. Holding the descriptors here stops
     // that, because they cannot become unreachable before the database does.
     //
-    // Deliberately only held, not disposed. Releasing those options from the
-    // database's own teardown faulted reproducibly, an access violation in a
-    // different test on every run, and restricting it to the explicit Dispose
-    // path faulted the same way.
+    // Held, and deliberately never disposed from here. A descriptor and the
+    // options it owns belong to the caller, who may hand the same list to a
+    // second database: creating one, closing it, then reopening read-only with
+    // the same descriptors is ordinary code. Disposing those options as a side
+    // effect of closing one database would destroy objects the caller still
+    // owns and is about to reuse.
     //
-    // The trigger is not identified. Disposing per-column-family options after
-    // rocksdb_close is not unsafe in itself: doing exactly that by hand
-    // survives, including with a native merge operator attached to them and
-    // with the database options doubling as a descriptor's. So something
-    // narrower is at fault and this comment does not know what.
+    // That was tried, and it faulted with an access violation. The cause is
+    // exactly the above: a disposed DbOptions reports a null handle, RocksDb
+    // requires every pointer argument to be non-null, so the second open
+    // dereferenced null. It looked like a teardown-ordering problem because
+    // the crash landed in whichever test ran next, which is why the Open
+    // overloads now reject disposed options outright rather than passing a
+    // null pointer into native code.
     //
-    // Holding the descriptors is what fixes the bug this list exists for.
-    // Releasing them eagerly would only add deterministic cleanup, which is
-    // not worth a fault, so it is left undone rather than done behind a guard
-    // that would hide the problem.
+    // So these options are released when the descriptors are themselves
+    // collected. Not deterministic, but correct: only the caller knows when a
+    // descriptor is finished with.
     private readonly List<ColumnFamilyDescriptor> _descriptors = [];
 
     private RocksDb(nint handle, DbOptions options)
@@ -92,6 +95,7 @@ public sealed class RocksDb : RocksDbHandle
     public static RocksDb Open(DbOptions options, string path)
     {
         ArgumentNullException.ThrowIfNull(options);
+        options.ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrEmpty(path);
 
         nint err = default;
@@ -117,11 +121,24 @@ public sealed class RocksDb : RocksDbHandle
     public static unsafe RocksDb Open(DbOptions options, string path, IReadOnlyList<ColumnFamilyDescriptor> columnFamilies)
     {
         ArgumentNullException.ThrowIfNull(options);
+        options.ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrEmpty(path);
         ArgumentNullException.ThrowIfNull(columnFamilies);
 
         int count = columnFamilies.Count;
         nint[] cfHandles = new nint[count];
+        foreach (ColumnFamilyDescriptor descriptor in columnFamilies)
+        {
+            ArgumentNullException.ThrowIfNull(descriptor);
+
+            // A disposed DbOptions reports a null handle, and RocksDb requires
+            // every pointer argument to be non-null, so passing one through
+            // dereferences null inside the native open. Reusing a descriptor list
+            // for a second database is how this happens, and the access violation
+            // it produced named neither the descriptor nor the reuse.
+            descriptor.Options.ThrowIfDisposed();
+        }
+
         nint[] cfOptions = [.. columnFamilies.Select(cf => cf.Options.Handle)];
         byte[][] cfNameBytes = [.. columnFamilies.Select(cf => Encoding.UTF8.GetBytes(cf.Name + '\0'))];
 
@@ -162,6 +179,7 @@ public sealed class RocksDb : RocksDbHandle
     public static RocksDb OpenReadOnly(DbOptions options, string path, bool errorIfWalExists = false)
     {
         ArgumentNullException.ThrowIfNull(options);
+        options.ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrEmpty(path);
 
         nint err = default;
@@ -185,11 +203,24 @@ public sealed class RocksDb : RocksDbHandle
     public static unsafe RocksDb OpenReadOnly(DbOptions options, string path, IReadOnlyList<ColumnFamilyDescriptor> columnFamilies, bool errorIfWalExists = false)
     {
         ArgumentNullException.ThrowIfNull(options);
+        options.ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrEmpty(path);
         ArgumentNullException.ThrowIfNull(columnFamilies);
 
         int count = columnFamilies.Count;
         nint[] cfHandles = new nint[count];
+        foreach (ColumnFamilyDescriptor descriptor in columnFamilies)
+        {
+            ArgumentNullException.ThrowIfNull(descriptor);
+
+            // A disposed DbOptions reports a null handle, and RocksDb requires
+            // every pointer argument to be non-null, so passing one through
+            // dereferences null inside the native open. Reusing a descriptor list
+            // for a second database is how this happens, and the access violation
+            // it produced named neither the descriptor nor the reuse.
+            descriptor.Options.ThrowIfDisposed();
+        }
+
         nint[] cfOptions = [.. columnFamilies.Select(cf => cf.Options.Handle)];
         byte[][] cfNameBytes = [.. columnFamilies.Select(cf => Encoding.UTF8.GetBytes(cf.Name + '\0'))];
 
@@ -229,6 +260,7 @@ public sealed class RocksDb : RocksDbHandle
     public static RocksDb OpenAsSecondary(DbOptions options, string path, string secondaryPath)
     {
         ArgumentNullException.ThrowIfNull(options);
+        options.ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrEmpty(path);
         ArgumentException.ThrowIfNullOrEmpty(secondaryPath);
 
@@ -243,6 +275,7 @@ public sealed class RocksDb : RocksDbHandle
     public static RocksDb OpenWithTtl(DbOptions options, string path, int ttlSeconds)
     {
         ArgumentNullException.ThrowIfNull(options);
+        options.ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrEmpty(path);
 
         nint err = default;
