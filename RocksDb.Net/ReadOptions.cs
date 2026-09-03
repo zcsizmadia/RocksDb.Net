@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 namespace RocksDbNet;
 
 /// <summary>
@@ -6,9 +8,64 @@ namespace RocksDbNet;
 /// </summary>
 public sealed class ReadOptions : RocksDbHandle
 {
+    // Iteration bounds are stored by RocksDb as a Slice pointing at the caller's
+    // buffer, and are dereferenced on every Seek/Next for as long as these options
+    // are in use. Managed memory cannot satisfy that: a `fixed` pin ends when the
+    // setter returns and the GC is then free to move or collect the buffer. So keep
+    // an unmanaged copy per bound, owned by this instance.
+    private NativeBound _upperBound;
+    private NativeBound _lowerBound;
+
     public ReadOptions()
         : base(NativeMethods.rocksdb_readoptions_create())
     {
+    }
+
+    /// <summary>An unmanaged copy of an iteration bound, owned by the enclosing options.</summary>
+    private readonly struct NativeBound(nint pointer, nuint length)
+    {
+        public nint Pointer { get; } = pointer;
+
+        public nuint Length { get; } = length;
+
+        public void Free()
+        {
+            if (Pointer != nint.Zero)
+            {
+                Marshal.FreeHGlobal(Pointer);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Copies <paramref name="key"/> into freshly allocated unmanaged memory and
+    /// releases <paramref name="previous"/>. An empty key allocates nothing, which
+    /// makes the native setter clear the bound.
+    /// </summary>
+    private static unsafe NativeBound CopyBound(ReadOnlySpan<byte> key, NativeBound previous)
+    {
+        NativeBound bound = default;
+
+        if (!key.IsEmpty)
+        {
+            nint pointer = Marshal.AllocHGlobal(key.Length);
+            try
+            {
+                key.CopyTo(new Span<byte>((void*)pointer, key.Length));
+            }
+            catch
+            {
+                Marshal.FreeHGlobal(pointer);
+                throw;
+            }
+
+            bound = new NativeBound(pointer, (nuint)key.Length);
+        }
+
+        // Only release the old copy once the new one is in place, so a failed
+        // allocation leaves the existing bound intact.
+        previous.Free();
+        return bound;
     }
 
     /// <summary>If true, all data read from underlying storage will be verified against checksums.</summary>
@@ -34,23 +91,35 @@ public sealed class ReadOptions : RocksDbHandle
 
     /// <summary>
     /// Sets the upper bound for iteration; the iterator will not return keys &gt;= this key.
-    /// The span must remain valid for the lifetime of the <see cref="ReadOptions"/>.
     /// </summary>
+    /// <remarks>
+    /// The key is copied into unmanaged memory owned by this <see cref="ReadOptions"/>
+    /// instance, so the caller does not need to keep <paramref name="key"/> alive or
+    /// pinned. The copy is released when the bound is replaced and when this instance
+    /// is disposed. Passing an empty span clears the bound.
+    /// </remarks>
     public unsafe ReadOptions SetIterateUpperBound(ReadOnlySpan<byte> key)
     {
-        fixed (byte* ptr = key)
-            NativeMethods.rocksdb_readoptions_set_iterate_upper_bound(Handle, ptr, (nuint)key.Length);
+        ThrowIfDisposed();
+        _upperBound = CopyBound(key, _upperBound);
+        NativeMethods.rocksdb_readoptions_set_iterate_upper_bound(Handle, (byte*)_upperBound.Pointer, _upperBound.Length);
         return this;
     }
 
     /// <summary>
-    /// Sets the lower bound for iteration.
-    /// The span must remain valid for the lifetime of the <see cref="ReadOptions"/>.
+    /// Sets the lower bound for iteration; the iterator will not return keys &lt; this key.
     /// </summary>
+    /// <remarks>
+    /// The key is copied into unmanaged memory owned by this <see cref="ReadOptions"/>
+    /// instance, so the caller does not need to keep <paramref name="key"/> alive or
+    /// pinned. The copy is released when the bound is replaced and when this instance
+    /// is disposed. Passing an empty span clears the bound.
+    /// </remarks>
     public unsafe ReadOptions SetIterateLowerBound(ReadOnlySpan<byte> key)
     {
-        fixed (byte* ptr = key)
-            NativeMethods.rocksdb_readoptions_set_iterate_lower_bound(Handle, ptr, (nuint)key.Length);
+        ThrowIfDisposed();
+        _lowerBound = CopyBound(key, _lowerBound);
+        NativeMethods.rocksdb_readoptions_set_iterate_lower_bound(Handle, (byte*)_lowerBound.Pointer, _lowerBound.Length);
         return this;
     }
 
@@ -118,5 +187,18 @@ public sealed class ReadOptions : RocksDbHandle
     public override void DisposeHandle()
     {
         NativeMethods.rocksdb_readoptions_destroy(Handle);
+    }
+
+    public override void DisposeUnmanagedResources()
+    {
+        // Destroy the native options first: they hold Slices into the bound
+        // buffers, so the buffers must outlive them.
+        base.DisposeUnmanagedResources();
+
+        _upperBound.Free();
+        _upperBound = default;
+
+        _lowerBound.Free();
+        _lowerBound = default;
     }
 }
