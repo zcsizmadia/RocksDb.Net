@@ -810,6 +810,647 @@ public sealed class DbOptions : RocksDbHandle
         return this;
     }
 
+    // ── Table properties collectors ─────────────────────────────────────────
+
+    // ── Previously unreachable settings ─────────────────────────────────────
+
+    /// <summary>
+    /// Whether to hint the operating system that reads will be random when the
+    /// database opens. Default is <see langword="false"/>.
+    /// </summary>
+    public bool AdviseRandomOnOpen
+    {
+        get => NativeMethods.rocksdb_options_get_advise_random_on_open(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_advise_random_on_open(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>
+    /// Block size the memtable allocates in, in bytes. Zero, the default, lets
+    /// RocksDb derive it from <see cref="WriteBufferSize"/>.
+    /// </summary>
+    public nuint ArenaBlockSize
+    {
+        get => NativeMethods.rocksdb_options_get_arena_block_size(Handle);
+        set => NativeMethods.rocksdb_options_set_arena_block_size(Handle, value);
+    }
+
+    /// <summary>
+    /// Whether background threads should defer slow work such as deleting
+    /// obsolete files, rather than doing it inline. Default is
+    /// <see langword="false"/>.
+    /// </summary>
+    /// <remarks>
+    /// For latency-sensitive callers. When enabled it overrides
+    /// <see cref="ReadOptions.BackgroundPurgeOnIteratorCleanup"/>.
+    /// </remarks>
+    public bool AvoidUnnecessaryBlockingIo
+    {
+        get => NativeMethods.rocksdb_options_get_avoid_unnecessary_blocking_io(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_avoid_unnecessary_blocking_io(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>Readahead size used when a compaction reads blob files, in bytes.</summary>
+    public ulong BlobCompactionReadaheadSize
+    {
+        get => NativeMethods.rocksdb_options_get_blob_compaction_readahead_size(Handle);
+        set => NativeMethods.rocksdb_options_set_blob_compaction_readahead_size(Handle, value);
+    }
+
+    /// <summary>Compression applied to blob files.</summary>
+    public Compression BlobCompression
+    {
+        get => (Compression)NativeMethods.rocksdb_options_get_blob_compression_type(Handle);
+        set => NativeMethods.rocksdb_options_set_blob_compression_type(Handle, (int)value);
+    }
+
+    /// <summary>
+    /// The lowest level at which values are written to blob files rather than
+    /// inline. Default is zero, meaning every level.
+    /// </summary>
+    /// <remarks>
+    /// Raising this keeps the hot upper levels inline, where the extra
+    /// indirection of a blob read costs most.
+    /// </remarks>
+    public int BlobFileStartingLevel
+    {
+        get => NativeMethods.rocksdb_options_get_blob_file_starting_level(Handle);
+        set => NativeMethods.rocksdb_options_set_blob_file_starting_level(Handle, value);
+    }
+
+    /// <summary>
+    /// The fraction of the oldest blob files that garbage collection considers,
+    /// between 0 and 1.
+    /// </summary>
+    public double BlobGcAgeCutoff
+    {
+        get => NativeMethods.rocksdb_options_get_blob_gc_age_cutoff(Handle);
+        set => NativeMethods.rocksdb_options_set_blob_gc_age_cutoff(Handle, value);
+    }
+
+    /// <summary>
+    /// The garbage fraction at which a blob file is collected regardless of its
+    /// age, between 0 and 1.
+    /// </summary>
+    public double BlobGcForceThreshold
+    {
+        get => NativeMethods.rocksdb_options_get_blob_gc_force_threshold(Handle);
+        set => NativeMethods.rocksdb_options_set_blob_gc_force_threshold(Handle, value);
+    }
+
+    /// <summary>
+    /// How many cache lines a Bloom filter probe is confined to. Zero, the
+    /// default, spreads probes across the filter.
+    /// </summary>
+    /// <remarks>
+    /// A non-zero value trades a slightly higher false-positive rate for fewer
+    /// cache misses per lookup.
+    /// </remarks>
+    public uint BloomLocality
+    {
+        get => NativeMethods.rocksdb_options_get_bloom_locality(Handle);
+        set => NativeMethods.rocksdb_options_set_bloom_locality(Handle, value);
+    }
+
+    /// <summary>
+    /// Whether the bottommost level's zstd dictionary is trained rather than
+    /// sampled.
+    /// </summary>
+    /// <remarks>
+    /// Read-only because the native setter takes a second argument that this
+    /// getter cannot report. Use
+    /// <see cref="SetBottommostCompressionOptionsUseZstdDictTrainer"/>.
+    /// </remarks>
+    public bool BottommostCompressionOptionsUseZstdDictTrainer
+        => NativeMethods.rocksdb_options_get_bottommost_compression_options_use_zstd_dict_trainer(Handle) != 0;
+
+    /// <summary>
+    /// Sets whether the bottommost level's zstd dictionary is trained, and
+    /// whether the bottommost compression options apply at all.
+    /// </summary>
+    /// <param name="useZstdDictTrainer">
+    /// Train the dictionary rather than sampling it.
+    /// </param>
+    /// <param name="enabled">
+    /// Whether the bottommost compression options are used. Setting the first
+    /// argument has no effect while this is false.
+    /// </param>
+    /// <remarks>
+    /// A method rather than a property because the native setter writes two
+    /// fields at once, and the matching getter reports only the first.
+    /// </remarks>
+    public DbOptions SetBottommostCompressionOptionsUseZstdDictTrainer(bool useZstdDictTrainer, bool enabled)
+    {
+        NativeMethods.rocksdb_options_set_bottommost_compression_options_use_zstd_dict_trainer(
+            Handle, useZstdDictTrainer ? (byte)1 : (byte)0, enabled ? (byte)1 : (byte)0);
+
+        return this;
+    }
+
+    /// <summary>
+    /// How RocksDb chooses the next file to compact within a level. Default is
+    /// <see cref="RocksDbNet.CompactionPri.MinOverlappingRatio"/>.
+    /// </summary>
+    public CompactionPri CompactionPri
+    {
+        get => (CompactionPri)NativeMethods.rocksdb_options_get_compaction_pri(Handle);
+        set => NativeMethods.rocksdb_options_set_compaction_pri(Handle, (int)value);
+    }
+
+    /// <summary>
+    /// Maximum bytes buffered while building a compression dictionary. Zero
+    /// disables the limit.
+    /// </summary>
+    public ulong CompressionOptionsMaxDictBufferBytes
+    {
+        get => NativeMethods.rocksdb_options_get_compression_options_max_dict_buffer_bytes(Handle);
+        set => NativeMethods.rocksdb_options_set_compression_options_max_dict_buffer_bytes(Handle, value);
+    }
+
+    /// <summary>Threads a single block's compression may use.</summary>
+    public int CompressionOptionsParallelThreads
+    {
+        get => NativeMethods.rocksdb_options_get_compression_options_parallel_threads(Handle);
+        set => NativeMethods.rocksdb_options_set_compression_options_parallel_threads(Handle, value);
+    }
+
+    /// <summary>
+    /// Whether the zstd dictionary is trained rather than sampled. Training
+    /// costs more to build and usually compresses better.
+    /// </summary>
+    public bool CompressionOptionsUseZstdDictTrainer
+    {
+        get => NativeMethods.rocksdb_options_get_compression_options_use_zstd_dict_trainer(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_compression_options_use_zstd_dict_trainer(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>Bytes of sample data used to train a zstd dictionary.</summary>
+    public int CompressionOptionsZstdMaxTrainBytes
+    {
+        get => NativeMethods.rocksdb_options_get_compression_options_zstd_max_train_bytes(Handle);
+        set => NativeMethods.rocksdb_options_set_compression_options_zstd_max_train_bytes(Handle, value);
+    }
+
+    /// <summary>
+    /// How often obsolete files are swept, in microseconds. Zero disables the
+    /// periodic sweep, leaving deletion to happen alongside compaction.
+    /// </summary>
+    public ulong DeleteObsoleteFilesPeriodMicros
+    {
+        get => NativeMethods.rocksdb_options_get_delete_obsolete_files_period_micros(Handle);
+        set => NativeMethods.rocksdb_options_set_delete_obsolete_files_period_micros(Handle, value);
+    }
+
+    /// <summary>
+    /// Whether the write-ahead log write and the memtable insert run on
+    /// separate threads. Default is <see langword="false"/>.
+    /// </summary>
+    /// <remarks>
+    /// Raises write throughput under concurrency at the cost of some latency on
+    /// an individual write.
+    /// </remarks>
+    public bool EnablePipelinedWrite
+    {
+        get => NativeMethods.rocksdb_options_get_enable_pipelined_write(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_enable_pipelined_write(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>
+    /// Whether writer threads spin briefly before yielding. Default is
+    /// <see langword="false"/>.
+    /// </summary>
+    public bool EnableWriteThreadAdaptiveYield
+    {
+        get => NativeMethods.rocksdb_options_get_enable_write_thread_adaptive_yield(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_enable_write_thread_adaptive_yield(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>
+    /// Threshold for the experimental memtable purge, as a multiple of the
+    /// write buffer size. Zero disables it.
+    /// </summary>
+    /// <remarks>
+    /// RocksDb marks this experimental. It discards memtable entries that later
+    /// writes have already superseded, avoiding a flush.
+    /// </remarks>
+    public double ExperimentalMempurgeThreshold
+    {
+        get => NativeMethods.rocksdb_options_get_experimental_mempurge_threshold(Handle);
+        set => NativeMethods.rocksdb_options_set_experimental_mempurge_threshold(Handle, value);
+    }
+
+    /// <summary>
+    /// Pending compaction bytes at which writes are stopped outright, rather
+    /// than slowed. Zero disables the limit.
+    /// </summary>
+    /// <remarks>
+    /// The harder counterpart to
+    /// <see cref="SoftPendingCompactionBytesLimit"/>. Reaching this means
+    /// compaction has fallen far enough behind that RocksDb would rather block
+    /// writers than let the backlog grow.
+    /// </remarks>
+    public nuint HardPendingCompactionBytesLimit
+    {
+        get => NativeMethods.rocksdb_options_get_hard_pending_compaction_bytes_limit(Handle);
+        set => NativeMethods.rocksdb_options_set_hard_pending_compaction_bytes_limit(Handle, value);
+    }
+
+    /// <summary>
+    /// How many locks guard in-place memtable updates. Only used when
+    /// <see cref="InplaceUpdateSupport"/> is enabled.
+    /// </summary>
+    public nuint InplaceUpdateNumLocks
+    {
+        get => NativeMethods.rocksdb_options_get_inplace_update_num_locks(Handle);
+        set => NativeMethods.rocksdb_options_set_inplace_update_num_locks(Handle, value);
+    }
+
+    /// <summary>
+    /// Whether a write may overwrite an existing memtable entry in place rather
+    /// than appending a new version. Default is <see langword="false"/>.
+    /// </summary>
+    /// <remarks>
+    /// Saves memory for workloads that overwrite the same keys repeatedly, but
+    /// it is incompatible with snapshots and merge operators, because the
+    /// superseded version is gone.
+    /// </remarks>
+    public bool InplaceUpdateSupport
+    {
+        get => NativeMethods.rocksdb_options_get_inplace_update_support(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_inplace_update_support(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>
+    /// Whether file descriptors are closed in child processes. Default is
+    /// <see langword="true"/>.
+    /// </summary>
+    public bool IsFdCloseOnExec
+    {
+        get => NativeMethods.rocksdb_options_get_is_fd_close_on_exec(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_is_fd_close_on_exec(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>
+    /// How often the info log is rolled, in seconds. Zero disables time-based
+    /// rolling, leaving only the size limit.
+    /// </summary>
+    public nuint LogFileTimeToRoll
+    {
+        get => NativeMethods.rocksdb_options_get_log_file_time_to_roll(Handle);
+        set => NativeMethods.rocksdb_options_set_log_file_time_to_roll(Handle, value);
+    }
+
+    /// <summary>Bytes preallocated for the manifest file.</summary>
+    public nuint ManifestPreallocationSize
+    {
+        get => NativeMethods.rocksdb_options_get_manifest_preallocation_size(Handle);
+        set => NativeMethods.rocksdb_options_set_manifest_preallocation_size(Handle, value);
+    }
+
+    /// <summary>Threads used to open files when the database starts.</summary>
+    public int MaxFileOpeningThreads
+    {
+        get => NativeMethods.rocksdb_options_get_max_file_opening_threads(Handle);
+        set => NativeMethods.rocksdb_options_set_max_file_opening_threads(Handle, value);
+    }
+
+    /// <summary>
+    /// Size at which the manifest is rolled, in bytes.
+    /// </summary>
+    /// <remarks>
+    /// The manifest records every change to the file set, so it grows with
+    /// activity rather than with data. Left unbounded it can become the largest
+    /// thing in the directory.
+    /// </remarks>
+    public nuint MaxManifestFileSize
+    {
+        get => NativeMethods.rocksdb_options_get_max_manifest_file_size(Handle);
+        set => NativeMethods.rocksdb_options_set_max_manifest_file_size(Handle, value);
+    }
+
+    /// <summary>
+    /// How many superseded versions of a key an iterator skips before it
+    /// reseeks rather than stepping.
+    /// </summary>
+    public ulong MaxSequentialSkipInIterations
+    {
+        get => NativeMethods.rocksdb_options_get_max_sequential_skip_in_iterations(Handle);
+        set => NativeMethods.rocksdb_options_set_max_sequential_skip_in_iterations(Handle, value);
+    }
+
+    /// <summary>
+    /// How many merge operands for one key accumulate in the memtable before
+    /// they are combined eagerly. Zero, the default, never combines early.
+    /// </summary>
+    /// <remarks>
+    /// Bounds the cost of reading a key that has been merged many times, at the
+    /// price of doing merge work on the write path.
+    /// </remarks>
+    public nuint MaxSuccessiveMerges
+    {
+        get => NativeMethods.rocksdb_options_get_max_successive_merges(Handle);
+        set => NativeMethods.rocksdb_options_set_max_successive_merges(Handle, value);
+    }
+
+    /// <summary>
+    /// Average operations scanned per memtable entry above which a flush is
+    /// triggered. Zero disables it.
+    /// </summary>
+    public uint MemtableAvgOpScanFlushTrigger
+    {
+        get => NativeMethods.rocksdb_options_get_memtable_avg_op_scan_flush_trigger(Handle);
+        set => NativeMethods.rocksdb_options_set_memtable_avg_op_scan_flush_trigger(Handle, value);
+    }
+
+    /// <summary>
+    /// Huge page size to allocate the memtable with, in bytes. Zero, the
+    /// default, uses ordinary pages.
+    /// </summary>
+    public nuint MemtableHugePageSize
+    {
+        get => NativeMethods.rocksdb_options_get_memtable_huge_page_size(Handle);
+        set => NativeMethods.rocksdb_options_set_memtable_huge_page_size(Handle, value);
+    }
+
+    /// <summary>
+    /// Operations scanned in the memtable above which a flush is triggered.
+    /// Zero disables it.
+    /// </summary>
+    public uint MemtableOpScanFlushTrigger
+    {
+        get => NativeMethods.rocksdb_options_get_memtable_op_scan_flush_trigger(Handle);
+        set => NativeMethods.rocksdb_options_set_memtable_op_scan_flush_trigger(Handle, value);
+    }
+
+    /// <summary>
+    /// Whether files are opened asynchronously when the database starts.
+    /// Default is <see langword="false"/>.
+    /// </summary>
+    public bool OpenFilesAsync
+    {
+        get => NativeMethods.rocksdb_options_get_open_files_async(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_open_files_async(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>
+    /// Whether Bloom filters are omitted from the bottommost level. Default is
+    /// <see langword="false"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Worth enabling when almost every read finds its key. The bottommost
+    /// level holds most of the data, so its filters are most of the filter
+    /// memory, and a filter only pays for itself on lookups that miss.
+    /// </para>
+    /// <para>
+    /// The native setter takes an int while its getter returns a byte. Both are
+    /// treated as a boolean here, which is what RocksDb means by them.
+    /// </para>
+    /// </remarks>
+    public bool OptimizeFiltersForHits
+    {
+        get => NativeMethods.rocksdb_options_get_optimize_filters_for_hits(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_optimize_filters_for_hits(Handle, value ? 1 : 0);
+    }
+
+    /// <summary>
+    /// Whether newly written blobs are put straight into the blob cache.
+    /// Default is <see cref="RocksDbNet.PrepopulateBlobCache.Disable"/>.
+    /// </summary>
+    public PrepopulateBlobCache PrepopulateBlobCache
+    {
+        get => (PrepopulateBlobCache)NativeMethods.rocksdb_options_get_prepopulate_blob_cache(Handle);
+        set => NativeMethods.rocksdb_options_set_prepopulate_blob_cache(Handle, (int)value);
+    }
+
+    /// <summary>
+    /// How many write-ahead log files are kept and reused rather than deleted
+    /// and recreated. Zero, the default, recreates them.
+    /// </summary>
+    /// <remarks>
+    /// Reusing a file avoids the filesystem metadata work of creating one, which
+    /// shows up on write-heavy workloads with frequent log rolls.
+    /// </remarks>
+    public nuint RecycleLogFileNum
+    {
+        get => NativeMethods.rocksdb_options_get_recycle_log_file_num(Handle);
+        set => NativeMethods.rocksdb_options_set_recycle_log_file_num(Handle, value);
+    }
+
+    /// <summary>
+    /// Whether background I/O is accounted per operation. Default is
+    /// <see langword="false"/>.
+    /// </summary>
+    /// <remarks>
+    /// As with <see cref="OptimizeFiltersForHits"/>, the native setter takes an
+    /// int and its getter returns a byte; both mean a boolean.
+    /// </remarks>
+    public bool ReportBgIoStats
+    {
+        get => NativeMethods.rocksdb_options_get_report_bg_io_stats(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_report_bg_io_stats(Handle, value ? 1 : 0);
+    }
+
+    /// <summary>
+    /// Whether opening the database skips gathering file statistics. Default is
+    /// <see langword="false"/>.
+    /// </summary>
+    /// <remarks>
+    /// Speeds up opening a database with many files, at the cost of compaction
+    /// making worse decisions until the statistics are rebuilt.
+    /// </remarks>
+    public bool SkipStatsUpdateOnDbOpen
+    {
+        get => NativeMethods.rocksdb_options_get_skip_stats_update_on_db_open(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_skip_stats_update_on_db_open(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>
+    /// Pending compaction bytes at which writes start being slowed down. Zero
+    /// disables the limit.
+    /// </summary>
+    /// <remarks>
+    /// The gentler counterpart to
+    /// <see cref="HardPendingCompactionBytesLimit"/>: writers are throttled so
+    /// that compaction can catch up, rather than stopped.
+    /// </remarks>
+    public nuint SoftPendingCompactionBytesLimit
+    {
+        get => NativeMethods.rocksdb_options_get_soft_pending_compaction_bytes_limit(Handle);
+        set => NativeMethods.rocksdb_options_set_soft_pending_compaction_bytes_limit(Handle, value);
+    }
+
+    /// <summary>
+    /// How much detail statistics collect.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Call <see cref="EnableStatistics"/> first.</b> RocksDb keeps the level
+    /// on the statistics object rather than on the options, so both the setter
+    /// and the getter here are silent no-ops until one exists: setting does
+    /// nothing and reading returns <see cref="StatsLevel.DisableAll"/> whatever
+    /// was assigned.
+    /// </para>
+    /// <para>
+    /// Values outside the enum are clamped natively rather than rejected.
+    /// </para>
+    /// </remarks>
+    public StatsLevel StatisticsLevel
+    {
+        get => (StatsLevel)NativeMethods.rocksdb_options_get_statistics_level(Handle);
+        set => NativeMethods.rocksdb_options_set_statistics_level(Handle, (int)value);
+    }
+
+    /// <summary>
+    /// How often statistics are written to the info log, in seconds. Zero
+    /// disables it.
+    /// </summary>
+    public uint StatsPersistPeriodSec
+    {
+        get => NativeMethods.rocksdb_options_get_stats_persist_period_sec(Handle);
+        set => NativeMethods.rocksdb_options_set_stats_persist_period_sec(Handle, value);
+    }
+
+    /// <summary>
+    /// Base-2 logarithm of the number of shards in the table cache. Negative
+    /// lets RocksDb choose.
+    /// </summary>
+    public int TableCacheNumShardBits
+    {
+        get => NativeMethods.rocksdb_options_get_table_cache_numshardbits(Handle);
+        set => NativeMethods.rocksdb_options_set_table_cache_numshardbits(Handle, value);
+    }
+
+    /// <summary>
+    /// Factor by which the target file size grows with each level. Default is
+    /// 1, meaning every level uses the same file size.
+    /// </summary>
+    public int TargetFileSizeMultiplier
+    {
+        get => NativeMethods.rocksdb_options_get_target_file_size_multiplier(Handle);
+        set => NativeMethods.rocksdb_options_set_target_file_size_multiplier(Handle, value);
+    }
+
+    /// <summary>
+    /// Whether write-ahead log files are recorded in the manifest and verified
+    /// on recovery. Default is <see langword="false"/>.
+    /// </summary>
+    /// <remarks>
+    /// Catches a log file that has gone missing, which would otherwise be
+    /// indistinguishable from one that never existed.
+    /// </remarks>
+    public bool TrackAndVerifyWalsInManifest
+    {
+        get => NativeMethods.rocksdb_options_get_track_and_verify_wals_in_manifest(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_track_and_verify_wals_in_manifest(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>
+    /// Whether writes may be applied out of order. Default is
+    /// <see langword="false"/>.
+    /// </summary>
+    /// <remarks>
+    /// Raises write throughput but weakens the guarantees: snapshots and
+    /// read-your-own-writes no longer hold as they otherwise would. Read
+    /// RocksDb's own notes before enabling it.
+    /// </remarks>
+    public bool UnorderedWrite
+    {
+        get => NativeMethods.rocksdb_options_get_unordered_write(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_unordered_write(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>
+    /// Whether mutexes spin before sleeping. Default is
+    /// <see langword="false"/>.
+    /// </summary>
+    public bool UseAdaptiveMutex
+    {
+        get => NativeMethods.rocksdb_options_get_use_adaptive_mutex(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_use_adaptive_mutex(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>Largest buffer used when writing a file, in bytes.</summary>
+    public ulong WritableFileMaxBufferSize
+    {
+        get => NativeMethods.rocksdb_options_get_writable_file_max_buffer_size(Handle);
+        set => NativeMethods.rocksdb_options_set_writable_file_max_buffer_size(Handle, value);
+    }
+
+    /// <summary>
+    /// Whether the database's unique identifier is stored in the manifest.
+    /// Default is <see langword="true"/>, which is what RocksDb prefers.
+    /// </summary>
+    public bool WriteDbIdToManifest
+    {
+        get => NativeMethods.rocksdb_options_get_write_dbid_to_manifest(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_write_dbid_to_manifest(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>
+    /// Whether the database's unique identifier is also written to a separate
+    /// IDENTITY file, which RocksDb keeps for compatibility.
+    /// </summary>
+    public bool WriteIdentityFile
+    {
+        get => NativeMethods.rocksdb_options_get_write_identity_file(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_write_identity_file(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>
+    /// Marks an SST file for compaction when it accumulates too many
+    /// tombstones, so that deleted data is reclaimed sooner than the ordinary
+    /// compaction schedule would manage.
+    /// </summary>
+    /// <param name="windowSize">
+    /// How many consecutive entries the sliding window covers. A file is marked
+    /// when any window of this many entries holds at least
+    /// <paramref name="deletionTrigger"/> deletions.
+    /// </param>
+    /// <param name="deletionTrigger">
+    /// How many deletions within a window trigger the mark.
+    /// </param>
+    /// <param name="deletionRatio">
+    /// An additional whole-file test: a file whose deleted fraction reaches this
+    /// is marked regardless of how the deletions are distributed. Zero, the
+    /// default, disables it.
+    /// </param>
+    /// <param name="minFileSize">
+    /// Files smaller than this are exempt from the
+    /// <paramref name="deletionRatio"/> test. Zero, the default, exempts none.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// Aimed at workloads that delete in bursts, such as queues and anything
+    /// with a time-to-live. Without it, a file full of tombstones sits until
+    /// compaction reaches it on size grounds, and every read through that key
+    /// range pays for walking them.
+    /// </para>
+    /// <para>
+    /// Marking a file makes it eligible; RocksDb still decides when to act, and
+    /// the reason surfaces as
+    /// <see cref="CompactionReason.FilesMarkedForCompaction"/> on an
+    /// <see cref="EventListener"/>. Only honoured at open, like most options.
+    /// </para>
+    /// <para>
+    /// Repeated calls add collectors rather than replacing the previous one.
+    /// </para>
+    /// <para>
+    /// This is the only table properties collector reachable from .NET. RocksDb's
+    /// C API declares the factory type and how to attach one, but offers no
+    /// function that creates one, so a user-defined collector cannot be built
+    /// and <see cref="TableProperties.ReadableProperties"/> stays empty. This
+    /// collector does not populate it either; it marks files instead.
+    /// </para>
+    /// </remarks>
+    public DbOptions AddCompactOnDeletionCollector(
+        nuint windowSize, nuint deletionTrigger, double deletionRatio = 0, nuint minFileSize = 0)
+    {
+        NativeMethods.rocksdb_options_add_compact_on_deletion_collector_factory_min_file_size(
+            Handle, windowSize, deletionTrigger, deletionRatio, minFileSize);
+
+        return this;
+    }
+
     // ── Additional column-family and database settings ───────────────────────
     // Note: nearly every option here is read once when the database is opened.
     // Changing it on a DbOptions instance afterwards has no effect; use
