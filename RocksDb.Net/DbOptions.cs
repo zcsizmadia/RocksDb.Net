@@ -692,6 +692,34 @@ public sealed class DbOptions : RocksDbHandle
         }
     }
 
+    // ── WAL filter ──────────────────────────────────────
+
+    /// <summary>
+    /// Installs a filter that inspects, rewrites or skips write-ahead log
+    /// records while the database is being opened.
+    /// </summary>
+    /// <remarks>
+    /// Unlike <see cref="EventListener"/>, RocksDb stores only a raw pointer to
+    /// the filter and never frees it, so these options take responsibility for
+    /// disposing it. The filter must therefore outlive the database, which
+    /// happens automatically when the options do.
+    /// </remarks>
+    public DbOptions SetWalFilter(WalFilter filter)
+    {
+        ArgumentNullException.ThrowIfNull(filter);
+
+        NativeMethods.rocksdb_options_set_wal_filter(Handle, filter.Handle);
+        _ownedHandles.Add(filter);
+        return this;
+    }
+
+    /// <summary>Removes any WAL filter previously installed on these options.</summary>
+    public DbOptions ClearWalFilter()
+    {
+        NativeMethods.rocksdb_options_clear_wal_filter(Handle);
+        return this;
+    }
+
     // ── Event listener ──────────────────────────────────
 
     /// <summary>Adds an event listener to receive database event notifications.</summary>

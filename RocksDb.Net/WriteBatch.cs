@@ -23,6 +23,18 @@ public sealed class WriteBatch : RocksDbHandle
     {
     }
 
+    /// <summary>
+    /// Wraps a batch owned by RocksDb, for the two batches handed to a
+    /// <see cref="WalFilter"/> during recovery. With <paramref name="owned"/>
+    /// <c>false</c> disposing this instance detaches from the pointer instead of
+    /// destroying the batch.
+    /// </summary>
+    internal WriteBatch(nint handle, bool owned)
+        : base(handle)
+    {
+        Owned = owned;
+    }
+
     /// <summary>Returns the number of operations in the batch.</summary>
     public int Count => NativeMethods.rocksdb_writebatch_count(Handle);
 
