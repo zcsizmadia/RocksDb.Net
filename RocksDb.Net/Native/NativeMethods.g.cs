@@ -4352,7 +4352,7 @@ internal static unsafe partial class NativeMethods
     internal static partial void rocksdb_ingest_external_file(
         nint db,
         byte** file_list,
-        nint list_len,
+        nuint list_len,
         nint opt,
         ref nint errptr);
 
@@ -4362,7 +4362,7 @@ internal static unsafe partial class NativeMethods
         nint db,
         nint handle,
         byte** file_list,
-        nint list_len,
+        nuint list_len,
         nint opt,
         ref nint errptr);
 
@@ -4644,7 +4644,7 @@ internal static unsafe partial class NativeMethods
         string db_dir,
         string wal_dir,
         nint restore_options,
-        nint backup_id,
+        uint backup_id,
         ref nint errptr);
 
     [LibraryImport(LibName)]

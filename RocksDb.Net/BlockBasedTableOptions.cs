@@ -208,9 +208,7 @@ public sealed class BlockBasedTableOptions : RocksDbHandle
         set => NativeMethods.rocksdb_block_based_options_set_use_delta_encoding(Handle, value ? (byte)1 : (byte)0);
     }
 
-    // ── Previously set-only or unwrapped, now get/set ────────────────────────
-    // 11.8.1 added the getters for these, so the wrapper can finally expose them
-    // as round-trippable properties.
+    // ── Layout, checksums and index encoding ─────────────────────────────────
 
     /// <summary>
     /// If true, data blocks are aligned to the block size, which lets the
@@ -288,7 +286,7 @@ public sealed class BlockBasedTableOptions : RocksDbHandle
         set => NativeMethods.rocksdb_block_based_options_set_separate_key_value_in_data_block(Handle, value ? (byte)1 : (byte)0);
     }
 
-    // ── RocksDb 11.8.1 additions ─────────────────────────────────────────────
+    // ── Readahead, filters and user-defined indexes ──────────────────────────
 
     /// <summary>How much of the index key RocksDb may discard to save space.</summary>
     public IndexShortening IndexShortening
