@@ -241,4 +241,34 @@ public class MergeOperatorTests
         var mergeOp = new NoPartialOverrideMergeOperator();
         Assert.False(mergeOp.CheckIfMethodOverridden<MergeOperator>(nameof(MergeOperator.PartialMerge)));
     }
+
+    /// <summary>
+    /// A merge operator that does not override <see cref="MergeOperator.PartialMerge"/>
+    /// must still survive a flush.
+    /// </summary>
+    /// <remarks>
+    /// RocksDb calls the partial-merge slot whenever it reaches the end of a
+    /// key's operand stack without a Put or Delete, which a flush of two or more
+    /// operands for one key always does. It invokes that slot without a null
+    /// check, unlike the delete-value slot beside it, so leaving it unset
+    /// terminated the process rather than falling back to a full merge.
+    /// </remarks>
+    [Fact]
+    public void MergeOperator_WithoutPartialMergeOverride_SurvivesFlushAndCompaction()
+    {
+        using var mergeOp = new AppendMergeOperator();
+        using var db = new TempDb(o => o.MergeOperator = mergeOp);
+
+        // Two operands for one key, so the flush has a stack to collapse.
+        db.Db.Merge("k", "a");
+        db.Db.Merge("k", "b");
+        db.Db.Flush();
+
+        db.Db.Merge("k", "c");
+        db.Db.Merge("k", "d");
+        db.Db.Flush();
+        db.Db.CompactRange();
+
+        Assert.Equal("a,b,c,d", db.Db.GetString("k"));
+    }
 }

@@ -34,6 +34,19 @@ public static class PInvokeGenerator
         sb.AppendLine();
         sb.AppendLine( "namespace RocksDbNet.Native;");
         sb.AppendLine();
+        // The only non-opaque struct in the header. It has to be a real managed
+        // struct: it is returned by value, and a 16-byte return uses a hidden
+        // pointer argument on Windows x64, so declaring it as nint would put the
+        // first real argument in the wrong register and corrupt memory.
+        sb.AppendLine( "/// <summary>Mirrors <c>rocksdb_slice_t</c>, which is ABI-compatible with <c>rocksdb::Slice</c>.</summary>");
+        sb.AppendLine( "[StructLayout(LayoutKind.Sequential)]");
+        sb.AppendLine( "internal unsafe struct rocksdb_slice_t");
+        sb.AppendLine( "{");
+        sb.AppendLine( "    internal byte* data;");
+        sb.AppendLine();
+        sb.AppendLine( "    internal nuint size;");
+        sb.AppendLine( "}");
+        sb.AppendLine();
         sb.AppendLine( "[ExcludeFromCodeCoverage]");
         sb.AppendLine( "internal static unsafe partial class NativeMethods");
         sb.AppendLine( "{");
@@ -174,10 +187,24 @@ public static class PInvokeGenerator
         if (!t.Contains('*') && t.StartsWith("const ", StringComparison.Ordinal))
             t = t["const ".Length..].Trim();
 
+        // A trailing `const` qualifies the pointer itself, not what it points to,
+        // so it says nothing about the ABI. Left in place it defeats every match
+        // below, which is how `rocksdb_statistics_histogram_data_t* const` reached
+        // the fallback. Collapse `T* const*` to `T**` for the same reason.
+        if (t.EndsWith(" const", StringComparison.Ordinal))
+            t = t[..^" const".Length].Trim();
+
+        if (t.Contains("* const*", StringComparison.Ordinal))
+            t = t.Replace("* const*", "**", StringComparison.Ordinal);
+
         // Exact well-known types
         return t switch
         {
-            // Unsigned char / bool
+            // Unsigned char / bool. C `bool` is one byte, so it marshals like the
+            // `unsigned char` this header uses for booleans everywhere else.
+            // Returning it as a pointer-sized value would read undefined register
+            // bits, since no ABI requires the callee to clear them.
+            "bool" => "byte",
             "unsigned char" => "byte",
             "unsigned char*" => "byte*",
             "const unsigned char*" => "byte*",
@@ -223,6 +250,7 @@ public static class PInvokeGenerator
             "int16_t*" or "const int16_t*" => "short*",
             "uint8_t*" or "const uint8_t*" => "byte*",
             "int8_t*" or "const int8_t*" => "sbyte*",
+            "int*" or "const int*" => "int*",
             "double*" or "const double*" => "double*",
             "float*" or "const float*" => "float*",
 
@@ -230,11 +258,16 @@ public static class PInvokeGenerator
             "int" => "int",
             "unsigned int" => "uint",
             "unsigned" => "uint",
-            "long" => "long",
-            "unsigned long" => "ulong",
             "double" => "double",
             "float" => "float",
             "char" => "sbyte",
+
+            // The one transparent struct in the header. By value it must keep its
+            // real type so the runtime applies the right return ABI; by pointer it
+            // is an array, so keep the element type rather than collapsing to an
+            // untyped handle the way the opaque rule below would.
+            "rocksdb_slice_t" => "rocksdb_slice_t",
+            "rocksdb_slice_t*" or "const rocksdb_slice_t*" => "rocksdb_slice_t*",
 
             // All rocksdb_*_t* types → nint (opaque handle)
             _ when IsRocksDbOpaquePointer(t) => "nint",
@@ -242,11 +275,19 @@ public static class PInvokeGenerator
             // rocksdb_*_t** → nint* (array of handles)
             _ when IsRocksDbOpaquePointerPointer(t) => "nint*",
 
-            // Fallback for any other pointer type
-            _ when t.EndsWith('*') => "nint",
+            // rocksdb_*_t*** → nint** (out-parameter receiving such an array)
+            _ when IsRocksDbOpaquePointerPointerPointer(t) => "nint**",
 
-            // Unknown type - use nint as safe fallback
-            _ => "nint",
+            // A callback typedef, named `*_cb` by convention in this header.
+            // Pointer-sized on every target we build for. The signature is not
+            // checked here; it is asserted by the hand-written delegate that the
+            // wrapper installs.
+            _ when t.EndsWith("_cb", StringComparison.Ordinal) => "nint",
+
+            _ => throw new NotSupportedException(
+                $"No managed mapping for the C type '{t}'. Add one to {nameof(MapCTypeToManaged)} " +
+                "rather than letting it fall through: every marshalling defect found in this file so far " +
+                "reached the output through a silent fallback to nint."),
         };
     }
 
@@ -259,7 +300,13 @@ public static class PInvokeGenerator
     private static bool IsRocksDbOpaquePointerPointer(string t)
     {
         t = t.Replace("const ", "").Trim();
-        return t.StartsWith("rocksdb_") && t.EndsWith("_t**");
+        return t.StartsWith("rocksdb_") && t.EndsWith("_t**") && !t.EndsWith("_t***");
+    }
+
+    private static bool IsRocksDbOpaquePointerPointerPointer(string t)
+    {
+        t = t.Replace("const ", "").Trim();
+        return t.StartsWith("rocksdb_") && t.EndsWith("_t***");
     }
 
     /// <summary>

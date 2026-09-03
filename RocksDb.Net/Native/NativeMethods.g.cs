@@ -15,6 +15,15 @@ using System.Runtime.InteropServices;
 
 namespace RocksDbNet.Native;
 
+/// <summary>Mirrors <c>rocksdb_slice_t</c>, which is ABI-compatible with <c>rocksdb::Slice</c>.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal unsafe struct rocksdb_slice_t
+{
+    internal byte* data;
+
+    internal nuint size;
+}
+
 [ExcludeFromCodeCoverage]
 internal static unsafe partial class NativeMethods
 {
@@ -79,7 +88,7 @@ internal static unsafe partial class NativeMethods
         string name,
         int num_column_families,
         byte** column_family_names,
-        nint column_family_options,
+        nint* column_family_options,
         nint* column_family_handles,
         byte* trim_ts,
         nuint trim_tslen,
@@ -92,7 +101,7 @@ internal static unsafe partial class NativeMethods
         string name,
         int num_column_families,
         byte** column_family_names,
-        nint column_family_options,
+        nint* column_family_options,
         nint* column_family_handles,
         ref nint errptr);
 
@@ -103,7 +112,7 @@ internal static unsafe partial class NativeMethods
         string name,
         int num_column_families,
         byte** column_family_names,
-        nint column_family_options,
+        nint* column_family_options,
         nint* column_family_handles,
         byte error_if_wal_file_exists,
         ref nint errptr);
@@ -116,7 +125,7 @@ internal static unsafe partial class NativeMethods
         string secondary_path,
         int num_column_families,
         byte** column_family_names,
-        nint column_family_options,
+        nint* column_family_options,
         nint* column_family_handles,
         ref nint errptr);
 
@@ -477,7 +486,7 @@ internal static unsafe partial class NativeMethods
     internal static partial void rocksdb_multi_get_cf(
         nint db,
         nint options,
-        nint column_families,
+        nint* column_families,
         nuint num_keys,
         byte** keys_list,
         nuint* keys_list_sizes,
@@ -496,7 +505,7 @@ internal static unsafe partial class NativeMethods
         nuint* keys_list_sizes,
         nint* values,
         byte** errs,
-        nint sorted_input);
+        byte sorted_input);
 
     [LibraryImport(LibName)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
@@ -696,15 +705,15 @@ internal static unsafe partial class NativeMethods
 
     [LibraryImport(LibName)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    internal static partial nint rocksdb_iter_key_slice(nint iter);
+    internal static partial rocksdb_slice_t rocksdb_iter_key_slice(nint iter);
 
     [LibraryImport(LibName)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    internal static partial nint rocksdb_iter_value_slice(nint iter);
+    internal static partial rocksdb_slice_t rocksdb_iter_value_slice(nint iter);
 
     [LibraryImport(LibName)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    internal static partial nint rocksdb_iter_timestamp_slice(nint iter);
+    internal static partial rocksdb_slice_t rocksdb_iter_timestamp_slice(nint iter);
 
     [LibraryImport(LibName)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
@@ -1391,7 +1400,7 @@ internal static unsafe partial class NativeMethods
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial void rocksdb_options_set_compression_per_level(
         nint opt,
-        nint level_values,
+        int* level_values,
         nuint num_levels);
 
     [LibraryImport(LibName)]
@@ -1716,7 +1725,7 @@ internal static unsafe partial class NativeMethods
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial void rocksdb_options_set_max_bytes_for_level_multiplier_additional(
         nint options,
-        nint level_values,
+        int* level_values,
         nuint num_levels);
 
     [LibraryImport(LibName)]
@@ -4033,7 +4042,7 @@ internal static unsafe partial class NativeMethods
         long refill_period_us,
         int fairness,
         int mode,
-        nint auto_tuned);
+        byte auto_tuned);
 
     [LibraryImport(LibName)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
@@ -5193,7 +5202,7 @@ internal static unsafe partial class NativeMethods
         string name,
         int num_column_families,
         byte** column_family_names,
-        nint column_family_options,
+        nint* column_family_options,
         nint* column_family_handles,
         ref nint errptr);
 
@@ -5285,7 +5294,7 @@ internal static unsafe partial class NativeMethods
     internal static partial void rocksdb_transactiondb_multi_get_cf(
         nint txn_db,
         nint options,
-        nint column_families,
+        nint* column_families,
         nuint num_keys,
         byte** keys_list,
         nuint* keys_list_sizes,
@@ -5553,7 +5562,7 @@ internal static unsafe partial class NativeMethods
         string name,
         int num_column_families,
         byte** column_family_names,
-        nint column_family_options,
+        nint* column_family_options,
         nint* column_family_handles,
         ref nint errptr);
 
@@ -5565,7 +5574,7 @@ internal static unsafe partial class NativeMethods
         string name,
         int num_column_families,
         byte** column_family_names,
-        nint column_family_options,
+        nint* column_family_options,
         nint* column_family_handles,
         ref nint errptr);
 
@@ -5917,7 +5926,7 @@ internal static unsafe partial class NativeMethods
     internal static partial void rocksdb_transaction_multi_get_cf(
         nint txn,
         nint options,
-        nint column_families,
+        nint* column_families,
         nuint num_keys,
         byte** keys_list,
         nuint* keys_list_sizes,
@@ -5930,7 +5939,7 @@ internal static unsafe partial class NativeMethods
     internal static partial void rocksdb_transaction_multi_get_for_update_cf(
         nint txn,
         nint options,
-        nint column_families,
+        nint* column_families,
         nuint num_keys,
         byte** keys_list,
         nuint* keys_list_sizes,
@@ -6533,14 +6542,14 @@ internal static unsafe partial class NativeMethods
 
     [LibraryImport(LibName)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    internal static partial nint rocksdb_write_buffer_manager_create(nuint buffer_size, nint allow_stall);
+    internal static partial nint rocksdb_write_buffer_manager_create(nuint buffer_size, byte allow_stall);
 
     [LibraryImport(LibName)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial nint rocksdb_write_buffer_manager_create_with_cache(
         nuint buffer_size,
         nint cache,
-        nint allow_stall);
+        byte allow_stall);
 
     [LibraryImport(LibName)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
@@ -6548,11 +6557,11 @@ internal static unsafe partial class NativeMethods
 
     [LibraryImport(LibName)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    internal static partial nint rocksdb_write_buffer_manager_enabled(nint wbm);
+    internal static partial byte rocksdb_write_buffer_manager_enabled(nint wbm);
 
     [LibraryImport(LibName)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    internal static partial nint rocksdb_write_buffer_manager_cost_to_cache(nint wbm);
+    internal static partial byte rocksdb_write_buffer_manager_cost_to_cache(nint wbm);
 
     [LibraryImport(LibName)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
@@ -6576,7 +6585,7 @@ internal static unsafe partial class NativeMethods
 
     [LibraryImport(LibName)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    internal static partial void rocksdb_write_buffer_manager_set_allow_stall(nint wbm, nint new_allow_stall);
+    internal static partial void rocksdb_write_buffer_manager_set_allow_stall(nint wbm, byte new_allow_stall);
 
     [LibraryImport(LibName, StringMarshalling = StringMarshalling.Utf8)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
@@ -7168,9 +7177,9 @@ internal static unsafe partial class NativeMethods
         string name,
         int num_column_families,
         byte** column_family_names,
-        nint column_family_options,
+        nint* column_family_options,
         nint* column_family_handles,
-        nint ttls,
+        int* ttls,
         ref nint errptr);
 
     [LibraryImport(LibName)]
@@ -7231,7 +7240,7 @@ internal static unsafe partial class NativeMethods
     internal static partial void rocksdb_multi_get_cf_with_ts(
         nint db,
         nint options,
-        nint column_families,
+        nint* column_families,
         nuint num_keys,
         byte** keys_list,
         nuint* keys_list_sizes,
@@ -7248,10 +7257,10 @@ internal static unsafe partial class NativeMethods
         nint options,
         nint column_family,
         nuint num_keys,
-        nint keys_list,
+        rocksdb_slice_t* keys_list,
         nint* values,
         byte** errs,
-        nint sorted_input);
+        byte sorted_input);
 
     [LibraryImport(LibName)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
@@ -7395,12 +7404,12 @@ internal static unsafe partial class NativeMethods
     internal static partial void rocksdb_load_latest_options(
         string db_path,
         nint env,
-        nint ignore_unknown_options,
+        byte ignore_unknown_options,
         nint cache,
         nint* db_options,
         nuint* num_column_families,
         byte*** column_family_names,
-        nint column_family_options,
+        nint** column_family_options,
         ref nint errptr);
 
     [LibraryImport(LibName)]
@@ -7938,11 +7947,11 @@ internal static unsafe partial class NativeMethods
 
     [LibraryImport(LibName)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    internal static partial nint rocksdb_sst_file_manager_is_max_allowed_space_reached(nint sfm);
+    internal static partial byte rocksdb_sst_file_manager_is_max_allowed_space_reached(nint sfm);
 
     [LibraryImport(LibName)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-    internal static partial nint rocksdb_sst_file_manager_is_max_allowed_space_reached_including_compactions(nint sfm);
+    internal static partial byte rocksdb_sst_file_manager_is_max_allowed_space_reached_including_compactions(nint sfm);
 
     [LibraryImport(LibName)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]

@@ -212,11 +212,19 @@ public abstract class MergeOperator : RocksDbHandle
         _deleteValueDelegate = DeleteValueCallback;
         _nameDelegate = NameCallback;
 
+        // The partial-merge slot is always installed, even when the subclass does
+        // not override PartialMerge. RocksDb invokes it through
+        // `(*partial_merge_)(...)` with no null check, unlike the delete-value
+        // slot beside it, and it reaches that call on any flush or non-bottommost
+        // compaction that collapses two or more operands for one key. Leaving the
+        // slot null therefore terminated the process. The base PartialMerge
+        // returns false, which is the correct answer for an operator that cannot
+        // combine operands: RocksDb keeps them and calls FullMerge later.
         Handle = NativeMethods.rocksdb_mergeoperator_create(
             GetPinnedIntPtr(),
             Marshal.GetFunctionPointerForDelegate(_destructorDelegate),
             Marshal.GetFunctionPointerForDelegate(_fullMergeDelegate),
-            this.CheckIfMethodOverridden<MergeOperator>(nameof(PartialMerge)) ? Marshal.GetFunctionPointerForDelegate(_partialMergeDelegate) : IntPtr.Zero,
+            Marshal.GetFunctionPointerForDelegate(_partialMergeDelegate),
             Marshal.GetFunctionPointerForDelegate(_deleteValueDelegate),
             Marshal.GetFunctionPointerForDelegate(_nameDelegate));
     }
@@ -228,12 +236,15 @@ public abstract class MergeOperator : RocksDbHandle
             // Get the pointer to the operand
             nint operandPtr = Marshal.ReadIntPtr(operands, i * nint.Size);
 
-            // Get the length of the operand
-            long operandLen = Marshal.ReadInt64(operandsLen, i * sizeof(long));
+            // The lengths are a `const size_t*`, so the element width is the
+            // pointer width, not 8. Reading them as Int64 put every index after
+            // the first at the wrong offset on 32-bit, which win-x86 is, fusing
+            // pairs of lengths and reading past the end of the array.
+            nuint operandLen = (nuint)Marshal.ReadIntPtr(operandsLen, i * nint.Size);
 
             // Copy the operand data into a managed byte array
             byte[] operandData = new byte[operandLen];
-            Marshal.Copy(operandPtr, operandData, 0, (int)operandLen);
+            Marshal.Copy(operandPtr, operandData, 0, checked((int)operandLen));
 
             yield return operandData;
         }

@@ -1,45 +1,100 @@
-﻿namespace RocksDbNet;
+namespace RocksDbNet;
 
 /// <summary>
-/// Mapped from rocksdb::CompactionReason in options.h
+/// Why RocksDb ran a compaction, mapped from <c>rocksdb::CompactionReason</c> in
+/// <c>listener.h</c>.
 /// </summary>
-public enum CompactionReason : uint
+/// <remarks>
+/// The values are positional in the native header, so they must match it
+/// exactly. They are written out here rather than left implicit, and asserted in
+/// the tests, because a shifted value silently mislabels every compaction an
+/// application observes.
+/// </remarks>
+public enum CompactionReason
 {
+    /// <summary>No reason recorded.</summary>
     Unknown = 0,
-    /// <summary> [Level] Number of L0 files > level0_file_num_compaction_trigger </summary>
+
+    /// <summary>
+    /// Level: the number of level-0 files exceeded
+    /// <see cref="DbOptions.Level0FileNumCompactionTrigger"/>.
+    /// </summary>
     LevelL0FilesNum = 1,
-    /// <summary> [Level] Total size of level > MaxBytesForLevel </summary>
+
+    /// <summary>Level: the total size of a level exceeded its maximum.</summary>
     LevelMaxLevelSize = 2,
-    /// <summary> [Universal] Number of files > level0_file_num_compaction_trigger </summary>
-    UniversalSizeEnumeration = 3,
-    /// <summary> [Universal] Size amplification > max_size_amplification_percent </summary>
-    UniversalSizeAmplification = 4,
-    /// <summary> [Universal] min_merge_width..max_merge_width files can be merged </summary>
-    UniversalSizeRatio = 5,
-    /// <summary> [FIFO] Total size > max_table_files_size </summary>
-    FIFOMaxSize = 6,
-    /// <summary> [FIFO] At least one file has expired based on TTL </summary>
-    FIFOTtl = 7,
-    /// <summary> [FIFO] Files with old data are being compacted </summary>
-    FIFOFillCache = 8,
-    /// <summary> [Manual] DB::CompactRange() was called </summary>
-    ExternalSstIngestion = 9,
-    /// <summary> DB::CompactRange() or DB::CompactFiles() was called </summary>
-    ManualCompaction = 10,
-    /// <summary> db_options.periodic_compaction_seconds is exceeded </summary>
-    FilesMarkedForCompaction = 11,
-    /// <summary> [Bottommost] Compaction to level output_level was completed </summary>
-    BottommostLevel = 12,
-    /// <summary> Ttl reached or other criteria in TtlCompactionFilter </summary>
-    Ttl = 13,
-    /// <summary> Periodic compaction </summary>
-    Flush = 14,
-    /// <summary> External sst ingestion </summary>
-    ExternalSstIngestionJob = 15,
-    /// <summary> Range deletion tombstone overflow </summary>
-    PeriodicCompaction = 16,
-    /// <summary> Change in internal stats (e.g. deletion ratio) </summary>
-    ChangeLevel = 17,
-    /// <summary> Compaction forced by TTL </summary>
-    ForcedTtl = 18,
+
+    /// <summary>Universal: compacting to reduce size amplification.</summary>
+    UniversalSizeAmplification = 3,
+
+    /// <summary>Universal: compacting to satisfy the size ratio.</summary>
+    UniversalSizeRatio = 4,
+
+    /// <summary>
+    /// Universal: the number of sorted runs exceeded
+    /// <see cref="DbOptions.Level0FileNumCompactionTrigger"/>.
+    /// </summary>
+    UniversalSortedRunNum = 5,
+
+    /// <summary>FIFO: the total size exceeded the maximum table file size.</summary>
+    FifoMaxSize = 6,
+
+    /// <summary>FIFO: compacting to reduce the number of files.</summary>
+    FifoReduceNumFiles = 7,
+
+    /// <summary>FIFO: files older than the configured interval.</summary>
+    FifoTtl = 8,
+
+    /// <summary>A manual compaction, such as <see cref="RocksDb.CompactRange(CompactRangeOptions, System.ReadOnlySpan{byte}, System.ReadOnlySpan{byte})"/>.</summary>
+    ManualCompaction = 9,
+
+    /// <summary>
+    /// Files marked for compaction, which is what
+    /// <see cref="RocksDb.SuggestCompactRange(System.ReadOnlySpan{byte}, System.ReadOnlySpan{byte})"/>
+    /// does.
+    /// </summary>
+    FilesMarkedForCompaction = 10,
+
+    /// <summary>
+    /// Level: an automatic compaction inside the bottommost level to clean up
+    /// duplicate versions of the same user key, usually after a snapshot was
+    /// released.
+    /// </summary>
+    BottommostFiles = 11,
+
+    /// <summary>Compaction driven by time to live.</summary>
+    Ttl = 12,
+
+    /// <summary>A flush, which RocksDb accounts for as a level-0 compaction.</summary>
+    Flush = 13,
+
+    /// <summary>
+    /// Internal only. External SST file ingestion, accounted for as a compaction
+    /// so that it takes part in conflict checking.
+    /// </summary>
+    ExternalSstIngestion = 14,
+
+    /// <summary>An SST file was older than the periodic compaction interval.</summary>
+    PeriodicCompaction = 15,
+
+    /// <summary>Compacting in order to move files to a different temperature.</summary>
+    ChangeTemperature = 16,
+
+    /// <summary>Scheduled to force garbage collection of blob files.</summary>
+    ForcedBlobGC = 17,
+
+    /// <summary>
+    /// The round-robin policy's time-to-live compaction. Behaves like
+    /// <see cref="LevelMaxLevelSize"/> but targets expired files.
+    /// </summary>
+    RoundRobinTtl = 18,
+
+    /// <summary>
+    /// Internal only. A level refit, accounted for as a compaction so that it
+    /// takes part in conflict checking.
+    /// </summary>
+    RefitLevel = 19,
+
+    /// <summary>Triggered by a high read frequency on SST files.</summary>
+    ReadTriggered = 20,
 }
