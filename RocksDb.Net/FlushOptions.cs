@@ -46,7 +46,7 @@ public sealed class FlushOptions : RocksDbHandle
         set => NativeMethods.rocksdb_flushoptions_set_listener_wait(Handle, value ? (byte)1 : (byte)0);
     }
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_flushoptions_destroy(Handle);
     }
@@ -80,7 +80,7 @@ public sealed class FlushWalOptions : RocksDbHandle
         set => NativeMethods.rocksdb_flushwaloptions_set_rate_limiter_priority(Handle, (int)value);
     }
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_flushwaloptions_destroy(Handle);
     }

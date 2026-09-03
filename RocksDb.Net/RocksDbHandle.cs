@@ -183,21 +183,65 @@ public abstract class RocksDbHandle : IDisposable
     }
 
     /// <summary>
-    /// Releases the native handle associated with the underlying resource. This method is called during disposal to free unmanaged resources.
+    /// Releases the native handle. Called during disposal.
     /// </summary>
-    public abstract void DisposeHandle();
+    /// <remarks>
+    /// Protected rather than public: it destroys the native object without
+    /// marking this instance disposed or clearing the handle, so calling it from
+    /// outside and then disposing normally would free the same pointer twice.
+    /// It was the most Dispose-looking member on the type. Callers want
+    /// <see cref="Dispose()"/>.
+    /// </remarks>
+    protected abstract void DisposeHandle();
 
     /// <summary>
     /// Releases unmanaged resources used by the current instance.
     /// </summary>
-    public virtual void DisposeUnmanagedResources()
+    /// <remarks>Protected for the same reason as <see cref="DisposeHandle"/>.</remarks>
+    protected virtual void DisposeUnmanagedResources()
     {
-        // Dispose the native handle if this instance owns it
-        if (_owned != 0 && _handle != IntPtr.Zero)
+        // Dispose the native handle if this instance owns it, and if whatever it
+        // lives inside is still open. See SetParent for why the second condition
+        // exists.
+        if (_owned != 0 && _handle != IntPtr.Zero && _parent?.IsDisposed != true)
         {
             DisposeHandle();
         }
 
         Handle = IntPtr.Zero;
+        _parent = null;
+    }
+
+    // The object this handle lives inside, or null for a root handle. Held as a
+    // strong reference on purpose: see SetParent.
+    private RocksDbHandle? _parent;
+
+    /// <summary>
+    /// Records that this handle is only valid while <paramref name="parent"/> is
+    /// open, and must be released before it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// RocksDb requires iterators, snapshots and column family handles to be
+    /// destroyed before the database, because their native destructors reach into
+    /// database internals. Nothing enforced that here, so forgetting to dispose
+    /// one turned into a crash rather than a leak: the finalizer ran after the
+    /// database had already been closed and dereferenced freed memory, or a null
+    /// pointer, on the finalizer thread where nothing can catch it.
+    /// </para>
+    /// <para>
+    /// Two things fix that together. The strong reference keeps the parent
+    /// reachable for as long as this handle is, so the parent's finalizer cannot
+    /// run first. And when the parent has already been disposed explicitly, the
+    /// check in <see cref="DisposeUnmanagedResources"/> skips the native release
+    /// entirely, because the parent's own close already reclaimed what it
+    /// referred to. That leaks a small wrapper struct in a case that used to
+    /// terminate the process.
+    /// </para>
+    /// </remarks>
+    internal void SetParent(RocksDbHandle parent)
+    {
+        ArgumentNullException.ThrowIfNull(parent);
+        _parent = parent;
     }
 }

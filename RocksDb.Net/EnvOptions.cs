@@ -126,7 +126,7 @@ public sealed class EnvOptions : RocksDbHandle
         return this;
     }
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_envoptions_destroy(Handle);
     }

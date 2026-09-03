@@ -235,7 +235,7 @@ public sealed class BackupEngineOptions : RocksDbHandle
         return this;
     }
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_backup_engine_options_destroy(Handle);
     }
@@ -450,12 +450,12 @@ public sealed class CreateBackupOptions : RocksDbHandle
         _excludeFilesState = default;
     }
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_create_backup_options_destroy(Handle);
     }
 
-    public override void DisposeUnmanagedResources()
+    protected override void DisposeUnmanagedResources()
     {
         // Destroy the native options first so RocksDb cannot invoke a callback
         // whose state we are about to free.
@@ -500,7 +500,7 @@ public sealed class RestoreOptions : RocksDbHandle
         set => NativeMethods.rocksdb_restore_options_set_mode(Handle, (int)value);
     }
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_restore_options_destroy(Handle);
     }

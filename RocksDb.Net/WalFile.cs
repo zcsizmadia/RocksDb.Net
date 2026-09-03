@@ -78,7 +78,7 @@ public sealed class WalReadOptions : RocksDbHandle
         set => NativeMethods.rocksdb_wal_readoptions_set_verify_checksums(Handle, value ? (byte)1 : (byte)0);
     }
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_wal_readoptions_destroy(Handle);
     }
@@ -160,7 +160,7 @@ public sealed class WalIterator : RocksDbHandle
         CheckForError();
     }
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_wal_iter_destroy(Handle);
     }

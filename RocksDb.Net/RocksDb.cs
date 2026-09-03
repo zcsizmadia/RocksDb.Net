@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -15,7 +16,12 @@ public sealed class RocksDb : RocksDbHandle
     private static readonly WriteOptions _defaultWriteOptions = new();
     private static readonly FlushOptions _defaultFlushOptions = new();
 
-    private readonly Dictionary<string, ColumnFamilyHandle>? _columnFamilyHandles;
+    // Always non-null, so a column family created after open can be registered
+    // whether or not the database was opened with any.
+    private readonly Dictionary<string, ColumnFamilyHandle> _columnFamilyHandles = [];
+
+    // Cached so that repeated calls do not each leak a wrapper struct.
+    private ColumnFamilyHandle? _defaultColumnFamily;
     private readonly DbOptions _ownedOptions;
 
     private RocksDb(nint handle, DbOptions options)
@@ -24,14 +30,17 @@ public sealed class RocksDb : RocksDbHandle
         _ownedOptions = options;
     }
 
+    /// <summary>Name RocksDb gives the column family that always exists.</summary>
+    private const string DefaultColumnFamilyName = "default";
+
     private RocksDb(nint handle, nint[] cfHandles, DbOptions options)
         : base(handle)
     {
         _ownedOptions = options;
-        _columnFamilyHandles = [];
         foreach (var cf in cfHandles)
         {
             ColumnFamilyHandle cfh = new(cf);
+            cfh.SetParent(this);
             _columnFamilyHandles[cfh.Name] = cfh;
         }
     }
@@ -242,6 +251,7 @@ public sealed class RocksDb : RocksDbHandle
     /// <summary>Stores <paramref name="value"/> under <paramref name="key"/> in <paramref name="cf"/>.</summary>
     public unsafe void Put(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle cf, WriteOptions? options = null)
     {
+        ArgumentNullException.ThrowIfNull(cf);
         nint err = default;
         fixed (byte* k = key)
         fixed (byte* v = value)
@@ -272,6 +282,7 @@ public sealed class RocksDb : RocksDbHandle
     /// <summary>Deletes the entry for <paramref name="key"/> from <paramref name="cf"/>.</summary>
     public unsafe void Delete(ReadOnlySpan<byte> key, ColumnFamilyHandle cf, WriteOptions? options = null)
     {
+        ArgumentNullException.ThrowIfNull(cf);
         nint err = default;
         fixed (byte* k = key)
             NativeMethods.rocksdb_delete_cf(Handle, (options ?? _defaultWriteOptions).Handle, cf.Handle,
@@ -296,6 +307,7 @@ public sealed class RocksDb : RocksDbHandle
     public unsafe void DeleteRange(ReadOnlySpan<byte> startKey, ReadOnlySpan<byte> endKey,
         ColumnFamilyHandle cf, WriteOptions? options = null)
     {
+        ArgumentNullException.ThrowIfNull(cf);
         nint err = default;
         fixed (byte* s = startKey)
         fixed (byte* e = endKey)
@@ -339,6 +351,8 @@ public sealed class RocksDb : RocksDbHandle
     public unsafe void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value,
         ColumnFamilyHandle cf, WriteOptions? options = null)
     {
+        ArgumentNullException.ThrowIfNull(cf);
+
         nint err = default;
         fixed (byte* k = key)
         fixed (byte* v = value)
@@ -398,6 +412,7 @@ public sealed class RocksDb : RocksDbHandle
     /// <summary>Returns the value for <paramref name="key"/> in <paramref name="cf"/>, or <c>null</c>.</summary>
     public unsafe byte[]? Get(ReadOnlySpan<byte> key, ColumnFamilyHandle cf, ReadOptions? options = null)
     {
+        ArgumentNullException.ThrowIfNull(cf);
         nint err = default;
         nuint vallen;
         nint valNint;
@@ -423,6 +438,7 @@ public sealed class RocksDb : RocksDbHandle
     /// <summary>Convenience overload using a UTF-8 string key in a column family.</summary>
     public string? GetString(string key, ColumnFamilyHandle cf, ReadOptions? options = null)
     {
+        ArgumentNullException.ThrowIfNull(cf);
         byte[]? val = Get(Encoding.UTF8.GetBytes(key), cf, options);
         return val == null ? null : Encoding.UTF8.GetString(val);
     }
@@ -532,6 +548,7 @@ public sealed class RocksDb : RocksDbHandle
     /// </summary>
     public unsafe bool KeyMayExist(ReadOnlySpan<byte> key, ColumnFamilyHandle cf, ReadOptions? options = null)
     {
+        ArgumentNullException.ThrowIfNull(cf);
         fixed (byte* k = key)
             return NativeMethods.rocksdb_key_may_exist_cf(Handle, (options ?? _defaultReadOptions).Handle,
                 cf.Handle, k, (nuint)key.Length, (byte**)null, out nuint dummyValLen,
@@ -559,15 +576,16 @@ public sealed class RocksDb : RocksDbHandle
     {
         nint handle = NativeMethods.rocksdb_create_iterator(
             Handle, (options ?? _defaultReadOptions).Handle);
-        return Iterator.FromHandle(handle);
+        return Iterator.FromHandle(handle, this, options);
     }
 
     /// <summary>Creates a new iterator over <paramref name="cf"/>.</summary>
     public Iterator NewIterator(ColumnFamilyHandle cf, ReadOptions? options = null)
     {
+        ArgumentNullException.ThrowIfNull(cf);
         nint handle = NativeMethods.rocksdb_create_iterator_cf(
             Handle, (options ?? _defaultReadOptions).Handle, cf.Handle);
-        return Iterator.FromHandle(handle);
+        return Iterator.FromHandle(handle, this, options);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -581,7 +599,9 @@ public sealed class RocksDb : RocksDbHandle
     public Snapshot NewSnapshot()
     {
         nint handle = NativeMethods.rocksdb_create_snapshot(Handle);
-        return new Snapshot(handle, this);
+        var snapshot = new Snapshot(handle, this);
+        snapshot.SetParent(this);
+        return snapshot;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -597,7 +617,8 @@ public sealed class RocksDb : RocksDbHandle
         nint err = default;
         nint handle = NativeMethods.rocksdb_create_column_family(Handle, options.Handle, name, ref err);
         NativeMethods.ThrowOnError(err);
-        return new ColumnFamilyHandle(handle);
+
+        return RegisterColumnFamily(name, new ColumnFamilyHandle(handle));
     }
 
     /// <summary>Creates a new column family with TTL.</summary>
@@ -609,7 +630,8 @@ public sealed class RocksDb : RocksDbHandle
         nint err = default;
         nint handle = NativeMethods.rocksdb_create_column_family_with_ttl(Handle, options.Handle, name, ttlSeconds, ref err);
         NativeMethods.ThrowOnError(err);
-        return new ColumnFamilyHandle(handle);
+
+        return RegisterColumnFamily(name, new ColumnFamilyHandle(handle));
     }
 
     /// <summary>Drops <paramref name="cf"/> from the database. The handle is invalidated after this call.</summary>
@@ -629,16 +651,89 @@ public sealed class RocksDb : RocksDbHandle
     /// </summary>
     public ColumnFamilyHandle GetDefaultColumnFamily()
     {
+        // Cached, because each call allocates a fresh rocksdb_column_family_handle_t
+        // and the wrapper is non-owning, so every call used to leak one.
+        if (_defaultColumnFamily is not null)
+        {
+            return _defaultColumnFamily;
+        }
+
         nint h = NativeMethods.rocksdb_get_default_column_family_handle(Handle);
-        ColumnFamilyHandle cf = new ColumnFamilyHandle(h);
-        cf.TransferOwnership(); // Prevent double-free since the DB owns this handle.
+        var cf = new ColumnFamilyHandle(h);
+        cf.TransferOwnership(); // The database owns this handle.
+        cf.SetParent(this);
+
+        _defaultColumnFamily = cf;
         return cf;
     }
 
-    /// <summary>Returns the column family handle for <paramref name="name"/> opened at database creation.</summary>
+    /// <summary>
+    /// Returns the handle for the column family called <paramref name="name"/>.
+    /// </summary>
+    /// <remarks>
+    /// Covers families opened with the database and families created since,
+    /// through <see cref="CreateColumnFamily"/> or
+    /// <see cref="CreateColumnFamilyWithTtl"/>.
+    /// </remarks>
+    /// <exception cref="KeyNotFoundException">
+    /// No column family of that name is known to this database. Previously this
+    /// returned null from a non-nullable signature, so the mistake surfaced as a
+    /// NullReferenceException somewhere else. Use
+    /// <see cref="TryGetColumnFamily"/> when absence is expected.
+    /// </exception>
     public ColumnFamilyHandle GetColumnFamily(string name)
     {
-        return _columnFamilyHandles != null && _columnFamilyHandles.TryGetValue(name, out ColumnFamilyHandle? cfh) ? cfh : null!;
+        ArgumentException.ThrowIfNullOrEmpty(name);
+
+        return TryGetColumnFamily(name, out ColumnFamilyHandle? cfh)
+            ? cfh
+            : throw new KeyNotFoundException(
+                $"No column family named '{name}' is known to this database. " +
+                $"Known families: {string.Join(", ", ColumnFamilyNames)}.");
+    }
+
+    /// <summary>
+    /// Looks up the handle for the column family called <paramref name="name"/>,
+    /// returning false rather than throwing when there is none.
+    /// </summary>
+    public bool TryGetColumnFamily(string name, [NotNullWhen(true)] out ColumnFamilyHandle? columnFamily)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(name);
+
+        if (_columnFamilyHandles.TryGetValue(name, out ColumnFamilyHandle? cfh))
+        {
+            columnFamily = cfh;
+            return true;
+        }
+
+        // Every database has a default family, even one opened without naming
+        // any, so resolve it on demand rather than reporting it as unknown.
+        if (name == DefaultColumnFamilyName)
+        {
+            columnFamily = GetDefaultColumnFamily();
+            return true;
+        }
+
+        columnFamily = null;
+        return false;
+    }
+
+    /// <summary>Names of the column families this database knows about.</summary>
+    public IReadOnlyCollection<string> ColumnFamilyNames
+        => _columnFamilyHandles.Count > 0
+            ? [.. _columnFamilyHandles.Keys]
+            : [DefaultColumnFamilyName];
+
+    /// <summary>
+    /// Tracks a newly created column family so that
+    /// <see cref="GetColumnFamily"/> can find it, and ties its lifetime to this
+    /// database.
+    /// </summary>
+    private ColumnFamilyHandle RegisterColumnFamily(string name, ColumnFamilyHandle cf)
+    {
+        cf.SetParent(this);
+        _columnFamilyHandles.Add(name, cf);
+        return cf;
     }
 
     /// <summary>Returns metadata for the default column family.</summary>
@@ -694,6 +789,7 @@ public sealed class RocksDb : RocksDbHandle
     /// <summary>Flushes the specified column family.</summary>
     public void Flush(ColumnFamilyHandle cf, FlushOptions? options = null)
     {
+        ArgumentNullException.ThrowIfNull(cf);
         nint err = default;
         NativeMethods.rocksdb_flush_cf(Handle, (options ?? _defaultFlushOptions).Handle, cf.Handle, ref err);
         NativeMethods.ThrowOnError(err);
@@ -762,6 +858,7 @@ public sealed class RocksDb : RocksDbHandle
     public unsafe void CompactRange(ColumnFamilyHandle cf,
         ReadOnlySpan<byte> startKey = default, ReadOnlySpan<byte> limitKey = default)
     {
+        ArgumentNullException.ThrowIfNull(cf);
         fixed (byte* s = startKey)
         fixed (byte* e = limitKey)
             NativeMethods.rocksdb_compact_range_cf(Handle, cf.Handle,
@@ -960,6 +1057,8 @@ public sealed class RocksDb : RocksDbHandle
     /// </summary>
     public string? GetProperty(string propName)
     {
+        ArgumentException.ThrowIfNullOrEmpty(propName);
+
         nint ptr = NativeMethods.rocksdb_property_value(Handle, propName);
         if (ptr == nint.Zero) return null;
 
@@ -979,6 +1078,9 @@ public sealed class RocksDb : RocksDbHandle
     /// <summary>Returns a string property for a specific column family.</summary>
     public string? GetProperty(string propName, ColumnFamilyHandle cf)
     {
+        ArgumentNullException.ThrowIfNull(cf);
+        ArgumentException.ThrowIfNullOrEmpty(propName);
+
         nint ptr = NativeMethods.rocksdb_property_value_cf(Handle, cf.Handle, propName);
         if (ptr == nint.Zero) return null;
 
@@ -990,6 +1092,7 @@ public sealed class RocksDb : RocksDbHandle
     /// <summary>Returns an integer property for a specific column family.</summary>
     public unsafe ulong? GetPropertyInt(string propName, ColumnFamilyHandle cf)
     {
+        ArgumentNullException.ThrowIfNull(cf);
         ulong val;
         int rc = NativeMethods.rocksdb_property_int_cf(Handle, cf.Handle, propName, &val);
         return rc == 0 ? val : null;
@@ -1802,21 +1905,23 @@ public sealed class RocksDb : RocksDbHandle
         NativeMethods.ThrowOnError(err);
     }
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_close(Handle);
     }
 
-    public override void DisposeUnmanagedResources()
+    protected override void DisposeUnmanagedResources()
     {
-        // All column family handles must be destroyed before primary database handle is closed
-        if (_columnFamilyHandles != null)
+        // Column family handles must be destroyed before the database handle is
+        // closed, because their native destructors reach into database
+        // internals. This covers the ones opened with the database and the ones
+        // created since, which is why they are all registered.
+        foreach (ColumnFamilyHandle cfh in _columnFamilyHandles.Values)
         {
-            foreach (var cfh in _columnFamilyHandles.Values)
-            {
-                cfh.Dispose();
-            }
+            cfh.Dispose();
         }
+
+        _defaultColumnFamily?.Dispose();
 
         base.DisposeUnmanagedResources();
 

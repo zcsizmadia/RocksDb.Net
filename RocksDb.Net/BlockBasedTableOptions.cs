@@ -471,7 +471,7 @@ public sealed class BlockBasedTableOptions : RocksDbHandle
         return this;
     }
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_block_based_options_destroy(Handle);
     }

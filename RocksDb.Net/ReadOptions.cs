@@ -496,14 +496,14 @@ public sealed class ReadOptions : RocksDbHandle
         }
     }
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         // Destroying the options runs the table filter destructor, which frees
         // the GCHandle allocated in SetTableFilter.
         NativeMethods.rocksdb_readoptions_destroy(Handle);
     }
 
-    public override void DisposeUnmanagedResources()
+    protected override void DisposeUnmanagedResources()
     {
         // Destroy the native options first: they hold Slices into the bound
         // buffers, so the buffers must outlive them.

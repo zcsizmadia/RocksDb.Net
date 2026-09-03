@@ -75,7 +75,7 @@ public sealed class WriteOptions : RocksDbHandle
         set => NativeMethods.rocksdb_writeoptions_set_io_activity(Handle, (int)value);
     }
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_writeoptions_destroy(Handle);
     }

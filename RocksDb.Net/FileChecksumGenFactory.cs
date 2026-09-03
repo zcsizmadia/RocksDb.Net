@@ -31,7 +31,7 @@ public sealed class FileChecksumGenFactory : RocksDbHandle
     public static FileChecksumGenFactory CreateCrc32c()
         => new(NativeMethods.rocksdb_file_checksum_gen_crc32c_factory_create());
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_file_checksum_gen_factory_destroy(Handle);
     }

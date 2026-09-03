@@ -17,7 +17,7 @@ public class RocksDbHandleTests
         {
         }
 
-        public override void DisposeHandle()
+        protected override void DisposeHandle()
         {
             DisposeHandleCalls++;
         }
@@ -157,7 +157,7 @@ public class RocksDbHandleTests
 
     private sealed class OtherHandle : RocksDbHandle
     {
-        public override void DisposeHandle()
+        protected override void DisposeHandle()
         {
         }
 

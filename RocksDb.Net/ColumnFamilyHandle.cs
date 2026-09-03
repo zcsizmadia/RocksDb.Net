@@ -27,7 +27,7 @@ public class ColumnFamilyHandle : RocksDbHandle
 
     public override string ToString() => Name;
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_column_family_handle_destroy(Handle);
     }

@@ -75,7 +75,7 @@ public sealed class ColumnFamilyMetadataOptions : RocksDbHandle
         return this;
     }
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_column_family_metadata_options_destroy(Handle);
     }

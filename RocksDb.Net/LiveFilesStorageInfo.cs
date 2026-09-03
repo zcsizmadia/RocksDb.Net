@@ -45,7 +45,7 @@ public sealed class LiveFilesStorageInfoOptions : RocksDbHandle
         set => NativeMethods.rocksdb_livefiles_storage_info_options_set_atomic_flush(Handle, value ? (byte)1 : (byte)0);
     }
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_livefiles_storage_info_options_destroy(Handle);
     }

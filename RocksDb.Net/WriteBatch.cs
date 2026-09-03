@@ -59,6 +59,7 @@ public sealed class WriteBatch : RocksDbHandle
     /// <summary>Queues a Put into the specified column family.</summary>
     public unsafe WriteBatch Put(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle cf)
     {
+        ArgumentNullException.ThrowIfNull(cf);
         fixed (byte* k = key)
         fixed (byte* v = value)
             NativeMethods.rocksdb_writebatch_put_cf(Handle, cf.Handle, k, (nuint)key.Length, v, (nuint)value.Length);
@@ -87,6 +88,7 @@ public sealed class WriteBatch : RocksDbHandle
     /// <summary>Queues a Merge into the specified column family.</summary>
     public unsafe WriteBatch Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle cf)
     {
+        ArgumentNullException.ThrowIfNull(cf);
         fixed (byte* k = key)
         fixed (byte* v = value)
             NativeMethods.rocksdb_writebatch_merge_cf(Handle, cf.Handle, k, (nuint)key.Length, v, (nuint)value.Length);
@@ -106,6 +108,7 @@ public sealed class WriteBatch : RocksDbHandle
     /// <summary>Queues a Delete from the specified column family.</summary>
     public unsafe WriteBatch Delete(ReadOnlySpan<byte> key, ColumnFamilyHandle cf)
     {
+        ArgumentNullException.ThrowIfNull(cf);
         fixed (byte* k = key)
             NativeMethods.rocksdb_writebatch_delete_cf(Handle, cf.Handle, k, (nuint)key.Length);
         return this;
@@ -133,6 +136,7 @@ public sealed class WriteBatch : RocksDbHandle
     /// <summary>Queues a SingleDelete in the specified column family.</summary>
     public unsafe WriteBatch SingleDelete(ReadOnlySpan<byte> key, ColumnFamilyHandle cf)
     {
+        ArgumentNullException.ThrowIfNull(cf);
         fixed (byte* k = key)
             NativeMethods.rocksdb_writebatch_singledelete_cf(Handle, cf.Handle, k, (nuint)key.Length);
         return this;
@@ -152,6 +156,7 @@ public sealed class WriteBatch : RocksDbHandle
     /// <summary>Queues a DeleteRange in the specified column family.</summary>
     public unsafe WriteBatch DeleteRange(ReadOnlySpan<byte> startKey, ReadOnlySpan<byte> endKey, ColumnFamilyHandle cf)
     {
+        ArgumentNullException.ThrowIfNull(cf);
         fixed (byte* s = startKey)
         fixed (byte* e = endKey)
             NativeMethods.rocksdb_writebatch_delete_range_cf(Handle, cf.Handle, s, (nuint)startKey.Length, e, (nuint)endKey.Length);
@@ -221,7 +226,7 @@ public sealed class WriteBatch : RocksDbHandle
         NativeMethods.ThrowOnError(err);
     }
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_writebatch_destroy(Handle);
     }

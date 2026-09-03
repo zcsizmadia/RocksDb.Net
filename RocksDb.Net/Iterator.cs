@@ -10,14 +10,30 @@ namespace RocksDbNet;
 /// </summary>
 public sealed class Iterator : RocksDbHandle
 {
-    private Iterator(IntPtr handle)
+    // Kept alive for as long as this iterator is, and never disposed here.
+    //
+    // RocksDb stores an iterate bound as a pointer *into* the
+    // rocksdb_readoptions_t struct, and NewIterator copies the options by
+    // value, so a live iterator dereferences that address on every Seek and
+    // Next. Letting the options be collected while the iterator was still in
+    // use therefore read freed memory. The same applies to a table filter,
+    // whose callback state the options own.
+    //
+    // This does not make an explicit early Dispose of the options safe. Nothing
+    // can: the native struct is gone at that point. It removes the far more
+    // common failure, where the options were simply not kept in a variable.
+    private readonly ReadOptions? _options;
+
+    private Iterator(nint handle, RocksDb db, ReadOptions? options)
     {
         Handle = handle;
+        _options = options;
+        SetParent(db);
     }
 
-    public static Iterator FromHandle(IntPtr handle)
+    internal static Iterator FromHandle(nint handle, RocksDb db, ReadOptions? options)
     {
-        return new Iterator(handle);
+        return new Iterator(handle, db, options);
     }
 
     /// <summary>Returns true if the iterator is positioned at a valid entry.</summary>
@@ -180,7 +196,7 @@ public sealed class Iterator : RocksDbHandle
         public ReadOnlySpan<byte> CurrentValue => _iterator.Value();
     }
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_iter_destroy(Handle);
     }

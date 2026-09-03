@@ -51,7 +51,7 @@ public sealed class SizeApproximationOptions : RocksDbHandle
         set => NativeMethods.rocksdb_size_approximation_options_set_files_size_error_margin(Handle, value);
     }
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_size_approximation_options_destroy(Handle);
     }
