@@ -35,3 +35,7 @@ LICENSE     text
 *.so        binary
 *.dylib     binary
 *.nupkg     binary
+# The files under licenses/ are verbatim copies of upstream licence texts.
+# Marking them -text keeps them byte-identical to what those projects publish,
+# rather than letting a checkout rewrite the line endings of a legal document.
+licenses/** -text

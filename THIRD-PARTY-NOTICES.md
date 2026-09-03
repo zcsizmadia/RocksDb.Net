@@ -10,7 +10,11 @@ RocksDB is developed and maintained by Meta Platforms, Inc. (formerly Facebook, 
 - Source: <https://github.com/facebook/rocksdb>
 - Copyright (c) 2011-present, Facebook, Inc. All rights reserved.
 
-RocksDB is dual-licensed under the GPLv2 (found in the `COPYING` file in its root directory) and the Apache 2.0 License (found in its `LICENSE.Apache` file). Consult those files in the [RocksDB repository](https://github.com/facebook/rocksdb) for the authoritative terms.
+RocksDB is dual-licensed under the GPLv2 (found in the `COPYING` file in its root directory) and the Apache 2.0 License (found in its `LICENSE.Apache` file). A recipient may choose either.
+
+The Apache 2.0 text is included with this package, at [`licenses/LICENSE.rocksdb-Apache-2.0.txt`](licenses/LICENSE.rocksdb-Apache-2.0.txt), because Apache 2.0 section 4(a) asks for a copy of the licence rather than a pointer to one. The GPLv2 alternative is in [RocksDB's repository](https://github.com/facebook/rocksdb/blob/main/COPYING). Consult those for the authoritative terms.
+
+RocksDB publishes no `NOTICE` file, so Apache 2.0 section 4(d) adds nothing to carry.
 
 This project uses RocksDB in two ways:
 

@@ -7,6 +7,14 @@
 // This source code is licensed under both the GPLv2 (found in the
 // COPYING file in the root directory) and Apache 2.0 License
 // (found in the LICENSE.Apache file in the root directory).
+//
+// Those two files live in RocksDb's repository, at
+// https://github.com/facebook/rocksdb, not in this one. A copy of the
+// Apache 2.0 text ships with this package under licenses/.
+//
+// Modified from the original: the C declarations in c.h have been
+// transformed into C# P/Invoke declarations. No RocksDb implementation
+// code is included or reproduced here.
 // </auto-generated>
 
 using System.Diagnostics.CodeAnalysis;

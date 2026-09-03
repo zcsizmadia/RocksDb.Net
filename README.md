@@ -9,7 +9,7 @@ A modern C# wrapper for [RocksDb](https://rocksdb.org/), the high-performance em
 [![Downloads](https://img.shields.io/nuget/dt/RocksDb.Net.svg)](https://www.nuget.org/packages/RocksDb.Net)
 [![.NET](https://img.shields.io/badge/.NET-8.0%20%7C%209.0%20%7C%2010.0-512BD4)](https://dotnet.microsoft.com/)
 [![RocksDb](https://img.shields.io/badge/RocksDb-11.8.1-blue)](https://github.com/facebook/rocksdb/releases/tag/v11.8.1)
-[![License](https://img.shields.io/badge/license-MIT-green)](https://github.com/zcsizmadia/RocksDb.Net/blob/main/LICENSE)
+[![License](https://img.shields.io/badge/license-MIT%20%2B%20Apache--2.0-green)](https://github.com/zcsizmadia/RocksDb.Net/blob/main/LICENSE)
 
 **[API reference](https://zcsizmadia.github.io/RocksDb.Net/)** · [Guides](https://zcsizmadia.github.io/RocksDb.Net/articles/ownership.html) · [Samples](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples) · [Changelog](https://github.com/zcsizmadia/RocksDb.Net/blob/main/CHANGELOG.md)
 

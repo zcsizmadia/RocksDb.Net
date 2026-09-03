@@ -22,10 +22,24 @@ public static class PInvokeGenerator
         sb.AppendLine($"// {url}");
         sb.AppendLine( "// Do not edit manually — re-run the generator to update.");
         sb.AppendLine( "//");
+        // RocksDb's own notice, reproduced verbatim because that is what the
+        // attribution requires. The two file names in it are relative to
+        // RocksDb's repository root, not this one, so the lines after it say
+        // where to actually find them and what was changed. The latter is
+        // Apache 2.0 section 4(b), which wants prominent notice of
+        // modification.
         sb.AppendLine( "// Copyright (c) 2011-present, Facebook, Inc. All rights reserved.");
         sb.AppendLine( "// This source code is licensed under both the GPLv2 (found in the");
         sb.AppendLine( "// COPYING file in the root directory) and Apache 2.0 License");
         sb.AppendLine( "// (found in the LICENSE.Apache file in the root directory).");
+        sb.AppendLine( "//");
+        sb.AppendLine( "// Those two files live in RocksDb's repository, at");
+        sb.AppendLine( "// https://github.com/facebook/rocksdb, not in this one. A copy of the");
+        sb.AppendLine( "// Apache 2.0 text ships with this package under licenses/.");
+        sb.AppendLine( "//");
+        sb.AppendLine( "// Modified from the original: the C declarations in c.h have been");
+        sb.AppendLine( "// transformed into C# P/Invoke declarations. No RocksDb implementation");
+        sb.AppendLine( "// code is included or reproduced here.");
         sb.AppendLine( "// </auto-generated>");
         sb.AppendLine();
         sb.AppendLine( "using System.Diagnostics.CodeAnalysis;");
