@@ -101,13 +101,24 @@ public class WriteBatchWithIndexTests
     }
 
     [Fact]
-    public void DeleteRange_DoesNotThrow()
+    public void DeleteRange_IsNotSupportedAndSaysSo()
     {
         using var batch = new WriteBatchWithIndex();
 
-        batch.DeleteRange(
-            Encoding.UTF8.GetBytes("a"),
-            Encoding.UTF8.GetBytes("z"));
+        Assert.Throws<NotSupportedException>(
+#pragma warning disable CS0618 // asserting the obsolete member throws is the point
+            () => batch.DeleteRange(Encoding.UTF8.GetBytes("a"), Encoding.UTF8.GetBytes("z")));
+#pragma warning restore CS0618
+
+        using var cfOpts = new DbOptions();
+        Assert.Throws<NotSupportedException>(
+#pragma warning disable CS0618 // asserting the obsolete member throws is the point
+            () => batch.DeleteRange(Encoding.UTF8.GetBytes("a"), Encoding.UTF8.GetBytes("z"), null!));
+#pragma warning restore CS0618
+
+        // Nothing was queued, which is what made the old silent version
+        // dangerous rather than merely useless.
+        Assert.Equal(0, batch.Count);
     }
 
     [Fact]
@@ -222,8 +233,12 @@ public class WriteBatchWithIndexTests
         Assert.Equal(1, batch.Count);
     }
 
+    /// <summary>
+    /// The column-family overload is unsupported for the same reason, and must
+    /// say so before it validates its arguments.
+    /// </summary>
     [Fact]
-    public void DeleteRange_ColumnFamily()
+    public void DeleteRange_ColumnFamily_IsNotSupported()
     {
         using var dir = new TempDir();
         using var opts = new DbOptions { CreateIfMissing = true, CreateMissingColumnFamilies = true };
@@ -234,9 +249,16 @@ public class WriteBatchWithIndexTests
         };
 
         using var db = RocksDb.Open(opts, dir.Path, cfDescs);
-        var cf1 = db.GetColumnFamily("cf1");
+        ColumnFamilyHandle cf1 = db.GetColumnFamily("cf1");
 
         using var batch = new WriteBatchWithIndex();
-        batch.DeleteRange(Encoding.UTF8.GetBytes("a"), Encoding.UTF8.GetBytes("z"), cf1);
+
+        NotSupportedException ex = Assert.Throws<NotSupportedException>(
+#pragma warning disable CS0618 // asserting the obsolete member throws is the point
+            () => batch.DeleteRange(Encoding.UTF8.GetBytes("a"), Encoding.UTF8.GetBytes("z"), cf1));
+#pragma warning restore CS0618
+
+        Assert.Contains("WriteBatch.DeleteRange", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(0, batch.Count);
     }
 }

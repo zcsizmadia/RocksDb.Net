@@ -127,24 +127,36 @@ public sealed class WriteBatchWithIndex : RocksDbHandle
 
     // ── DeleteRange ──────────────────────────────────────────────────────────
 
-    /// <summary>Queues a DeleteRange (deletes all keys in [startKey, endKey)) in the default column family.</summary>
-    public unsafe WriteBatchWithIndex DeleteRange(ReadOnlySpan<byte> startKey, ReadOnlySpan<byte> endKey)
-    {
-        fixed (byte* s = startKey)
-        fixed (byte* e = endKey)
-            NativeMethods.rocksdb_writebatch_wi_delete_range(Handle, s, (nuint)startKey.Length, e, (nuint)endKey.Length);
-        return this;
-    }
+    /// <summary>
+    /// Not supported by RocksDb on an indexed batch. Always throws.
+    /// </summary>
+    /// <exception cref="NotSupportedException">Always.</exception>
+    /// <remarks>
+    /// <para>
+    /// <c>WriteBatchWithIndex::DeleteRange</c> returns <c>NotSupported</c> for
+    /// every argument, and the C API discards that status, so this used to queue
+    /// nothing and report success. RocksDb's own header marks the three entry
+    /// points "DO NOT USE - not yet supported".
+    /// </para>
+    /// <para>
+    /// It throws rather than being removed so that the failure is visible.
+    /// Silently dropping a range delete loses data the caller believes is gone.
+    /// Use <see cref="WriteBatch.DeleteRange(ReadOnlySpan{byte}, ReadOnlySpan{byte})"/>
+    /// on a plain batch, which RocksDb does support.
+    /// </para>
+    /// </remarks>
+    [Obsolete("RocksDb does not support DeleteRange on an indexed batch. Use WriteBatch instead.", error: false)]
+    public WriteBatchWithIndex DeleteRange(ReadOnlySpan<byte> startKey, ReadOnlySpan<byte> endKey)
+        => throw new NotSupportedException(NoDeleteRange);
 
-    /// <summary>Queues a DeleteRange in the specified column family.</summary>
-    public unsafe WriteBatchWithIndex DeleteRange(ReadOnlySpan<byte> startKey, ReadOnlySpan<byte> endKey, ColumnFamilyHandle cf)
-    {
-        ArgumentNullException.ThrowIfNull(cf);
-        fixed (byte* s = startKey)
-        fixed (byte* e = endKey)
-            NativeMethods.rocksdb_writebatch_wi_delete_range_cf(Handle, cf.Handle, s, (nuint)startKey.Length, e, (nuint)endKey.Length);
-        return this;
-    }
+    /// <inheritdoc cref="DeleteRange(ReadOnlySpan{byte}, ReadOnlySpan{byte})"/>
+    [Obsolete("RocksDb does not support DeleteRange on an indexed batch. Use WriteBatch instead.", error: false)]
+    public WriteBatchWithIndex DeleteRange(ReadOnlySpan<byte> startKey, ReadOnlySpan<byte> endKey, ColumnFamilyHandle cf)
+        => throw new NotSupportedException(NoDeleteRange);
+
+    private const string NoDeleteRange =
+        "RocksDb does not support DeleteRange on a WriteBatchWithIndex: the native call " +
+        "returns NotSupported and queues nothing. Use WriteBatch.DeleteRange instead.";
 
     // ── Log data ─────────────────────────────────────────────────────────────
 
