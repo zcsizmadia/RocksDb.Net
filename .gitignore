@@ -486,3 +486,8 @@ $RECYCLE.BIN/
 # Test results and coverage reports
 TestResults/
 nupkgs/
+
+# DocFX generated output
+docs/_site/
+docs/api/*.yml
+docs/api/.manifest

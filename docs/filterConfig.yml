@@ -1,0 +1,12 @@
+# Keeps the generated reference to the API consumers actually call.
+apiRules:
+  # The P/Invoke declarations are an implementation detail, and there are 1745
+  # of them, which would swamp everything else.
+  - exclude:
+      uidRegex: ^RocksDbNet\.Native
+      type: Namespace
+
+  # Internal helpers that only exist to support the callback wiring.
+  - exclude:
+      uidRegex: ^RocksDbNet\.Extensions
+      type: Namespace
