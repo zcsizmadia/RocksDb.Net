@@ -50,7 +50,17 @@ jobs:
         TMP: ${{ runner.temp }}
         TEMP: ${{ runner.temp }}
       run: |
+        # --blame-hang turns a hung test run into a report naming the test that
+        # stopped responding, instead of the job stalling until the six-hour
+        # runner limit. A macOS net8.0 run once sat for fourteen minutes with no
+        # output while net9.0 and net10.0 finished in about twenty seconds each,
+        # and the log could say nothing about which test it was.
+        #
+        # The whole suite takes well under a minute on every runner, so five
+        # minutes is generous enough not to fire on a slow machine.
         dotnet test -c Release --no-build \
+          --blame-hang-timeout 5m \
+          --blame-hang-dump-type none \
           --collect:"XPlat Code Coverage" \
           --results-directory TestResults
 

@@ -469,6 +469,63 @@ public sealed class RocksDb : RocksDbHandle
         return result;
     }
 
+    /// <summary>
+    /// Creates one iterator per column family, all sharing a single consistent
+    /// view of the database.
+    /// </summary>
+    /// <param name="columnFamilies">The families to iterate.</param>
+    /// <param name="options">Read options, or <see langword="null"/> for the defaults.</param>
+    /// <returns>The iterators, in the same order as <paramref name="columnFamilies"/>.</returns>
+    /// <remarks>
+    /// <para>
+    /// This is the difference that matters: opening iterators one at a time gives
+    /// no guarantee they see the same state, so a write landing between two calls
+    /// is visible to one iterator and not the other. Created together, they all
+    /// see the same point in time.
+    /// </para>
+    /// <para>
+    /// Dispose every returned iterator. If the call fails, none are created.
+    /// </para>
+    /// </remarks>
+    public unsafe IReadOnlyList<Iterator> NewIterators(
+        IReadOnlyList<ColumnFamilyHandle> columnFamilies, ReadOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(columnFamilies);
+
+        if (columnFamilies.Count == 0)
+        {
+            return [];
+        }
+
+        nint[] cfHandles = new nint[columnFamilies.Count];
+        for (int i = 0; i < columnFamilies.Count; i++)
+        {
+            ArgumentNullException.ThrowIfNull(columnFamilies[i]);
+            cfHandles[i] = columnFamilies[i].Handle;
+        }
+
+        nint[] iterators = new nint[columnFamilies.Count];
+        nint err = default;
+
+        fixed (nint* cfs = cfHandles)
+        fixed (nint* its = iterators)
+            NativeMethods.rocksdb_create_iterators(
+                Handle, (options ?? _defaultReadOptions).Handle, cfs, its,
+                (nuint)columnFamilies.Count, ref err);
+
+        // On failure RocksDb returns before creating any iterator, so there is
+        // nothing to clean up.
+        NativeMethods.ThrowOnError(err);
+
+        var wrapped = new Iterator[columnFamilies.Count];
+        for (int i = 0; i < columnFamilies.Count; i++)
+        {
+            wrapped[i] = Iterator.FromHandle(iterators[i], this, options);
+        }
+
+        return wrapped;
+    }
+
     // ── Reads that avoid a copy ──────────────────────────────────────────────
 
     /// <summary>
@@ -1045,6 +1102,93 @@ public sealed class RocksDb : RocksDbHandle
         NativeMethods.ThrowOnError(err);
 
         return RegisterColumnFamily(name, new ColumnFamilyHandle(handle));
+    }
+
+    /// <summary>
+    /// Creates several column families in one call.
+    /// </summary>
+    /// <param name="options">Options applied to every family created here.</param>
+    /// <param name="names">Names for the new families. None may already exist.</param>
+    /// <returns>The handles, in the same order as <paramref name="names"/>.</returns>
+    /// <remarks>
+    /// Cheaper than a call each, because RocksDb writes one manifest record
+    /// rather than one per family. The handles are registered like any other, so
+    /// <see cref="GetColumnFamily"/> finds them and the database disposes them.
+    /// </remarks>
+    public unsafe IReadOnlyList<ColumnFamilyHandle> CreateColumnFamilies(
+        DbOptions options, IReadOnlyList<string> names)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(names);
+
+        if (names.Count == 0)
+        {
+            return [];
+        }
+
+        byte[][] nameBytes = new byte[names.Count][];
+        nuint[] lengths = new nuint[names.Count];
+
+        for (int i = 0; i < names.Count; i++)
+        {
+            ArgumentException.ThrowIfNullOrEmpty(names[i]);
+            nameBytes[i] = Encoding.UTF8.GetBytes(names[i]);
+            lengths[i] = (nuint)nameBytes[i].Length;
+        }
+
+        nint err = default;
+        nint* list;
+        var pins = new GCHandle[names.Count];
+        var namePtrs = new byte*[names.Count];
+
+        try
+        {
+            for (int i = 0; i < names.Count; i++)
+            {
+                pins[i] = GCHandle.Alloc(nameBytes[i], GCHandleType.Pinned);
+                namePtrs[i] = (byte*)pins[i].AddrOfPinnedObject();
+            }
+
+            fixed (byte** np = namePtrs)
+            fixed (nuint* lp = lengths)
+                list = NativeMethods.rocksdb_create_column_families(
+                    Handle, options.Handle, names.Count, np, lp, ref err);
+        }
+        finally
+        {
+            for (int i = 0; i < names.Count; i++)
+            {
+                if (pins[i].IsAllocated)
+                {
+                    pins[i].Free();
+                }
+            }
+        }
+
+        NativeMethods.ThrowOnError(err);
+
+        if (list is null)
+        {
+            return [];
+        }
+
+        try
+        {
+            var created = new ColumnFamilyHandle[names.Count];
+
+            for (int i = 0; i < names.Count; i++)
+            {
+                created[i] = RegisterColumnFamily(names[i], new ColumnFamilyHandle(list[i]));
+            }
+
+            return created;
+        }
+        finally
+        {
+            // The array is a separate allocation from the handles it holds, and
+            // only the array is released here.
+            NativeMethods.rocksdb_create_column_families_destroy(list);
+        }
     }
 
     /// <summary>Creates a new column family with TTL.</summary>
