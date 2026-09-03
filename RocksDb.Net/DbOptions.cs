@@ -413,32 +413,54 @@ public sealed class DbOptions : RocksDbHandle
         set => NativeMethods.rocksdb_options_set_wal_compression(Handle, (int)value);
     }
 
-    /// <summary>Sets the directory where RocksDb writes log files. Defaults to the DB path.</summary>
-
-    public string DbLogDir
+    /// <summary>
+    /// The directory where RocksDb writes log files. An empty string means the
+    /// database path is used.
+    /// </summary>
+    public unsafe string DbLogDir
     {
+        get => NativeMethods.PtrToStringUTF8(
+            NativeMethods.rocksdb_options_get_db_log_dir(Handle, out nuint length), length) ?? string.Empty;
         set
         {
-            unsafe
-            {
-                fixed (byte* p = Encoding.UTF8.GetBytes(value + '\0'))
-                    NativeMethods.rocksdb_options_set_db_log_dir(Handle, p);
-            }
+            fixed (byte* p = Encoding.UTF8.GetBytes(value + '\0'))
+                NativeMethods.rocksdb_options_set_db_log_dir(Handle, p);
         }
     }
 
-    /// <summary>Sets the directory where WAL files are stored.</summary>
-
-    public string WalDir
+    /// <summary>
+    /// The directory where WAL files are stored. An empty string means the
+    /// database path is used.
+    /// </summary>
+    public unsafe string WalDir
     {
+        get => NativeMethods.PtrToStringUTF8(
+            NativeMethods.rocksdb_options_get_wal_dir(Handle, out nuint length), length) ?? string.Empty;
         set
         {
-            unsafe
-            {
-                fixed (byte* p = Encoding.UTF8.GetBytes(value + '\0'))
-                    NativeMethods.rocksdb_options_set_wal_dir(Handle, p);
-            }
+            fixed (byte* p = Encoding.UTF8.GetBytes(value + '\0'))
+                NativeMethods.rocksdb_options_set_wal_dir(Handle, p);
         }
+    }
+
+    /// <summary>
+    /// If true, memory allocator statistics are included in the log when
+    /// statistics are dumped.
+    /// </summary>
+    public bool DumpMallocStats
+    {
+        get => NativeMethods.rocksdb_options_get_dump_malloc_stats(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_dump_malloc_stats(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>
+    /// If true, the memtable keeps a whole-key bloom filter, which speeds up
+    /// point lookups that miss.
+    /// </summary>
+    public bool MemtableWholeKeyFiltering
+    {
+        get => NativeMethods.rocksdb_options_get_memtable_whole_key_filtering(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_memtable_whole_key_filtering(Handle, value ? (byte)1 : (byte)0);
     }
 
 
@@ -845,6 +867,577 @@ public sealed class DbOptions : RocksDbHandle
         DbLogDir = path;
         return this;
     }
+    // ── RocksDb 11.8.1 additions ─────────────────────────────────────────────
+    // Note: nearly every option here is read once when the database is opened.
+    // Changing it on a DbOptions instance afterwards has no effect; use
+    // RocksDb.SetDbOptions for the options that can change at runtime.
+
+    /// <summary>If true, two-phase commit is allowed, which is required for transactions that prepare before committing.</summary>
+    public bool Allow2Pc
+    {
+        get => NativeMethods.rocksdb_options_get_allow_2pc(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_allow_2pc(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>If true, error messages may include key and value data, which is useful for debugging but may leak sensitive content into logs.</summary>
+    public bool AllowDataInErrors
+    {
+        get => NativeMethods.rocksdb_options_get_allow_data_in_errors(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_allow_data_in_errors(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>If true, RocksDb preallocates file space with fallocate. Disable on filesystems where preallocation is expensive.</summary>
+    public bool AllowFallocate
+    {
+        get => NativeMethods.rocksdb_options_get_allow_fallocate(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_allow_fallocate(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>If true, the next WAL file is created in the background before it is needed, smoothing out write latency at WAL rotation.</summary>
+    public bool AsyncWalPrecreate
+    {
+        get => NativeMethods.rocksdb_options_get_async_wal_precreate(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_async_wal_precreate(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>If true, data recovered from the WAL is not flushed to SST files during open, which speeds up recovery at the cost of replaying more WAL next time.</summary>
+    public bool AvoidFlushDuringRecovery
+    {
+        get => NativeMethods.rocksdb_options_get_avoid_flush_during_recovery(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_avoid_flush_during_recovery(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>If true, memtables are not flushed when the database is closed. Data is still durable if the WAL is enabled, but the next open replays more WAL.</summary>
+    public bool AvoidFlushDuringShutdown
+    {
+        get => NativeMethods.rocksdb_options_get_avoid_flush_during_shutdown(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_avoid_flush_during_shutdown(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>If true, WAL files that are no longer being written are closed on a background thread rather than on the write path.</summary>
+    public bool BackgroundCloseInactiveWals
+    {
+        get => NativeMethods.rocksdb_options_get_background_close_inactive_wals(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_background_close_inactive_wals(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>If true, open recovers as much data as it can rather than failing on corruption. Data may be silently lost, so use this only to salvage a damaged database.</summary>
+    public bool BestEffortsRecovery
+    {
+        get => NativeMethods.rocksdb_options_get_best_efforts_recovery(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_best_efforts_recovery(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>Interval in microseconds between attempts to recover from a background error.</summary>
+    public ulong BgErrorResumeRetryInterval
+    {
+        get => NativeMethods.rocksdb_options_get_bgerror_resume_retry_interval(Handle);
+        set => NativeMethods.rocksdb_options_set_bgerror_resume_retry_interval(Handle, value);
+    }
+
+    /// <summary>Number of partitions used when writing blob files directly.</summary>
+    public uint BlobDirectWritePartitions
+    {
+        get => NativeMethods.rocksdb_options_get_blob_direct_write_partitions(Handle);
+        set => NativeMethods.rocksdb_options_set_blob_direct_write_partitions(Handle, value);
+    }
+
+    /// <summary>Per-key checksum bytes added to block data to detect in-memory corruption. 0 disables it. Larger values catch more corruption at the cost of memory.</summary>
+    public byte BlockProtectionBytesPerKey
+    {
+        get => NativeMethods.rocksdb_options_get_block_protection_bytes_per_key(Handle);
+        set => NativeMethods.rocksdb_options_set_block_protection_bytes_per_key(Handle, value);
+    }
+
+    /// <summary>Seconds to wait before compacting a bottommost file that has become eligible. 0 compacts without delay.</summary>
+    public uint BottommostFileCompactionDelay
+    {
+        get => NativeMethods.rocksdb_options_get_bottommost_file_compaction_delay(Handle);
+        set => NativeMethods.rocksdb_options_set_bottommost_file_compaction_delay(Handle, value);
+    }
+
+    /// <summary>If true, this column family permits ingesting files below the existing data, which is required by IngestExternalFileOptions.IngestBehind.</summary>
+    public bool CfAllowIngestBehind
+    {
+        get => NativeMethods.rocksdb_options_get_cf_allow_ingest_behind(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_cf_allow_ingest_behind(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>If true, compaction verifies that the number of records written matches the number read, catching silent data loss.</summary>
+    public bool CompactionVerifyRecordCount
+    {
+        get => NativeMethods.rocksdb_options_get_compaction_verify_record_count(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_compaction_verify_record_count(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>Daily window in which RocksDb may schedule extra background work, as "HH:mm-HH:mm" in UTC. An empty string disables it.</summary>
+    public unsafe string DailyOffpeakTimeUtc
+    {
+        get => NativeMethods.PtrToStringUTF8(
+            NativeMethods.rocksdb_options_get_daily_offpeak_time_utc(Handle, out nuint length), length) ?? string.Empty;
+        set
+        {
+            fixed (byte* p = Encoding.UTF8.GetBytes(value + '\0'))
+                NativeMethods.rocksdb_options_set_daily_offpeak_time_utc(Handle, p);
+        }
+    }
+
+    /// <summary>Host identifier recorded in SST files and the manifest. Useful for tracing which machine produced a file.</summary>
+    public unsafe string DbHostId
+    {
+        get => NativeMethods.PtrToStringUTF8(
+            NativeMethods.rocksdb_options_get_db_host_id(Handle, out nuint length), length) ?? string.Empty;
+        set
+        {
+            fixed (byte* p = Encoding.UTF8.GetBytes(value + '\0'))
+                NativeMethods.rocksdb_options_set_db_host_id(Handle, p);
+        }
+    }
+
+    /// <summary>Storage temperature applied to files with no more specific temperature setting.</summary>
+    public Temperature DefaultTemperature
+    {
+        get => (Temperature)NativeMethods.rocksdb_options_get_default_temperature(Handle);
+        set => NativeMethods.rocksdb_options_set_default_temperature(Handle, (int)value);
+    }
+
+    /// <summary>Storage temperature for newly written files.</summary>
+    public Temperature DefaultWriteTemperature
+    {
+        get => (Temperature)NativeMethods.rocksdb_options_get_default_write_temperature(Handle);
+        set => NativeMethods.rocksdb_options_set_default_write_temperature(Handle, (int)value);
+    }
+
+    /// <summary>Rate in bytes per second that writes are throttled to when RocksDb needs to slow the writer down. 0 lets RocksDb choose.</summary>
+    public ulong DelayedWriteRate
+    {
+        get => NativeMethods.rocksdb_options_get_delayed_write_rate(Handle);
+        set => NativeMethods.rocksdb_options_set_delayed_write_rate(Handle, value);
+    }
+
+    /// <summary>If true, writes to the memtable are rejected. Used by read-only and ingest-only configurations.</summary>
+    public bool DisallowMemtableWrites
+    {
+        get => NativeMethods.rocksdb_options_get_disallow_memtable_writes(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_disallow_memtable_writes(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>If true, blob files are written directly rather than through the regular write path.</summary>
+    public bool EnableBlobDirectWrite
+    {
+        get => NativeMethods.rocksdb_options_get_enable_blob_direct_write(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_enable_blob_direct_write(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>If true, RocksDb tracks per-thread operation status, which is visible through its thread-status API. Adds a small overhead.</summary>
+    public bool EnableThreadTracking
+    {
+        get => NativeMethods.rocksdb_options_get_enable_thread_tracking(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_enable_thread_tracking(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>If true, RocksDb enforces the rule that a single delete matches at most one put. Violations become errors rather than undefined behaviour.</summary>
+    public bool EnforceSingleDelContracts
+    {
+        get => NativeMethods.rocksdb_options_get_enforce_single_del_contracts(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_enforce_single_del_contracts(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>If true, the write buffer manager memory limit is enforced while recovering from the WAL, not only during normal operation.</summary>
+    public bool EnforceWriteBufferManagerDuringRecovery
+    {
+        get => NativeMethods.rocksdb_options_get_enforce_write_buffer_manager_during_recovery(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_enforce_write_buffer_manager_during_recovery(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>If true, SST files are opened with less upfront validation, trading open-time checking for speed.</summary>
+    public bool FastSstOpen
+    {
+        get => NativeMethods.rocksdb_options_get_fast_sst_open(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_fast_sst_open(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>If true, flush verifies that the number of entries written matches the memtable count, catching silent data loss.</summary>
+    public bool FlushVerifyMemtableCount
+    {
+        get => NativeMethods.rocksdb_options_get_flush_verify_memtable_count(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_flush_verify_memtable_count(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>Number of times a follower instance retries catching up to the leader before giving up.</summary>
+    public ulong FollowerCatchupRetryCount
+    {
+        get => NativeMethods.rocksdb_options_get_follower_catchup_retry_count(Handle);
+        set => NativeMethods.rocksdb_options_set_follower_catchup_retry_count(Handle, value);
+    }
+
+    /// <summary>Milliseconds a follower waits between catch-up attempts.</summary>
+    public ulong FollowerCatchupRetryWaitMs
+    {
+        get => NativeMethods.rocksdb_options_get_follower_catchup_retry_wait_ms(Handle);
+        set => NativeMethods.rocksdb_options_set_follower_catchup_retry_wait_ms(Handle, value);
+    }
+
+    /// <summary>Milliseconds between a follower refreshing its view of the leader.</summary>
+    public ulong FollowerRefreshCatchupPeriodMs
+    {
+        get => NativeMethods.rocksdb_options_get_follower_refresh_catchup_period_ms(Handle);
+        set => NativeMethods.rocksdb_options_set_follower_refresh_catchup_period_ms(Handle, value);
+    }
+
+    /// <summary>If true, RocksDb checks LSM structure consistency and fails the operation on a violation rather than continuing with a corrupt view. On by default in recent versions.</summary>
+    public bool ForceConsistencyChecks
+    {
+        get => NativeMethods.rocksdb_options_get_force_consistency_checks(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_force_consistency_checks(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>Storage temperature for files in the last level, which typically hold the coldest data.</summary>
+    public Temperature LastLevelTemperature
+    {
+        get => (Temperature)NativeMethods.rocksdb_options_get_last_level_temperature(Handle);
+        set => NativeMethods.rocksdb_options_set_last_level_temperature(Handle, (int)value);
+    }
+
+    /// <summary>Readahead size in bytes used when reading the WAL. 0 lets RocksDb choose.</summary>
+    public ulong LogReadaheadSize
+    {
+        get => (ulong)NativeMethods.rocksdb_options_get_log_readahead_size(Handle);
+        set => NativeMethods.rocksdb_options_set_log_readahead_size(Handle, (nuint)value);
+    }
+
+    /// <summary>The lowest cache tier reads are allowed to use. Restricting this keeps reads out of slower tiers.</summary>
+    public CacheTier LowestUsedCacheTier
+    {
+        get => (CacheTier)NativeMethods.rocksdb_options_get_lowest_used_cache_tier(Handle);
+        set => NativeMethods.rocksdb_options_set_lowest_used_cache_tier(Handle, (int)value);
+    }
+
+    /// <summary>Maximum number of automatic attempts to recover from a background error. 0 disables automatic recovery.</summary>
+    public int MaxBgErrorResumeCount
+    {
+        get => NativeMethods.rocksdb_options_get_max_bgerror_resume_count(Handle);
+        set => NativeMethods.rocksdb_options_set_max_bgerror_resume_count(Handle, value);
+    }
+
+    /// <summary>Maximum seconds RocksDb sleeps before re-checking whether a compaction should start.</summary>
+    public ulong MaxCompactionTriggerWakeupSeconds
+    {
+        get => NativeMethods.rocksdb_options_get_max_compaction_trigger_wakeup_seconds(Handle);
+        set => NativeMethods.rocksdb_options_set_max_compaction_trigger_wakeup_seconds(Handle, value);
+    }
+
+    /// <summary>Manifest space amplification limit as a percentage, above which the manifest is rewritten.</summary>
+    public int MaxManifestSpaceAmpPct
+    {
+        get => NativeMethods.rocksdb_options_get_max_manifest_space_amp_pct(Handle);
+        set => NativeMethods.rocksdb_options_set_max_manifest_space_amp_pct(Handle, value);
+    }
+
+    /// <summary>Maximum combined size in bytes of write batches grouped into a single write.</summary>
+    public ulong MaxWriteBatchGroupSizeBytes
+    {
+        get => NativeMethods.rocksdb_options_get_max_write_batch_group_size_bytes(Handle);
+        set => NativeMethods.rocksdb_options_set_max_write_batch_group_size_bytes(Handle, value);
+    }
+
+    /// <summary>If true, multi-key lookups against the memtable use a batched path.</summary>
+    public bool MemtableBatchLookupOptimization
+    {
+        get => NativeMethods.rocksdb_options_get_memtable_batch_lookup_optimization(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_memtable_batch_lookup_optimization(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>Number of range deletions in a memtable that triggers a flush. 0 means no limit.</summary>
+    public uint MemtableMaxRangeDeletions
+    {
+        get => NativeMethods.rocksdb_options_get_memtable_max_range_deletions(Handle);
+        set => NativeMethods.rocksdb_options_set_memtable_max_range_deletions(Handle, value);
+    }
+
+    /// <summary>Per-key checksum bytes added to memtable entries to detect in-memory corruption. 0 disables it.</summary>
+    public uint MemtableProtectionBytesPerKey
+    {
+        get => NativeMethods.rocksdb_options_get_memtable_protection_bytes_per_key(Handle);
+        set => NativeMethods.rocksdb_options_set_memtable_protection_bytes_per_key(Handle, value);
+    }
+
+    /// <summary>If true, memtable per-key checksums are verified on seek as well as on read.</summary>
+    public bool MemtableVerifyPerKeyChecksumOnSeek
+    {
+        get => NativeMethods.rocksdb_options_get_memtable_verify_per_key_checksum_on_seek(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_memtable_verify_per_key_checksum_on_seek(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>Storage temperature for newly written metadata files such as the manifest.</summary>
+    public Temperature MetadataWriteTemperature
+    {
+        get => (Temperature)NativeMethods.rocksdb_options_get_metadata_write_temperature(Handle);
+        set => NativeMethods.rocksdb_options_set_metadata_write_temperature(Handle, (int)value);
+    }
+
+    /// <summary>Number of adjacent tombstones before RocksDb converts them into a range deletion.</summary>
+    public uint MinTombstonesForRangeConversion
+    {
+        get => NativeMethods.rocksdb_options_get_min_tombstones_for_range_conversion(Handle);
+        set => NativeMethods.rocksdb_options_set_min_tombstones_for_range_conversion(Handle, value);
+    }
+
+    /// <summary>If true, the manifest is written in a form that makes recovery faster.</summary>
+    public bool OptimizeManifestForRecovery
+    {
+        get => NativeMethods.rocksdb_options_get_optimize_manifest_for_recovery(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_optimize_manifest_for_recovery(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>If true, RocksDb re-reads and validates each file it writes. Catches storage problems early at a significant cost in write throughput.</summary>
+    public bool ParanoidFileChecks
+    {
+        get => NativeMethods.rocksdb_options_get_paranoid_file_checks(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_paranoid_file_checks(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>If true, RocksDb performs extra validation of in-memory structures.</summary>
+    public bool ParanoidMemoryChecks
+    {
+        get => NativeMethods.rocksdb_options_get_paranoid_memory_checks(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_paranoid_memory_checks(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>If true, statistics are persisted to a hidden column family so they survive a restart.</summary>
+    public bool PersistStatsToDisk
+    {
+        get => NativeMethods.rocksdb_options_get_persist_stats_to_disk(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_persist_stats_to_disk(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>If true, user-defined timestamps are written to SST files. Setting this false discards them during compaction.</summary>
+    public bool PersistUserDefinedTimestamps
+    {
+        get => NativeMethods.rocksdb_options_get_persist_user_defined_timestamps(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_persist_user_defined_timestamps(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>Data written within this many seconds is kept out of the last level, so recent data stays on faster storage. 0 disables it.</summary>
+    public ulong PrecludeLastLevelDataSeconds
+    {
+        get => NativeMethods.rocksdb_options_get_preclude_last_level_data_seconds(Handle);
+        set => NativeMethods.rocksdb_options_set_preclude_last_level_data_seconds(Handle, value);
+    }
+
+    /// <summary>If true, prefix seek behaviour applies only when a read explicitly opts in, rather than being inferred from the prefix extractor.</summary>
+    public bool PrefixSeekOptInOnly
+    {
+        get => NativeMethods.rocksdb_options_get_prefix_seek_opt_in_only(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_prefix_seek_opt_in_only(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>How many seconds of write-time information RocksDb retains, which enables time-aware features such as temperature placement. 0 disables it.</summary>
+    public ulong PreserveInternalTimeSeconds
+    {
+        get => NativeMethods.rocksdb_options_get_preserve_internal_time_seconds(Handle);
+        set => NativeMethods.rocksdb_options_set_preserve_internal_time_seconds(Handle, value);
+    }
+
+    /// <summary>Number of threads used by the read I/O executor. 0 lets RocksDb choose.</summary>
+    public int ReadIoExecutorThreads
+    {
+        get => NativeMethods.rocksdb_options_get_read_io_executor_threads(Handle);
+        set => NativeMethods.rocksdb_options_set_read_io_executor_threads(Handle, value);
+    }
+
+    /// <summary>Fraction of a file that must be read before reads alone trigger its compaction.</summary>
+    public double ReadTriggeredCompactionThreshold
+    {
+        get => NativeMethods.rocksdb_options_get_read_triggered_compaction_threshold(Handle);
+        set => NativeMethods.rocksdb_options_set_read_triggered_compaction_threshold(Handle, value);
+    }
+
+    /// <summary>If true, an existing manifest is appended to rather than rewritten at open, making open faster.</summary>
+    public bool ReuseManifestOnOpen
+    {
+        get => NativeMethods.rocksdb_options_get_reuse_manifest_on_open(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_reuse_manifest_on_open(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>Sample one in this many blocks to measure how well they compress. 0 disables sampling.</summary>
+    public ulong SampleForCompression
+    {
+        get => NativeMethods.rocksdb_options_get_sample_for_compression(Handle);
+        set => NativeMethods.rocksdb_options_set_sample_for_compression(Handle, value);
+    }
+
+    /// <summary>Bytes of in-memory statistics history to retain.</summary>
+    public ulong StatsHistoryBufferSize
+    {
+        get => (ulong)NativeMethods.rocksdb_options_get_stats_history_buffer_size(Handle);
+        set => NativeMethods.rocksdb_options_set_stats_history_buffer_size(Handle, (nuint)value);
+    }
+
+    /// <summary>If true, BytesPerSync and WalBytesPerSync are treated as hard limits rather than hints, giving more predictable I/O at some cost in throughput.</summary>
+    public bool StrictBytesPerSync
+    {
+        get => NativeMethods.rocksdb_options_get_strict_bytes_per_sync(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_strict_bytes_per_sync(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>If true, MaxSuccessiveMerges is enforced strictly, even when doing so requires extra work on the read path.</summary>
+    public bool StrictMaxSuccessiveMerges
+    {
+        get => NativeMethods.rocksdb_options_get_strict_max_successive_merges(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_strict_max_successive_merges(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>If true, TargetFileSizeBase is an upper bound rather than a target, so files never exceed it.</summary>
+    public bool TargetFileSizeIsUpperBound
+    {
+        get => NativeMethods.rocksdb_options_get_target_file_size_is_upper_bound(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_target_file_size_is_upper_bound(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>If true, WAL files are tracked in the manifest and verified at open, so a missing or truncated WAL is detected rather than silently ignored.</summary>
+    public bool TrackAndVerifyWals
+    {
+        get => NativeMethods.rocksdb_options_get_track_and_verify_wals(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_track_and_verify_wals(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>If true, WAL writes and memtable writes use separate queues, which improves throughput for two-phase commit workloads.</summary>
+    public bool TwoWriteQueues
+    {
+        get => NativeMethods.rocksdb_options_get_two_write_queues(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_two_write_queues(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>How aggressively blocks belonging to deleted files are evicted from the block cache. 0 leaves them to age out normally.</summary>
+    public uint UncacheAggressiveness
+    {
+        get => NativeMethods.rocksdb_options_get_uncache_aggressiveness(Handle);
+        set => NativeMethods.rocksdb_options_set_uncache_aggressiveness(Handle, value);
+    }
+
+    /// <summary>If true, compaction reads bypass the OS page cache. Note this is the column-family level setting, distinct from the database-wide flush and compaction option.</summary>
+    public bool UseDirectIoForCompactionReads
+    {
+        get => NativeMethods.rocksdb_options_get_use_direct_io_for_compaction_reads(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_use_direct_io_for_compaction_reads(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>If true, the manifest is read back and verified when the database is closed.</summary>
+    public bool VerifyManifestContentOnClose
+    {
+        get => NativeMethods.rocksdb_options_get_verify_manifest_content_on_close(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_verify_manifest_content_on_close(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>Bit flags selecting which compaction output verifications to run. The individual flag values are defined by RocksDb and are not exposed as an enum.</summary>
+    public int VerifyOutputFlags
+    {
+        get => NativeMethods.rocksdb_options_get_verify_output_flags(Handle);
+        set => NativeMethods.rocksdb_options_set_verify_output_flags(Handle, value);
+    }
+
+    /// <summary>If true, each SST file unique identifier is checked against the manifest at open, detecting a file that has been swapped or truncated.</summary>
+    public bool VerifySstUniqueIdInManifest
+    {
+        get => NativeMethods.rocksdb_options_get_verify_sst_unique_id_in_manifest(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_verify_sst_unique_id_in_manifest(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>Storage temperature for newly written WAL files.</summary>
+    public Temperature WalWriteTemperature
+    {
+        get => (Temperature)NativeMethods.rocksdb_options_get_wal_write_temperature(Handle);
+        set => NativeMethods.rocksdb_options_set_wal_write_temperature(Handle, (int)value);
+    }
+
+    /// <summary>Microseconds a writer spins yielding to other threads before blocking.</summary>
+    public ulong WriteThreadMaxYieldUsec
+    {
+        get => NativeMethods.rocksdb_options_get_write_thread_max_yield_usec(Handle);
+        set => NativeMethods.rocksdb_options_set_write_thread_max_yield_usec(Handle, value);
+    }
+
+    /// <summary>Microseconds above which a yield is considered slow, which makes the writer stop spinning and block instead.</summary>
+    public ulong WriteThreadSlowYieldUsec
+    {
+        get => NativeMethods.rocksdb_options_get_write_thread_slow_yield_usec(Handle);
+        set => NativeMethods.rocksdb_options_set_write_thread_slow_yield_usec(Handle, value);
+    }
+
+    // ── Checksum handoff file types ──────────────────────────────────────────
+    // A set rather than a single value: checksum handoff is enabled per file
+    // kind, so the C API exposes add / remove / contains / count / clear
+    // instead of a getter and setter pair.
+
+    /// <summary>
+    /// Enables checksum handoff for <paramref name="fileType"/>, asking the
+    /// filesystem to verify the checksum RocksDb computed. Only takes effect on
+    /// a filesystem that supports it.
+    /// </summary>
+    public DbOptions AddChecksumHandoffFileType(FileType fileType)
+    {
+        NativeMethods.rocksdb_options_checksum_handoff_file_types_add(Handle, (int)fileType);
+        return this;
+    }
+
+    /// <summary>Disables checksum handoff for <paramref name="fileType"/>.</summary>
+    public DbOptions RemoveChecksumHandoffFileType(FileType fileType)
+    {
+        NativeMethods.rocksdb_options_checksum_handoff_file_types_remove(Handle, (int)fileType);
+        return this;
+    }
+
+    /// <summary>Whether checksum handoff is enabled for <paramref name="fileType"/>.</summary>
+    public bool ContainsChecksumHandoffFileType(FileType fileType)
+        => NativeMethods.rocksdb_options_checksum_handoff_file_types_contains(Handle, (int)fileType) != 0;
+
+    /// <summary>The number of file kinds checksum handoff is enabled for.</summary>
+    public int ChecksumHandoffFileTypeCount
+        => checked((int)NativeMethods.rocksdb_options_checksum_handoff_file_types_count(Handle));
+
+    /// <summary>Disables checksum handoff for every file kind.</summary>
+    public DbOptions ClearChecksumHandoffFileTypes()
+    {
+        NativeMethods.rocksdb_options_checksum_handoff_file_types_clear(Handle);
+        return this;
+    }
+
+    // ── SST write lifetime hint compaction styles ────────────────────────────
+
+    /// <summary>
+    /// Asks RocksDb to calculate an SST write lifetime hint for
+    /// <paramref name="compactionStyle"/>. The hint is passed to the filesystem,
+    /// which may use it to place data.
+    /// </summary>
+    public DbOptions AddCalculateSstWriteLifetimeHint(CompactionStyle compactionStyle)
+    {
+        NativeMethods.rocksdb_options_calculate_sst_write_lifetime_hint_set_add(Handle, (int)compactionStyle);
+        return this;
+    }
+
+    /// <summary>Stops calculating the write lifetime hint for <paramref name="compactionStyle"/>.</summary>
+    public DbOptions RemoveCalculateSstWriteLifetimeHint(CompactionStyle compactionStyle)
+    {
+        NativeMethods.rocksdb_options_calculate_sst_write_lifetime_hint_set_remove(Handle, (int)compactionStyle);
+        return this;
+    }
+
+    /// <summary>Whether the write lifetime hint is calculated for <paramref name="compactionStyle"/>.</summary>
+    public bool ContainsCalculateSstWriteLifetimeHint(CompactionStyle compactionStyle)
+        => NativeMethods.rocksdb_options_calculate_sst_write_lifetime_hint_set_contains(Handle, (int)compactionStyle) != 0;
+
+    /// <summary>The number of compaction styles the write lifetime hint is calculated for.</summary>
+    public int CalculateSstWriteLifetimeHintCount
+        => checked((int)NativeMethods.rocksdb_options_calculate_sst_write_lifetime_hint_set_count(Handle));
+
+    /// <summary>Stops calculating the write lifetime hint for every compaction style.</summary>
+    public DbOptions ClearCalculateSstWriteLifetimeHints()
+    {
+        NativeMethods.rocksdb_options_calculate_sst_write_lifetime_hint_set_clear(Handle);
+        return this;
+    }
+
 
     // ── Dispose ──────────────────────────────────
 
