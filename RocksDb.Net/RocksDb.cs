@@ -1064,6 +1064,106 @@ public sealed class RocksDb : RocksDbHandle
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Write-ahead log
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns every write-ahead log file RocksDb still retains, oldest first.
+    /// </summary>
+    /// <remarks>
+    /// Includes both archived logs and the live one. The values are copied out,
+    /// so nothing here has to be disposed and the result outlives the call.
+    /// </remarks>
+    public IReadOnlyList<WalFile> GetSortedWalFiles()
+    {
+        nint err = default;
+        nint files = NativeMethods.rocksdb_get_sorted_wal_files(Handle, ref err);
+        NativeMethods.ThrowOnError(err);
+
+        if (files == nint.Zero)
+        {
+            return [];
+        }
+
+        try
+        {
+            nuint count = NativeMethods.rocksdb_wal_files_count(files);
+            var results = new List<WalFile>(checked((int)count));
+
+            for (nuint i = 0; i < count; i++)
+            {
+                // Each entry points into a vector owned by `files`, so it must
+                // not be destroyed individually. Copying sidesteps that.
+                if (WalFile.Copy(NativeMethods.rocksdb_wal_files_get_wal_file(files, i)) is { } file)
+                {
+                    results.Add(file);
+                }
+            }
+
+            return results;
+        }
+        finally
+        {
+            NativeMethods.rocksdb_wal_files_destroy(files);
+        }
+    }
+
+    /// <summary>
+    /// Returns the write-ahead log file currently being written to.
+    /// </summary>
+    public WalFile? GetCurrentWalFile()
+    {
+        nint err = default;
+        nint file = NativeMethods.rocksdb_get_current_wal_file(Handle, ref err);
+        NativeMethods.ThrowOnError(err);
+
+        if (file == nint.Zero)
+        {
+            return null;
+        }
+
+        try
+        {
+            // Unlike the entries from GetSortedWalFiles, this one is ours.
+            return WalFile.Copy(file);
+        }
+        finally
+        {
+            NativeMethods.rocksdb_wal_file_destroy(file);
+        }
+    }
+
+    /// <summary>
+    /// Returns an iterator over write-ahead log records written at or after
+    /// <paramref name="sequenceNumber"/>.
+    /// </summary>
+    /// <param name="sequenceNumber">
+    /// Where to start. 0 means the oldest record still retained.
+    /// </param>
+    /// <param name="options">
+    /// Read settings, or <c>null</c> for RocksDb's defaults.
+    /// </param>
+    /// <remarks>
+    /// The basis for replication and change-data-capture: each step yields the
+    /// batch that was written and the sequence number it started at. Only
+    /// records still in the WAL are visible, so a sequence number older than the
+    /// oldest retained log fails rather than returning nothing.
+    /// </remarks>
+    /// <exception cref="RocksDbException">
+    /// The requested sequence number is no longer available, or reading the log
+    /// failed.
+    /// </exception>
+    public WalIterator GetUpdatesSince(ulong sequenceNumber, WalReadOptions? options = null)
+    {
+        nint err = default;
+        nint iter = NativeMethods.rocksdb_get_updates_since(
+            Handle, sequenceNumber, options?.Handle ?? nint.Zero, ref err);
+        NativeMethods.ThrowOnError(err);
+
+        return new WalIterator(iter);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // Background work
     // ─────────────────────────────────────────────────────────────────────────
 

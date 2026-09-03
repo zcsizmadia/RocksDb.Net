@@ -14,6 +14,15 @@ public sealed class WriteBatch : RocksDbHandle
     {
     }
 
+    /// <summary>
+    /// Wraps a batch RocksDb allocated, such as the one
+    /// <see cref="WalIterator"/> produces for each WAL record.
+    /// </summary>
+    internal WriteBatch(nint handle)
+        : base(handle)
+    {
+    }
+
     /// <summary>Returns the number of operations in the batch.</summary>
     public int Count => NativeMethods.rocksdb_writebatch_count(Handle);
 
