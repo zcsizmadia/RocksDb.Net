@@ -103,6 +103,8 @@ public sealed class BackupEngine : RocksDbHandle
     /// Creates a new backup with application metadata attached, and returns the
     /// identifier RocksDb assigned to it.
     /// </summary>
+    /// <param name="db">The database to back up.</param>
+    /// <param name="options">Settings for this backup.</param>
     /// <param name="appMetadata">
     /// Opaque bytes stored alongside the backup and returned in
     /// <see cref="BackupInfo.AppMetadata"/>. RocksDb copies them, and treats them
