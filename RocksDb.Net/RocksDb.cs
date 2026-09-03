@@ -570,11 +570,179 @@ public sealed class RocksDb : RocksDbHandle
     // ─────────────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Retrieves multiple keys in a single call from the default column family.
-    /// Returns one result per key; results are <c>null</c> for keys that do not exist.
-    /// Throws <see cref="RocksDbException"/> on the first key-level error.
+    /// Reads several keys from the default column family in one call.
     /// </summary>
-    public unsafe byte[]?[] MultiGet(IReadOnlyList<byte[]> keys, ReadOptions? options = null)
+    /// <remarks>
+    /// A missing key yields <see langword="null"/> in the corresponding
+    /// position, so the result always has one entry per key.
+    /// </remarks>
+    public byte[]?[] MultiGet(IReadOnlyList<byte[]> keys, ReadOptions? options = null)
+        => MultiGetCore(keys, columnFamilies: null, options);
+
+    /// <summary>
+    /// Reads several keys from <paramref name="cf"/> in one call.
+    /// </summary>
+    /// <inheritdoc cref="MultiGet(IReadOnlyList{byte[]}, ReadOptions?)" path="/remarks"/>
+    public byte[]?[] MultiGet(IReadOnlyList<byte[]> keys, ColumnFamilyHandle cf, ReadOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+        ArgumentNullException.ThrowIfNull(cf);
+
+        nint[] handles = new nint[keys.Count];
+        Array.Fill(handles, cf.Handle);
+
+        return MultiGetCore(keys, handles, options);
+    }
+
+    /// <summary>
+    /// Reads several keys in one call, each from the column family at the same
+    /// position in <paramref name="columnFamilies"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The reason this overload exists: RocksDb takes one column family per key,
+    /// so a caller can fetch across several families in a single round trip.
+    /// Restricting the API to one family per call would throw that away.
+    /// </para>
+    /// <para>
+    /// Two parallel lists rather than a list of pairs, because a second
+    /// list-shaped overload would make <c>MultiGet([])</c> ambiguous at the call
+    /// site for every existing caller.
+    /// </para>
+    /// <para>
+    /// A missing key yields <see langword="null"/> in the corresponding position.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentException">The two lists are of different lengths.</exception>
+    public byte[]?[] MultiGet(
+        IReadOnlyList<byte[]> keys, IReadOnlyList<ColumnFamilyHandle> columnFamilies, ReadOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+        ArgumentNullException.ThrowIfNull(columnFamilies);
+
+        if (keys.Count != columnFamilies.Count)
+        {
+            throw new ArgumentException(
+                $"Expected one column family per key, but got {keys.Count} keys and " +
+                $"{columnFamilies.Count} column families.",
+                nameof(columnFamilies));
+        }
+
+        nint[] handles = new nint[columnFamilies.Count];
+        for (int i = 0; i < columnFamilies.Count; i++)
+        {
+            ColumnFamilyHandle cf = columnFamilies[i];
+            ArgumentNullException.ThrowIfNull(cf);
+            handles[i] = cf.Handle;
+        }
+
+        return MultiGetCore(keys, handles, options);
+    }
+
+    /// <summary>
+    /// Reads several keys from <paramref name="cf"/> in one call, without copying
+    /// the values into managed memory.
+    /// </summary>
+    /// <param name="keys">The keys to read.</param>
+    /// <param name="cf">The column family to read from.</param>
+    /// <param name="sortedInput">
+    /// Set this when <paramref name="keys"/> is already in the database's sort
+    /// order, which lets RocksDb skip sorting them. Passing
+    /// <see langword="true"/> for unsorted keys gives wrong results, so leave it
+    /// alone unless the order is guaranteed.
+    /// </param>
+    /// <param name="options">Read options, or <see langword="null"/> for the defaults.</param>
+    /// <returns>
+    /// One entry per key, <see langword="null"/> where the key was absent. Every
+    /// non-null entry must be disposed; see <see cref="PinnableSlice"/>.
+    /// </returns>
+    /// <remarks>
+    /// The batched counterpart to
+    /// <see cref="GetPinned(ReadOnlySpan{byte}, ColumnFamilyHandle, ReadOptions?)"/>.
+    /// It avoids a copy per key, which is what makes it worth the disposal
+    /// burden on a large batch. RocksDb offers this only per column family, so
+    /// there is no cross-family or default-family overload.
+    /// </remarks>
+    public unsafe PinnableSlice?[] MultiGetPinned(
+        IReadOnlyList<byte[]> keys, ColumnFamilyHandle cf, bool sortedInput = false, ReadOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+        ArgumentNullException.ThrowIfNull(cf);
+
+        int n = keys.Count;
+        if (n == 0)
+        {
+            return [];
+        }
+
+        byte*[] keyPtrs = new byte*[n];
+        nuint[] keySizes = new nuint[n];
+        nint[] slices = new nint[n];
+        nint[] errs = new nint[n];
+
+        var pins = new GCHandle[n];
+        try
+        {
+            for (int i = 0; i < n; i++)
+            {
+                ArgumentNullException.ThrowIfNull(keys[i]);
+                pins[i] = GCHandle.Alloc(keys[i], GCHandleType.Pinned);
+                keyPtrs[i] = (byte*)pins[i].AddrOfPinnedObject();
+                keySizes[i] = (nuint)keys[i].Length;
+            }
+
+            fixed (byte** kp = keyPtrs)
+            fixed (nuint* ks = keySizes)
+            fixed (nint* sp = slices)
+            fixed (nint* ep = errs)
+                NativeMethods.rocksdb_batched_multi_get_cf(Handle, (options ?? _defaultReadOptions).Handle,
+                    cf.Handle, (nuint)n, kp, ks, sp, (byte**)ep, sortedInput ? (byte)1 : (byte)0);
+        }
+        finally
+        {
+            for (int i = 0; i < n; i++)
+            {
+                if (pins[i].IsAllocated)
+                {
+                    pins[i].Free();
+                }
+            }
+        }
+
+        // Wrap everything before throwing, so a failure in one key does not leak
+        // the slices RocksDb allocated for the others.
+        var results = new PinnableSlice?[n];
+        for (int i = 0; i < n; i++)
+        {
+            if (slices[i] != nint.Zero)
+            {
+                results[i] = new PinnableSlice(slices[i], this);
+            }
+        }
+
+        try
+        {
+            ThrowFirstError(errs);
+        }
+        catch
+        {
+            foreach (PinnableSlice? slice in results)
+            {
+                slice?.Dispose();
+            }
+
+            throw;
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// Shared implementation. A null <paramref name="columnFamilies"/> reads from
+    /// the default family; otherwise it holds one handle per key.
+    /// </summary>
+    private unsafe byte[]?[] MultiGetCore(
+        IReadOnlyList<byte[]> keys, nint[]? columnFamilies, ReadOptions? options)
     {
         ArgumentNullException.ThrowIfNull(keys);
 
@@ -584,21 +752,20 @@ public sealed class RocksDb : RocksDbHandle
             return [];
         }
 
-        // Stack-allocate pointer arrays for small batches to avoid heap pressure.
         byte*[] keyPtrs = new byte*[n];
         nuint[] keySizes = new nuint[n];
         byte*[] valPtrs = new byte*[n];
         nuint[] valSizes = new nuint[n];
         nint[] errs = new nint[n];
 
-        // Pin all key arrays and populate pointer arrays.
-        var handles = new GCHandle[n];
+        var pins = new GCHandle[n];
         try
         {
             for (int i = 0; i < n; i++)
             {
-                handles[i] = GCHandle.Alloc(keys[i], GCHandleType.Pinned);
-                keyPtrs[i] = (byte*)handles[i].AddrOfPinnedObject();
+                ArgumentNullException.ThrowIfNull(keys[i]);
+                pins[i] = GCHandle.Alloc(keys[i], GCHandleType.Pinned);
+                keyPtrs[i] = (byte*)pins[i].AddrOfPinnedObject();
                 keySizes[i] = (nuint)keys[i].Length;
             }
 
@@ -607,30 +774,79 @@ public sealed class RocksDb : RocksDbHandle
             fixed (byte** vp = valPtrs)
             fixed (nuint* vs = valSizes)
             fixed (nint* ep = errs)
-                NativeMethods.rocksdb_multi_get(Handle, (options ?? _defaultReadOptions).Handle,
-                    (nuint)n, kp, ks, vp, vs, (byte**)ep);
+            fixed (nint* cfp = columnFamilies)
+            {
+                if (columnFamilies is null)
+                {
+                    NativeMethods.rocksdb_multi_get(Handle, (options ?? _defaultReadOptions).Handle,
+                        (nuint)n, kp, ks, vp, vs, (byte**)ep);
+                }
+                else
+                {
+                    NativeMethods.rocksdb_multi_get_cf(Handle, (options ?? _defaultReadOptions).Handle,
+                        cfp, (nuint)n, kp, ks, vp, vs, (byte**)ep);
+                }
+            }
         }
         finally
         {
             for (int i = 0; i < n; i++)
-                if (handles[i].IsAllocated)
-                    handles[i].Free();
+            {
+                if (pins[i].IsAllocated)
+                {
+                    pins[i].Free();
+                }
+            }
         }
 
+        // Copy and free every value before considering the errors. Throwing from
+        // inside this loop, which is what the single-family version used to do,
+        // leaked the values and error strings for every key after the first
+        // failure.
         var results = new byte[]?[n];
         for (int i = 0; i < n; i++)
         {
-            if (errs[i] != nint.Zero)
-            {
-                NativeMethods.ThrowOnError(errs[i]);
-            }
-            else if (valPtrs[i] != null)
+            if (valPtrs[i] is not null)
             {
                 results[i] = new ReadOnlySpan<byte>(valPtrs[i], checked((int)valSizes[i])).ToArray();
                 NativeMethods.rocksdb_free((nint)valPtrs[i]);
             }
         }
+
+        ThrowFirstError(errs);
         return results;
+    }
+
+    /// <summary>
+    /// Throws for the first per-key error, having freed all of them.
+    /// </summary>
+    /// <remarks>
+    /// RocksDb allocates one message per failing key and the caller owns each.
+    /// Only the first becomes the exception, but every one has to be released.
+    /// </remarks>
+    private static void ThrowFirstError(nint[] errs)
+    {
+        nint first = nint.Zero;
+
+        for (int i = 0; i < errs.Length; i++)
+        {
+            if (errs[i] == nint.Zero)
+            {
+                continue;
+            }
+
+            if (first == nint.Zero)
+            {
+                first = errs[i];
+            }
+            else
+            {
+                NativeMethods.rocksdb_free(errs[i]);
+            }
+        }
+
+        // Frees the message it reports.
+        NativeMethods.ThrowOnError(first);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
