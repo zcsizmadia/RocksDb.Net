@@ -618,6 +618,25 @@ public sealed class DbOptions : RocksDbHandle
     }
 
     /// <summary>
+    /// Aligns SST file boundaries with key prefixes.
+    /// </summary>
+    /// <remarks>
+    /// Without one, a compaction splits files wherever the size target falls, so
+    /// a prefix's data can straddle several files and each file can hold several
+    /// prefixes. That blunts prefix-scoped work: a range delete cannot drop whole
+    /// files and a prefix scan reads more of them than it needs. RocksDb takes a
+    /// shared reference, so the factory may be disposed once assigned.
+    /// </remarks>
+    public SstPartitionerFactory SstPartitionerFactory
+    {
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            NativeMethods.rocksdb_options_set_sst_partitioner_factory(Handle, value.Handle);
+        }
+    }
+
+    /// <summary>
     /// Spreads the database across several directories, each with a size
     /// target.
     /// </summary>
