@@ -1,0 +1,571 @@
+using System.Buffers.Binary;
+using System.Text;
+
+namespace RocksDbNet.Tests;
+
+/// <summary>
+/// The code from the documentation guides, compiled and run.
+/// </summary>
+/// <remarks>
+/// Each guide states that its snippets are compiled and run as part of the test
+/// suite, and this is what makes that true. The code here is kept identical to
+/// what the guides show, so a snippet that stops compiling or stops behaving as
+/// described fails CI rather than misleading a reader. If you change a guide,
+/// change the matching test with it.
+/// </remarks>
+public class DocumentationGuideTests
+{
+    // ─────────────────────────────────────────────────────────────────────────
+    // getting-started.md
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void GettingStarted_OpenPutGet()
+    {
+        using var dir = new TempDir();
+
+        var options = new DbOptions { CreateIfMissing = true };
+        using var db = RocksDb.Open(options, dir.Path);
+
+        db.Put("hello", "world");
+        string? value = db.GetString("hello");
+
+        Assert.Equal("world", value);
+    }
+
+    [Fact]
+    public void GettingStarted_KeysAndValuesAreBytes()
+    {
+        using var db = new TempDb();
+        byte[] bytes = "value"u8.ToArray();
+
+        db.Db.Put("key1", "value");
+        db.Db.Put("key2"u8, "value"u8);
+        db.Db.Put(Encoding.UTF8.GetBytes("key3"), bytes);
+
+        Assert.Equal("value", db.Db.GetString("key1"));
+        Assert.Equal("value"u8.ToArray(), db.Db.Get("key2"u8));
+        Assert.Equal("value", db.Db.GetString("key3"));
+    }
+
+    /// <summary>
+    /// The guide claims a missing key and an empty value are distinguishable.
+    /// </summary>
+    [Fact]
+    public void GettingStarted_MissingKeyIsNullAndEmptyValueIsNot()
+    {
+        using var db = new TempDb();
+
+        db.Db.Put("empty"u8, []);
+
+        byte[]? empty = db.Db.Get("empty"u8);
+        Assert.NotNull(empty);
+        Assert.Empty(empty);
+
+        Assert.Null(db.Db.Get("absent"u8));
+    }
+
+    [Fact]
+    public void GettingStarted_Delete()
+    {
+        using var db = new TempDb();
+
+        db.Db.Put("key", "value");
+        db.Db.Delete("key");
+
+        Assert.Null(db.Db.GetString("key"));
+    }
+
+    [Fact]
+    public void GettingStarted_IterateWithAForLoop()
+    {
+        using var db = new TempDb();
+        db.Db.Put("a", "1");
+        db.Db.Put("b", "2");
+
+        var seen = new List<string>();
+
+        using Iterator iter = db.Db.NewIterator();
+
+        for (iter.SeekToFirst(); iter.IsValid(); iter.Next())
+        {
+            seen.Add($"{iter.KeyAsString()} = {iter.ValueAsString()}");
+        }
+
+        Assert.Equal(["a = 1", "b = 2"], seen);
+    }
+
+    [Fact]
+    public void GettingStarted_IterateWithForeach()
+    {
+        using var db = new TempDb();
+        db.Db.Put("a", "1");
+        db.Db.Put("b", "2");
+
+        using Iterator iter = db.Db.NewIterator();
+        iter.SeekToFirst();
+
+        var seen = new List<string>();
+
+        foreach (Iterator.Entry entry in iter)
+        {
+            seen.Add(Encoding.UTF8.GetString(entry.Key) + "=" + Encoding.UTF8.GetString(entry.Value));
+        }
+
+        Assert.Equal(["a=1", "b=2"], seen);
+    }
+
+    [Fact]
+    public void GettingStarted_WriteBatchIsAtomic()
+    {
+        using var db = new TempDb();
+        db.Db.Put("c", "3");
+
+        using var batch = new WriteBatch();
+        batch.Put("a", "1");
+        batch.Put("b", "2");
+        batch.Delete("c");
+
+        db.Db.Write(batch);
+
+        Assert.Equal("1", db.Db.GetString("a"));
+        Assert.Equal("2", db.Db.GetString("b"));
+        Assert.Null(db.Db.GetString("c"));
+    }
+
+    [Fact]
+    public void GettingStarted_Durability()
+    {
+        using var db = new TempDb();
+
+        using var sync = new WriteOptions { Sync = true };
+        db.Db.Put("important", "value", sync);
+
+        db.Db.FlushWal(sync: true);
+
+        Assert.Equal("value", db.Db.GetString("important"));
+    }
+
+    [Fact]
+    public void GettingStarted_ColumnFamilies()
+    {
+        using var dir = new TempDir();
+
+        var options = new DbOptions { CreateIfMissing = true, CreateMissingColumnFamilies = true };
+
+        using var db = RocksDb.Open(options, dir.Path, [new("default"), new("users")]);
+        ColumnFamilyHandle users = db.GetColumnFamily("users");
+
+        db.Put("alice", "…", users);
+        string? alice = db.GetString("alice", users);
+
+        Assert.Equal("…", alice);
+
+        // The guide warns that a bare null binds to the WriteOptions overload,
+        // so this writes to the default family rather than throwing.
+        db.Put("bob", "…", null);
+        Assert.Equal("…", db.GetString("bob"));
+        Assert.Null(db.GetString("bob", users));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // compaction-filters.md
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private sealed class ExpiryFilter : CompactionFilter
+    {
+        private readonly TimeSpan _retention;
+
+        public ExpiryFilter(TimeSpan retention)
+            : base("ExpiryFilter")
+        {
+            _retention = retention;
+        }
+
+        protected override FilterDecision Filter(
+            int level,
+            ReadOnlySpan<byte> key,
+            ReadOnlySpan<byte> existingValue,
+            out byte[]? newValue)
+        {
+            newValue = null;
+
+            if (existingValue.Length < sizeof(long))
+            {
+                return FilterDecision.Keep;
+            }
+
+            long written = BinaryPrimitives.ReadInt64LittleEndian(existingValue);
+            DateTimeOffset writtenAt = DateTimeOffset.FromUnixTimeSeconds(written);
+
+            return DateTimeOffset.UtcNow - writtenAt > _retention
+                ? FilterDecision.Remove
+                : FilterDecision.Keep;
+        }
+    }
+
+    private static byte[] Stamped(DateTimeOffset at)
+    {
+        var value = new byte[sizeof(long) + 4];
+        BinaryPrimitives.WriteInt64LittleEndian(value, at.ToUnixTimeSeconds());
+        "data"u8.CopyTo(value.AsSpan(sizeof(long)));
+        return value;
+    }
+
+    [Fact]
+    public void CompactionFilters_ExpiryFilterDropsOldEntries()
+    {
+        using var dir = new TempDir();
+
+        var filter = new ExpiryFilter(TimeSpan.FromDays(30));
+
+        var options = new DbOptions { CreateIfMissing = true };
+        options.CompactionFilter = filter;
+
+        using var db = RocksDb.Open(options, dir.Path);
+
+        db.Put("fresh"u8, Stamped(DateTimeOffset.UtcNow));
+        db.Put("stale"u8, Stamped(DateTimeOffset.UtcNow.AddDays(-90)));
+
+        // The guide's central point: nothing is dropped until a rewrite.
+        db.Flush();
+        Assert.NotNull(db.Get("stale"u8));
+
+        db.CompactRange();
+
+        Assert.NotNull(db.Get("fresh"u8));
+        Assert.Null(db.Get("stale"u8));
+    }
+
+    /// <summary>
+    /// The guide says a value the filter cannot interpret is kept, not dropped.
+    /// </summary>
+    [Fact]
+    public void CompactionFilters_ShortValuesAreKept()
+    {
+        using var dir = new TempDir();
+        var filter = new ExpiryFilter(TimeSpan.Zero);
+
+        var options = new DbOptions { CreateIfMissing = true };
+        options.CompactionFilter = filter;
+
+        using var db = RocksDb.Open(options, dir.Path);
+
+        db.Put("short"u8, "ab"u8);
+        db.Flush();
+        db.CompactRange();
+
+        Assert.NotNull(db.Get("short"u8));
+    }
+
+    private sealed class UppercaseFilter : CompactionFilter
+    {
+        public UppercaseFilter()
+            : base("UppercaseFilter")
+        {
+        }
+
+        protected override FilterDecision Filter(
+            int level, ReadOnlySpan<byte> key, ReadOnlySpan<byte> existingValue, out byte[]? newValue)
+        {
+            newValue = new byte[existingValue.Length];
+
+            for (int i = 0; i < existingValue.Length; i++)
+            {
+                newValue[i] = (byte)char.ToUpperInvariant((char)existingValue[i]);
+            }
+
+            return FilterDecision.ChangeValue;
+        }
+    }
+
+    [Fact]
+    public void CompactionFilters_UppercaseFilterRewritesValues()
+    {
+        using var dir = new TempDir();
+        using var filter = new UppercaseFilter();
+
+        var options = new DbOptions { CreateIfMissing = true };
+        options.CompactionFilter = filter;
+
+        using var db = RocksDb.Open(options, dir.Path);
+
+        db.Put("key", "value");
+        db.Flush();
+        db.CompactRange();
+
+        Assert.Equal("VALUE", db.GetString("key"));
+    }
+
+    private sealed class ExpiryFilterFactory : CompactionFilterFactory
+    {
+        private readonly TimeSpan _retention;
+
+        public ExpiryFilterFactory(TimeSpan retention)
+            : base("ExpiryFilterFactory")
+        {
+            _retention = retention;
+        }
+
+        protected override CompactionFilter CreateFilter(CompactionFilterContext context)
+            => new ExpiryFilter(_retention);
+    }
+
+    [Fact]
+    public void CompactionFilters_FactoryProducesOneFilterPerJob()
+    {
+        using var dir = new TempDir();
+
+        var options = new DbOptions { CreateIfMissing = true };
+        options.CompactionFilterFactory = new ExpiryFilterFactory(TimeSpan.FromDays(30));
+
+        using var db = RocksDb.Open(options, dir.Path);
+
+        db.Put("fresh"u8, Stamped(DateTimeOffset.UtcNow));
+        db.Put("stale"u8, Stamped(DateTimeOffset.UtcNow.AddDays(-90)));
+        db.Flush();
+        db.CompactRange();
+
+        Assert.NotNull(db.Get("fresh"u8));
+        Assert.Null(db.Get("stale"u8));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // writing-callbacks.md
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private sealed class ReverseComparator : Comparator
+    {
+        public ReverseComparator()
+            : base("example.reverse")
+        {
+        }
+
+        public override int Compare(ReadOnlySpan<byte> keyA, ReadOnlySpan<byte> keyB)
+            => keyB.SequenceCompareTo(keyA);
+    }
+
+    [Fact]
+    public void WritingCallbacks_ComparatorChangesScanOrder()
+    {
+        using var dir = new TempDir();
+
+        var comparator = new ReverseComparator();
+
+        var options = new DbOptions { CreateIfMissing = true };
+        options.Comparator = comparator;
+
+        using var db = RocksDb.Open(options, dir.Path);
+
+        db.Put("a", "1");
+        db.Put("b", "2");
+        db.Put("c", "3");
+
+        using Iterator iter = db.NewIterator();
+        iter.SeekToFirst();
+
+        Assert.Equal("c", iter.KeyAsString());
+    }
+
+    private sealed class CounterMergeOperator : MergeOperator
+    {
+        public CounterMergeOperator()
+            : base("example.counter")
+        {
+        }
+
+        public override bool FullMerge(
+            ReadOnlySpan<byte> key,
+            bool hasExistingValue,
+            ReadOnlySpan<byte> existingValue,
+            IReadOnlyList<byte[]> operands,
+            out byte[] newValue)
+        {
+            long total = hasExistingValue && existingValue.Length == sizeof(long)
+                ? BinaryPrimitives.ReadInt64LittleEndian(existingValue)
+                : 0;
+
+            foreach (byte[] operand in operands)
+            {
+                if (operand.Length == sizeof(long))
+                {
+                    total += BinaryPrimitives.ReadInt64LittleEndian(operand);
+                }
+            }
+
+            newValue = new byte[sizeof(long)];
+            BinaryPrimitives.WriteInt64LittleEndian(newValue, total);
+            return true;
+        }
+
+        public override bool PartialMerge(
+            ReadOnlySpan<byte> key, IReadOnlyList<byte[]> operands, out byte[] newValue)
+        {
+            long sum = 0;
+
+            foreach (byte[] operand in operands)
+            {
+                if (operand.Length != sizeof(long))
+                {
+                    newValue = [];
+                    return false;
+                }
+
+                sum += BinaryPrimitives.ReadInt64LittleEndian(operand);
+            }
+
+            newValue = new byte[sizeof(long)];
+            BinaryPrimitives.WriteInt64LittleEndian(newValue, sum);
+            return true;
+        }
+    }
+
+    private static byte[] Delta(long by)
+    {
+        var operand = new byte[sizeof(long)];
+        BinaryPrimitives.WriteInt64LittleEndian(operand, by);
+        return operand;
+    }
+
+    [Fact]
+    public void WritingCallbacks_MergeOperatorAccumulates()
+    {
+        using var dir = new TempDir();
+
+        var options = new DbOptions { CreateIfMissing = true };
+        options.MergeOperator = new CounterMergeOperator();
+
+        using var db = RocksDb.Open(options, dir.Path);
+
+        db.Merge("visits"u8, Delta(1));
+        db.Merge("visits"u8, Delta(5));
+
+        long visits = BinaryPrimitives.ReadInt64LittleEndian(db.Get("visits"u8));
+
+        Assert.Equal(6, visits);
+    }
+
+    /// <summary>
+    /// The guide states that handing one merge operator to two options objects
+    /// throws rather than corrupting the heap later.
+    /// </summary>
+    [Fact]
+    public void WritingCallbacks_MergeOperatorCannotBeSharedBetweenOptions()
+    {
+        var op = new CounterMergeOperator();
+
+        using var first = new DbOptions();
+        first.MergeOperator = op;
+
+        using var second = new DbOptions();
+        Assert.Throws<InvalidOperationException>(() => second.MergeOperator = op);
+    }
+
+    private sealed class CollectingLogger : Logger
+    {
+        private readonly List<string> _lines = [];
+
+        public CollectingLogger()
+            : base(InfoLogLevel.Info)
+        {
+        }
+
+        public int Count
+        {
+            get { lock (_lines) { return _lines.Count; } }
+        }
+
+        public override void Log(InfoLogLevel logLevel, string message)
+        {
+            lock (_lines)
+            {
+                _lines.Add($"[rocksdb {logLevel}] {message}");
+            }
+        }
+    }
+
+    [Fact]
+    public void WritingCallbacks_LoggerReceivesDiagnostics()
+    {
+        using var dir = new TempDir();
+
+        var logger = new CollectingLogger();
+
+        var options = new DbOptions { CreateIfMissing = true };
+        options.InfoLog = logger;
+
+        // The guide says a using on the logger is safe because disposal is
+        // deferred while the database still holds it.
+        logger.Dispose();
+        Assert.False(logger.IsDisposed);
+
+        using (var db = RocksDb.Open(options, dir.Path))
+        {
+            db.Put("key", "value");
+            db.Flush();
+        }
+
+        Assert.True(logger.IsDisposed);
+        Assert.True(logger.Count > 0, "the logger should have received messages");
+    }
+
+    private sealed class FlushWatcher : EventListener
+    {
+        private long _flushes;
+
+        public long Flushes => Interlocked.Read(ref _flushes);
+
+        public override void OnFlushCompleted(FlushJobInfo info)
+            => Interlocked.Increment(ref _flushes);
+
+        public override void OnBackgroundError(BackgroundErrorInfo info)
+        {
+            // The guide writes this to stderr; swallowed here so a test run
+            // stays quiet.
+        }
+    }
+
+    [Fact]
+    public void WritingCallbacks_EventListenerObservesFlushes()
+    {
+        using var dir = new TempDir();
+
+        var watcher = new FlushWatcher();
+
+        var options = new DbOptions { CreateIfMissing = true };
+        options.EventListener = watcher;
+
+        using (var db = RocksDb.Open(options, dir.Path))
+        {
+            db.Put("key", "value");
+            db.Flush();
+        }
+
+        Assert.True(watcher.Flushes > 0);
+    }
+
+    /// <summary>
+    /// The guide states the event listener setter appends rather than replaces.
+    /// </summary>
+    [Fact]
+    public void WritingCallbacks_EventListenerSetterAppends()
+    {
+        using var dir = new TempDir();
+
+        var first = new FlushWatcher();
+        var second = new FlushWatcher();
+
+        var options = new DbOptions { CreateIfMissing = true };
+        options.EventListener = first;
+        options.EventListener = second;
+
+        using (var db = RocksDb.Open(options, dir.Path))
+        {
+            db.Put("key", "value");
+            db.Flush();
+        }
+
+        Assert.True(first.Flushes > 0, "the first listener should still receive events");
+        Assert.True(second.Flushes > 0, "the second listener should also receive events");
+    }
+}

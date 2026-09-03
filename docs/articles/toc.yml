@@ -1,4 +1,10 @@
+- name: Your first database
+  href: getting-started.md
 - name: Ownership and lifetime
   href: ownership.md
+- name: Writing callbacks
+  href: writing-callbacks.md
+- name: Compaction filters
+  href: compaction-filters.md
 - name: Callbacks and exceptions
   href: callbacks.md
