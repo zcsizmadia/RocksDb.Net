@@ -40,6 +40,14 @@
     <None Include="../logo-128.png" Pack="true" PackagePath="" />
     <!-- RocksDB's attribution travels with the package, not just the repo. -->
     <None Include="../THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="" />
+
+    <!--
+      Apache 2.0 section 4(a) requires a copy of the licence to travel with the
+      work, not a link to it. The generated bindings are derived from RocksDb's
+      C header and this project says so, so the text is packed rather than
+      merely referenced.
+    -->
+    <None Include="../licenses/**" Pack="true" PackagePath="licenses/" />
   </ItemGroup>
 
 
