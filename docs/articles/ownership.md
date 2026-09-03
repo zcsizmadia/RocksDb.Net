@@ -7,7 +7,7 @@ Every wrapper type holds a native handle, and RocksDb is inconsistent about who 
 Some setters hand the object to RocksDb, which then frees it. The wrapper stops tracking it, so disposing it yourself would be a double free. You do not need to keep a reference:
 
 | Setter | Type handed over |
-|--------|------------------|
+| -------- | ------------------ |
 | `DbOptions.PrefixExtractor` | `SliceTransform` |
 | `DbOptions.RateLimiter` | `RateLimiter` |
 | `DbOptions.EventListener` | `EventListener` |

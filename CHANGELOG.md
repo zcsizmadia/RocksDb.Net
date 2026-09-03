@@ -13,7 +13,7 @@ Upgrades the native library from RocksDb 11.1.2 to 11.8.1, which added 697 expor
 ### Breaking changes
 
 | Change | Migration |
-|--------|-----------|
+| -------- | ----------- |
 | Removed the 12 deprecated fluent setters on `DbOptions` | Use the properties they were marked obsolete in favour of, for example `opts.MergeOperator = x` instead of `opts.SetMergeOperator(x)` |
 | `ReadOptions.ReadTier` is now the `ReadTier` enum instead of `int` | `opts.ReadTier = 1` becomes `opts.ReadTier = ReadTier.BlockCacheTier`. The numeric values are unchanged |
 | `ColumnFamilyMetadata.FileCount`, `ColumnFamilyMetadata.LevelCount` and `ColumnFamilyLevelMetadata.FileCount` return `int` instead of `nuint` | Remove the casts these forced |

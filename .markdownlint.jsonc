@@ -1,0 +1,26 @@
+{
+  // Rules for the Markdown in this repository: the README, the changelog and
+  // the DocFX guides.
+  "default": true,
+
+  // The README wraps prose at natural sentence boundaries rather than a fixed
+  // column, and the changelog has long table cells. Enforcing a line length
+  // would mean reflowing prose for no reader benefit.
+  "MD013": false,
+
+  // DocFX articles and the changelog legitimately repeat headings such as
+  // "Breaking changes" under different releases.
+  "MD024": { "siblings_only": true },
+
+  // The README opens with a centred <div> holding the logo and badges, which
+  // Markdown alone cannot express.
+  "MD033": false,
+
+  // The README's first heading sits inside that <div>, after the logo, so it is
+  // not the first line of the file.
+  "MD041": false,
+
+  // Bare URLs are already avoided, but DocFX cross-reference syntax (xref:)
+  // is not a URL the linter understands.
+  "MD034": false
+}
