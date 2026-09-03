@@ -127,6 +127,30 @@ public abstract class RocksDbHandle : IDisposable
         return self._namePtr;
     }
 
+    // RocksDb dereferences the name pointer without a null check, so there is no
+    // safe way to report failure from a name callback. Hand out a fixed
+    // placeholder instead of letting the exception reach native code. Allocated
+    // once and never freed, which is fine for a process-lifetime constant.
+    private static readonly nint FallbackNamePtr = Marshal.StringToCoTaskMemUTF8("rocksdbnet.unknown");
+
+    /// <summary>
+    /// Name callback used by every callback-based wrapper. Exceptions cannot
+    /// cross into native code, so a failure yields a placeholder name.
+    /// </summary>
+    internal static nint GetNameFromPinnedIntPtrSafe(nint state)
+    {
+        try
+        {
+            nint name = GetNameFromPinnedIntPtr(state);
+            return name != nint.Zero ? name : FallbackNamePtr;
+        }
+        catch (Exception ex)
+        {
+            RocksDbCallbacks.Report("Name", ex);
+            return FallbackNamePtr;
+        }
+    }
+
     /// <summary>
     /// Throws an exception if the object has been disposed.
     /// </summary>
