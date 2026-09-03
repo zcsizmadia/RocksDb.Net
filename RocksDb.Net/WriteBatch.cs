@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace RocksDbNet;
@@ -6,7 +7,7 @@ namespace RocksDbNet;
 /// An atomic write batch. Apply to the database with <see cref="RocksDb.Write(WriteBatch, WriteOptions)"/>.
 /// Maps to <c>rocksdb_writebatch_t</c>.
 /// </summary>
-public sealed class WriteBatch : RocksDbHandle
+public sealed unsafe class WriteBatch : RocksDbHandle
 {
     /// <summary>Creates an empty write batch.</summary>
     public WriteBatch()
@@ -224,6 +225,115 @@ public sealed class WriteBatch : RocksDbHandle
         nint err = default;
         NativeMethods.rocksdb_writebatch_verify_checksum(Handle, ref err);
         NativeMethods.ThrowOnError(err);
+    }
+
+    // ── Reading the batch back ───────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns the operations in this batch, in the order they were queued.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The missing half of change-data-capture.
+    /// <see cref="RocksDb.GetUpdatesSince(ulong, WalReadOptions)"/> hands back a batch of
+    /// everything written since a sequence number, and without this there was
+    /// no way to see what was in it. With it, a batch from the write-ahead log
+    /// can be inspected, filtered or translated rather than only replayed
+    /// wholesale.
+    /// </para>
+    /// <para>
+    /// Column families appear as numeric ids, because that is what the batch
+    /// records. Compare them against <see cref="ColumnFamilyHandle.Id"/>.
+    /// </para>
+    /// <para>
+    /// The entries are copied out during the call, so the result stays valid
+    /// after the batch is modified or disposed. RocksDb hands the callbacks
+    /// pointers into its own memory that are only valid for the duration of
+    /// iteration, so materialising is the only safe shape; it also keeps a
+    /// caller's exception from having to cross the native boundary.
+    /// </para>
+    /// </remarks>
+    public unsafe IReadOnlyList<WriteBatchEntry> Entries()
+    {
+        ThrowIfDisposed();
+
+        var collected = new List<WriteBatchEntry>();
+
+        // All four callbacks are always installed. RocksDb invokes the put,
+        // delete and merge handlers without a null check, so omitting one would
+        // terminate the process on a batch containing that kind of record. Only
+        // the log-data handler is checked.
+        GCHandle state = GCHandle.Alloc(collected);
+        try
+        {
+            NativeMethods.rocksdb_writebatch_iterate_cf_ld(
+                Handle,
+                GCHandle.ToIntPtr(state),
+                Marshal.GetFunctionPointerForDelegate(_putCollector),
+                Marshal.GetFunctionPointerForDelegate(_deleteCollector),
+                Marshal.GetFunctionPointerForDelegate(_mergeCollector),
+                Marshal.GetFunctionPointerForDelegate(_logDataCollector));
+        }
+        finally
+        {
+            state.Free();
+        }
+
+        return collected;
+    }
+
+    // Held in static fields so the delegates are not collected while native
+    // code holds pointers to them.
+    private static readonly PutCfCollector _putCollector = CollectPut;
+    private static readonly DeleteCfCollector _deleteCollector = CollectDelete;
+    private static readonly PutCfCollector _mergeCollector = CollectMerge;
+    private static readonly LogDataCollector _logDataCollector = CollectLogData;
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private unsafe delegate void PutCfCollector(nint state, uint cfId, byte* key, nuint keyLen, byte* value, nuint valueLen);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private unsafe delegate void DeleteCfCollector(nint state, uint cfId, byte* key, nuint keyLen);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private unsafe delegate void LogDataCollector(nint state, byte* blob, nuint blobLen);
+
+    private static unsafe void CollectPut(nint state, uint cfId, byte* key, nuint keyLen, byte* value, nuint valueLen)
+        => Collect(state, WriteBatchEntryKind.Put, cfId, key, keyLen, value, valueLen);
+
+    private static unsafe void CollectMerge(nint state, uint cfId, byte* key, nuint keyLen, byte* value, nuint valueLen)
+        => Collect(state, WriteBatchEntryKind.Merge, cfId, key, keyLen, value, valueLen);
+
+    private static unsafe void CollectDelete(nint state, uint cfId, byte* key, nuint keyLen)
+        => Collect(state, WriteBatchEntryKind.Delete, cfId, key, keyLen, value: null, valueLen: 0);
+
+    private static unsafe void CollectLogData(nint state, byte* blob, nuint blobLen)
+        => Collect(state, WriteBatchEntryKind.LogData, cfId: 0, key: null, keyLen: 0, blob, blobLen);
+
+    private static unsafe void Collect(
+        nint state, WriteBatchEntryKind kind, uint cfId, byte* key, nuint keyLen, byte* value, nuint valueLen)
+    {
+        try
+        {
+            if (GCHandle.FromIntPtr(state).Target is not List<WriteBatchEntry> collected)
+            {
+                return;
+            }
+
+            byte[] keyBytes = key is null ? [] : new ReadOnlySpan<byte>(key, checked((int)keyLen)).ToArray();
+            byte[]? valueBytes = kind == WriteBatchEntryKind.Delete
+                ? null
+                : value is null ? [] : new ReadOnlySpan<byte>(value, checked((int)valueLen)).ToArray();
+
+            collected.Add(new WriteBatchEntry(kind, cfId, keyBytes, valueBytes));
+        }
+        catch (Exception ex)
+        {
+            // A managed exception must not reach native code. Dropping the entry
+            // is the only fallback available: RocksDb gives these callbacks no
+            // way to report failure and does not check a result.
+            RocksDbCallbacks.Report(nameof(Entries), ex, state);
+        }
     }
 
     protected override void DisposeHandle()
