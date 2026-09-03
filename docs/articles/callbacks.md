@@ -25,7 +25,9 @@ RocksDbCallbacks.UnhandledException += (sender, e) =>
 };
 ```
 
-It is null only when the instance could not be identified, which happens when resolving it is itself what failed.
+For callbacks installed as a subclass the sender is that instance. For the two installed as a plain delegate, `ReadOptions.SetTableFilter` and the `CreateBackupOptions` callbacks, it is the delegate itself, because that is what the callback holds. Compare against whichever you registered.
+
+It is null only when the source could not be identified, which happens when resolving it is itself what failed.
 
 ## What happens after the exception
 
