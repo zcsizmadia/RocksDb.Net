@@ -1,6 +1,4 @@
-<div align="center">
-
-<img src="https://raw.githubusercontent.com/zcsizmadia/RocksDb.Net/main/logo-128.png" alt="RocksDb.Net" width="128" height="128">
+![RocksDb.Net](https://raw.githubusercontent.com/zcsizmadia/RocksDb.Net/main/logo-128.png)
 
 # RocksDb.Net
 
@@ -13,9 +11,7 @@ A modern C# wrapper for [RocksDb](https://rocksdb.org/), the high-performance em
 [![RocksDb](https://img.shields.io/badge/RocksDb-11.8.1-blue)](https://github.com/facebook/rocksdb/releases/tag/v11.8.1)
 [![License](https://img.shields.io/badge/license-MIT-green)](https://github.com/zcsizmadia/RocksDb.Net/blob/main/LICENSE)
 
-**[API reference](https://zcsizmadia.github.io/RocksDb.Net/)** &nbsp;·&nbsp; [Guides](https://zcsizmadia.github.io/RocksDb.Net/articles/ownership.html) &nbsp;·&nbsp; [Samples](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples) &nbsp;·&nbsp; [Changelog](https://github.com/zcsizmadia/RocksDb.Net/blob/main/CHANGELOG.md)
-
-</div>
+**[API reference](https://zcsizmadia.github.io/RocksDb.Net/)** · [Guides](https://zcsizmadia.github.io/RocksDb.Net/articles/ownership.html) · [Samples](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples) · [Changelog](https://github.com/zcsizmadia/RocksDb.Net/blob/main/CHANGELOG.md)
 
 ## Features
 
@@ -196,7 +192,7 @@ Console.WriteLine(liveFiles?.Files.Count);
 ulong[] sizes = db.ApproximateSizes(new[] { ("a", "z") });
 Console.WriteLine(sizes[0]);
 
-ulong[] cfSizes = db.ApproximateSizes(cf, new[] { ("a", "z") });
+ulong[] cfSizes = db.ApproximateSizes(db.GetDefaultColumnFamily(), new[] { ("a", "z") });
 Console.WriteLine(cfSizes[0]);
 ```
 
@@ -255,14 +251,14 @@ The [`Samples/`](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples) di
 
 | Sample | Description |
 | -------- | ------------- |
-| [Basic](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples/Basic) | Basic open, put, get, delete |
+| [BasicSample](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples/BasicSample) | Basic open, put, get, delete |
 | [WriteBatchSample](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples/WriteBatchSample) | Atomic multi-key writes |
 | [IteratorSample](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples/IteratorSample) | Key-range scanning and seeking |
 | [ColumnFamilySample](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples/ColumnFamilySample) | Working with column families |
 | [SnapshotSample](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples/SnapshotSample) | Point-in-time consistent reads |
 | [MergeOperatorSample](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples/MergeOperatorSample) | Custom and built-in merge operators |
 | [CompactionFilterSample](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples/CompactionFilterSample) | Filtering keys during compaction |
-| [BackupAndCheckpointSample](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples/BackupAndCheckpointSample) | Backups and checkpoints |
+| [CheckpointAndBackupSample](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples/CheckpointAndBackupSample) | Backups and checkpoints |
 | [SstFileWriterSample](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples/SstFileWriterSample) | Bulk-loading with SST files |
 | [BloomFilterSample](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples/BloomFilterSample) | Bloom and Ribbon filter policies |
 | [EventListenerSample](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples/EventListenerSample) | Observing database events |
@@ -272,7 +268,7 @@ The [`Samples/`](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples) di
 Run any sample with:
 
 ```shell
-dotnet run --project Samples/Simple
+dotnet run --project Samples/BasicSample
 ```
 
 ## Architecture
@@ -280,9 +276,8 @@ dotnet run --project Samples/Simple
 ```text
 RocksDb.Net/
 ├── Native/
-│   ├── NativeMethods.g.cs       # Auto-generated P/Invoke bindings (1,047 functions)
-│   ├── NativeMethods.Helpers.cs  # Native library resolver and helpers
-│   └── NativeResolver.cs         # Platform-specific library loading
+│   ├── NativeMethods.g.cs        # Generated P/Invoke bindings (1,745 functions)
+│   └── NativeMethods.Helpers.cs  # Native library resolver and helpers
 ├── RocksDb.cs                    # Main database class
 ├── DbOptions.cs                  # Database configuration options
 ├── WriteBatch.cs                 # Atomic write operations

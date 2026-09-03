@@ -8,7 +8,7 @@ Breaking changes land only when `RocksDbVersion` changes. A revision bump alone,
 
 ## 11.8.1.1
 
-Upgrades the native library from RocksDb 11.1.2 to 11.8.1, which added 697 exported C functions, and exposes them across the wrapper.
+Upgrades the native library from RocksDb 11.1.2 to 11.8.1, which added 697 exported C functions and removed one, taking the total from 1,049 to 1,745. The wrapper exposes them.
 
 ### Breaking changes
 

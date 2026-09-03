@@ -12,12 +12,13 @@
   // "Breaking changes" under different releases.
   "MD024": { "siblings_only": true },
 
-  // The README opens with a centred <div> holding the logo and badges, which
-  // Markdown alone cannot express.
-  "MD033": false,
+  // MD033 (no inline HTML) is deliberately left ON. The README ships inside the
+  // NuGet package, and nuget.org escapes raw HTML and renders it as visible
+  // text rather than dropping it. A centred <div> here once put literal markup
+  // at the top of the package page and hid the logo, so the rule guards
+  // against reintroducing it.
 
-  // The README's first heading sits inside that <div>, after the logo, so it is
-  // not the first line of the file.
+  // The README opens with the logo image, so its first line is not a heading.
   "MD041": false,
 
   // Bare URLs are already avoided, but DocFX cross-reference syntax (xref:)
