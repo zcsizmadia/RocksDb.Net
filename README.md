@@ -17,9 +17,17 @@ A modern C# wrapper for [RocksDb](https://rocksdb.org/), the high-performance em
 - **Event listeners** — observe flush, compaction, and background error events
 - **Cross-platform** — ships native binaries via the `RocksDb.Net.Runtimes` package
 
+## Versioning
+
+The package version is `<RocksDbVersion>.<Revision>`, so `11.8.1.1` wraps RocksDb 11.8.1.
+
+Breaking changes land only when the RocksDb version changes. A revision bump alone, such as `11.8.1.1` to `11.8.1.2`, never breaks compatibility.
+
+**Upgrading from 11.1.2.1 to 11.8.1.1 has breaking changes.** See the [changelog](CHANGELOG.md#breaking-changes) for the full list and migrations. In short: the 12 deprecated fluent setters on `DbOptions` are gone in favour of the properties that replaced them, `ReadOptions.ReadTier` is now an enum, three metadata counts return `int` instead of `nuint`, and some `RocksDbHandle` helpers are no longer public.
+
 ## Requirements
 
-- .NET 10 SDK (or later)
+- .NET 8.0, 9.0 or 10.0
 - [RocksDb native binaries](https://github.com/zcsizmadia/RocksDb.Net.Runtimes) (provided by the `RocksDb.Net.Runtimes` [NuGet package](https://www.nuget.org/packages/RocksDb.Net.Runtimes))
 
 ## Quick Start

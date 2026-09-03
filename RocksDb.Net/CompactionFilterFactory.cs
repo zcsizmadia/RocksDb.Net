@@ -11,7 +11,7 @@ namespace RocksDbNet;
 /// </summary>
 /// <remarks>
 /// <b>Lifetime:</b> After passing the factory to
-/// <see cref="DbOptions.SetCompactionFilterFactory"/>, the C++ options object
+/// <see cref="DbOptions.CompactionFilterFactory"/>, the C++ options object
 /// takes ownership (via <c>shared_ptr</c>). Do <em>not</em> dispose the factory
 /// before the database and its options have been closed and disposed.
 /// </remarks>

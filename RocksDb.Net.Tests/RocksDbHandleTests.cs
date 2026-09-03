@@ -1,7 +1,14 @@
+using System.Runtime.InteropServices;
+
 namespace RocksDbNet.Tests;
 
 public class RocksDbHandleTests
 {
+    /// <summary>
+    /// The pinning helpers are <c>protected</c>, so they are reachable only from
+    /// a derived type. That is how a real callback wrapper uses them, and these
+    /// pass-throughs let the tests exercise them the same way.
+    /// </summary>
     private sealed class TestHandle : RocksDbHandle
     {
         public int DisposeHandleCalls { get; private set; }
@@ -14,6 +21,16 @@ public class RocksDbHandleTests
         {
             DisposeHandleCalls++;
         }
+
+        public new GCHandle PinGarbageCollector(string? name = null) => base.PinGarbageCollector(name);
+
+        public new nint GetPinnedIntPtr() => base.GetPinnedIntPtr();
+
+        public new nint GetPinnedNameIntPtr() => base.GetPinnedNameIntPtr();
+
+        public static TestHandle SelfFrom(nint state) => GetSelfFromPinnedIntPtr<TestHandle>(state);
+
+        public static nint NameFrom(nint state) => GetNameFromPinnedIntPtr(state);
     }
 
     [Fact]
@@ -70,8 +87,8 @@ public class RocksDbHandleTests
         var state = handle.GetPinnedIntPtr();
         var namePtr = handle.GetPinnedNameIntPtr();
 
-        var self = RocksDbHandle.GetSelfFromPinnedIntPtr<TestHandle>(state);
-        var recoveredNamePtr = RocksDbHandle.GetNameFromPinnedIntPtr(state);
+        var self = TestHandle.SelfFrom(state);
+        var recoveredNamePtr = TestHandle.NameFrom(state);
 
         Assert.Same(handle, self);
         Assert.Equal(namePtr, recoveredNamePtr);
@@ -116,19 +133,36 @@ public class RocksDbHandleTests
     [Fact]
     public void GetSelfFromPinnedIntPtr_ThrowsOnZero()
     {
-        Assert.Throws<ArgumentNullException>(() => RocksDbHandle.GetSelfFromPinnedIntPtr<TestHandle>(IntPtr.Zero));
+        Assert.Throws<ArgumentNullException>(() => TestHandle.SelfFrom(IntPtr.Zero));
     }
 
     [Fact]
     public void GetSelfFromPinnedIntPtr_ThrowsOnWrongType()
     {
-        using var opts = new DbOptions();
-        opts.PinGarbageCollector();
+        // Pin a handle of a different type, then ask for it as a TestHandle.
+        var other = new OtherHandle();
+        other.PinGarbageCollector();
 
-        var state = opts.GetPinnedIntPtr();
+        try
+        {
+            nint state = other.GetPinnedIntPtr();
 
-        Assert.Throws<InvalidOperationException>(() => RocksDbHandle.GetSelfFromPinnedIntPtr<TestHandle>(state));
+            Assert.Throws<InvalidOperationException>(() => TestHandle.SelfFrom(state));
+        }
+        finally
+        {
+            other.UnpinGarbageCollector();
+        }
+    }
 
-        opts.UnpinGarbageCollector();
+    private sealed class OtherHandle : RocksDbHandle
+    {
+        public override void DisposeHandle()
+        {
+        }
+
+        public new GCHandle PinGarbageCollector(string? name = null) => base.PinGarbageCollector(name);
+
+        public new nint GetPinnedIntPtr() => base.GetPinnedIntPtr();
     }
 }

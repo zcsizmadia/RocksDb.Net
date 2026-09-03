@@ -52,7 +52,7 @@ public readonly struct CompactionFilterContext
 /// <remarks>
 /// <para>
 /// <b>Lifetime:</b> A filter instance registered via
-/// <see cref="DbOptions.SetCompactionFilter"/> must remain alive (not disposed)
+/// <see cref="DbOptions.CompactionFilter"/> must remain alive (not disposed)
 /// for the entire lifetime of the database. Dispose it only after the
 /// <see cref="RocksDb"/> instance has been closed.
 /// </para>

@@ -19,21 +19,21 @@ public sealed class ColumnFamilyMetadata : RocksDbHandle
     public ulong Size => NativeMethods.rocksdb_column_family_metadata_get_size(Handle);
 
     /// <summary>Gets the number of SST files in this column family.</summary>
-    public nuint FileCount => NativeMethods.rocksdb_column_family_metadata_get_file_count(Handle);
+    public int FileCount => checked((int)NativeMethods.rocksdb_column_family_metadata_get_file_count(Handle));
 
     /// <summary>Gets the number of levels in this column family.</summary>
-    public nuint LevelCount => NativeMethods.rocksdb_column_family_metadata_get_level_count(Handle);
+    public int LevelCount => checked((int)NativeMethods.rocksdb_column_family_metadata_get_level_count(Handle));
 
     /// <summary>Gets metadata for each level in this column family.</summary>
     public IReadOnlyList<ColumnFamilyLevelMetadata> Levels
     {
         get
         {
-            var count = LevelCount;
-            var levels = new List<ColumnFamilyLevelMetadata>((int)count);
-            for (nuint i = 0; i < count; i++)
+            int count = LevelCount;
+            var levels = new List<ColumnFamilyLevelMetadata>(count);
+            for (int i = 0; i < count; i++)
             {
-                nint levelMetadataHandle = NativeMethods.rocksdb_column_family_metadata_get_level_metadata(Handle, i);
+                nint levelMetadataHandle = NativeMethods.rocksdb_column_family_metadata_get_level_metadata(Handle, (nuint)i);
                 levels.Add(new ColumnFamilyLevelMetadata(levelMetadataHandle));
             }
 
@@ -64,18 +64,18 @@ public sealed class ColumnFamilyLevelMetadata : RocksDbHandle
     public ulong Size => NativeMethods.rocksdb_level_metadata_get_size(Handle);
 
     /// <summary>Gets the number of SST files at this level.</summary>
-    public nuint FileCount => NativeMethods.rocksdb_level_metadata_get_file_count(Handle);
+    public int FileCount => checked((int)NativeMethods.rocksdb_level_metadata_get_file_count(Handle));
 
     /// <summary>Gets metadata for each SST file at this level.</summary>
     public IReadOnlyList<SstFileMetadata> Files
     {
         get
         {
-            var count = FileCount;
-            var files = new List<SstFileMetadata>((int)count);
-            for (nuint i = 0; i < count; i++)
+            int count = FileCount;
+            var files = new List<SstFileMetadata>(count);
+            for (int i = 0; i < count; i++)
             {
-                nint fileMetadataHandle = NativeMethods.rocksdb_level_metadata_get_sst_file_metadata(Handle, i);
+                nint fileMetadataHandle = NativeMethods.rocksdb_level_metadata_get_sst_file_metadata(Handle, (nuint)i);
                 files.Add(new SstFileMetadata(fileMetadataHandle));
             }
 

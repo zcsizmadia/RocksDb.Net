@@ -31,8 +31,8 @@ public class ReadOptionsTests
     {
         using var opts = new ReadOptions();
 
-        opts.ReadTier = 1;
-        Assert.Equal(1, opts.ReadTier);
+        opts.ReadTier = ReadTier.BlockCacheTier;
+        Assert.Equal(ReadTier.BlockCacheTier, opts.ReadTier);
     }
 
     [Fact]

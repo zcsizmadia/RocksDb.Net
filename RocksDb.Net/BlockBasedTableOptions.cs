@@ -91,7 +91,7 @@ public enum PrepopulateBlockCache
 
 /// <summary>
 /// Options for the block-based table format.
-/// Configure and then pass to <see cref="DbOptions.SetBlockBasedTableFactory"/>.
+/// Configure and then pass to <see cref="DbOptions.BlockBasedTableFactory"/>.
 /// Maps to <c>rocksdb_block_based_table_options_t</c>.
 /// </summary>
 public sealed class BlockBasedTableOptions : RocksDbHandle
