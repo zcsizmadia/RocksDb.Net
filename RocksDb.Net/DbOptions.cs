@@ -1402,12 +1402,12 @@ public sealed class DbOptions : RocksDbHandle
 
     // ── Dispose ──────────────────────────────────
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_options_destroy(Handle);
     }
 
-    public override void DisposeUnmanagedResources()
+    protected override void DisposeUnmanagedResources()
     {
         base.DisposeUnmanagedResources();
 

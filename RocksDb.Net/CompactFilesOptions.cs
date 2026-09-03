@@ -151,12 +151,12 @@ public sealed class CompactFilesOptions : RocksDbHandle
         }
     }
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_compaction_options_destroy(Handle);
     }
 
-    public override void DisposeUnmanagedResources()
+    protected override void DisposeUnmanagedResources()
     {
         base.DisposeUnmanagedResources();
 

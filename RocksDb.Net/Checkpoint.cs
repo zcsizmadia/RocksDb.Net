@@ -14,6 +14,8 @@ public sealed class Checkpoint : RocksDbHandle
     /// <summary>Creates a <see cref="Checkpoint"/> object for the given database.</summary>
     public static Checkpoint Create(RocksDb db)
     {
+        ArgumentNullException.ThrowIfNull(db);
+
         nint err = default;
         nint handle = NativeMethods.rocksdb_checkpoint_object_create(db.Handle, ref err);
         NativeMethods.ThrowOnError(err);
@@ -26,12 +28,14 @@ public sealed class Checkpoint : RocksDbHandle
     /// </summary>
     public void CreateCheckpoint(string checkpointDir, ulong logSizeForFlush = 0)
     {
+        ArgumentException.ThrowIfNullOrEmpty(checkpointDir);
+
         nint err = default;
         NativeMethods.rocksdb_checkpoint_create(Handle, checkpointDir, logSizeForFlush, ref err);
         NativeMethods.ThrowOnError(err);
     }
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_checkpoint_object_destroy(Handle);
     }

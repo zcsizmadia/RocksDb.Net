@@ -134,7 +134,7 @@ public sealed class Env : RocksDbHandle
     /// <summary>
     /// Releases the unmanaged resources used by the <see cref="Env"/> class.
     /// </summary>
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_env_destroy(Handle);
     }

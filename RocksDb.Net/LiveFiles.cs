@@ -80,7 +80,7 @@ public sealed class LiveFiles : RocksDbHandle
         }
     }
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_livefiles_destroy(Handle);
     }

@@ -46,7 +46,7 @@ public sealed class WaitForCompactOptions : RocksDbHandle
         set => NativeMethods.rocksdb_wait_for_compact_options_set_wait_for_purge(Handle, value ? (byte)1 : (byte)0);
     }
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_wait_for_compact_options_destroy(Handle);
     }

@@ -46,7 +46,7 @@ public abstract class Logger : RocksDbHandle
     private delegate void DestructorDelegate(nint state);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    public delegate void LoggerDelegate(
+    private delegate void LoggerDelegate(
         nint state,
         int level,
         nint msg,
@@ -107,12 +107,12 @@ public abstract class Logger : RocksDbHandle
 
     // ── Disposal ─────────────────────────────────────────────────────────────
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_logger_destroy(Handle);
     }
 
-    public override void DisposeUnmanagedResources()
+    protected override void DisposeUnmanagedResources()
     {
         base.DisposeUnmanagedResources();
 

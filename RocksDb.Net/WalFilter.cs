@@ -260,7 +260,7 @@ public abstract class WalFilter : RocksDbHandle
         WriteBatch replacementBatch,
         ref bool batchChanged);
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_walfilter_destroy(Handle);
     }

@@ -41,7 +41,7 @@ public sealed class ColumnFamilyMetadata : RocksDbHandle
         }
     }
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_column_family_metadata_destroy(Handle);
     }
@@ -83,7 +83,7 @@ public sealed class ColumnFamilyLevelMetadata : RocksDbHandle
         }
     }
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_level_metadata_destroy(Handle);
     }
@@ -140,7 +140,7 @@ public sealed class SstFileMetadata : RocksDbHandle
         return bytes;
     }
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_sst_file_metadata_destroy(Handle);
     }

@@ -231,7 +231,7 @@ public abstract class CompactionFilter : RocksDbHandle
         ReadOnlySpan<byte> existingValue,
         out byte[]? newValue);
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         try
         {
@@ -243,7 +243,7 @@ public abstract class CompactionFilter : RocksDbHandle
         }
     }
 
-    public override void DisposeUnmanagedResources()
+    protected override void DisposeUnmanagedResources()
     {
         base.DisposeUnmanagedResources();
 

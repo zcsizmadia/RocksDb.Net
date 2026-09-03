@@ -14,10 +14,20 @@ public sealed class CompactRangeOptions : RocksDbHandle
         set => NativeMethods.rocksdb_compactoptions_set_exclusive_manual_compaction(Handle, value ? (byte)1 : (byte)0);
     }
 
-    /// <summary>If true, include the bottommost level in the compaction.</summary>
-    public bool BottommostLevelCompaction
+    /// <summary>
+    /// How the bottommost level should be treated during a manual compaction.
+    /// </summary>
+    /// <remarks>
+    /// This was a <see langword="bool"/> over a four-value native setting, and
+    /// the mapping did not mean what it read like: <c>true</c> selected value 1,
+    /// which is the default, so it changed nothing, and
+    /// <see cref="BottommostLevelCompaction.Force"/> could not be reached at
+    /// all.
+    /// </remarks>
+    public BottommostLevelCompaction BottommostLevelCompaction
     {
-        set => NativeMethods.rocksdb_compactoptions_set_bottommost_level_compaction(Handle, value ? (byte)1 : (byte)0);
+        get => (BottommostLevelCompaction)NativeMethods.rocksdb_compactoptions_get_bottommost_level_compaction(Handle);
+        set => NativeMethods.rocksdb_compactoptions_set_bottommost_level_compaction(Handle, checked((byte)value));
     }
 
     /// <summary>If true, allow compaction to change the output level.</summary>
@@ -58,7 +68,7 @@ public sealed class CompactRangeOptions : RocksDbHandle
         set => NativeMethods.rocksdb_compactoptions_set_blob_garbage_collection_age_cutoff(Handle, value);
     }
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_compactoptions_destroy(Handle);
     }

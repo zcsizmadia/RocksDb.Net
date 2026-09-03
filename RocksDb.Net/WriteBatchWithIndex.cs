@@ -42,6 +42,7 @@ public sealed class WriteBatchWithIndex : RocksDbHandle
     /// <summary>Queues a Put into the specified column family.</summary>
     public unsafe WriteBatchWithIndex Put(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle cf)
     {
+        ArgumentNullException.ThrowIfNull(cf);
         fixed (byte* k = key)
         fixed (byte* v = value)
             NativeMethods.rocksdb_writebatch_wi_put_cf(Handle, cf.Handle, k, (nuint)key.Length, v, (nuint)value.Length);
@@ -70,6 +71,7 @@ public sealed class WriteBatchWithIndex : RocksDbHandle
     /// <summary>Queues a Merge into the specified column family.</summary>
     public unsafe WriteBatchWithIndex Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle cf)
     {
+        ArgumentNullException.ThrowIfNull(cf);
         fixed (byte* k = key)
         fixed (byte* v = value)
             NativeMethods.rocksdb_writebatch_wi_merge_cf(Handle, cf.Handle, k, (nuint)key.Length, v, (nuint)value.Length);
@@ -89,6 +91,7 @@ public sealed class WriteBatchWithIndex : RocksDbHandle
     /// <summary>Queues a Delete from the specified column family.</summary>
     public unsafe WriteBatchWithIndex Delete(ReadOnlySpan<byte> key, ColumnFamilyHandle cf)
     {
+        ArgumentNullException.ThrowIfNull(cf);
         fixed (byte* k = key)
             NativeMethods.rocksdb_writebatch_wi_delete_cf(Handle, cf.Handle, k, (nuint)key.Length);
         return this;
@@ -116,6 +119,7 @@ public sealed class WriteBatchWithIndex : RocksDbHandle
     /// <summary>Queues a SingleDelete in the specified column family.</summary>
     public unsafe WriteBatchWithIndex SingleDelete(ReadOnlySpan<byte> key, ColumnFamilyHandle cf)
     {
+        ArgumentNullException.ThrowIfNull(cf);
         fixed (byte* k = key)
             NativeMethods.rocksdb_writebatch_wi_singledelete_cf(Handle, cf.Handle, k, (nuint)key.Length);
         return this;
@@ -135,6 +139,7 @@ public sealed class WriteBatchWithIndex : RocksDbHandle
     /// <summary>Queues a DeleteRange in the specified column family.</summary>
     public unsafe WriteBatchWithIndex DeleteRange(ReadOnlySpan<byte> startKey, ReadOnlySpan<byte> endKey, ColumnFamilyHandle cf)
     {
+        ArgumentNullException.ThrowIfNull(cf);
         fixed (byte* s = startKey)
         fixed (byte* e = endKey)
             NativeMethods.rocksdb_writebatch_wi_delete_range_cf(Handle, cf.Handle, s, (nuint)startKey.Length, e, (nuint)endKey.Length);
@@ -178,7 +183,7 @@ public sealed class WriteBatchWithIndex : RocksDbHandle
         return new ReadOnlySpan<byte>(ptr, checked((int)size)).ToArray();
     }
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_writebatch_wi_destroy(Handle);
     }

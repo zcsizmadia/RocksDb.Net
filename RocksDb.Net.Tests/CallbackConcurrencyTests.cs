@@ -348,7 +348,7 @@ public class CallbackConcurrencyTests
     /// </summary>
     private sealed class ContendedHandle : RocksDbHandle
     {
-        public override void DisposeHandle()
+        protected override void DisposeHandle()
         {
         }
 

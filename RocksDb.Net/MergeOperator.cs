@@ -273,7 +273,7 @@ public abstract class MergeOperator : RocksDbHandle
         return false;
     }
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_mergeoperator_destroy(Handle);
     }

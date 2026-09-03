@@ -19,7 +19,7 @@ public sealed class SliceTransform : RocksDbHandle
     public static SliceTransform CreateNoop()
         => new(NativeMethods.rocksdb_slicetransform_create_noop());
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_slicetransform_destroy(Handle);
     }

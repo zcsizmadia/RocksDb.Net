@@ -31,6 +31,9 @@ public sealed class BackupEngine : RocksDbHandle
     /// <summary>Opens a backup engine at the given path.</summary>
     public static BackupEngine Open(DbOptions options, string backupPath)
     {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentException.ThrowIfNullOrEmpty(backupPath);
+
         nint err = default;
         nint handle = NativeMethods.rocksdb_backup_engine_open(options.Handle, backupPath, ref err);
         NativeMethods.ThrowOnError(err);
@@ -77,6 +80,8 @@ public sealed class BackupEngine : RocksDbHandle
     /// <summary>Creates a new backup of the database.</summary>
     public void CreateNewBackup(RocksDb db, bool flushBeforeBackup = false)
     {
+        ArgumentNullException.ThrowIfNull(db);
+
         nint err = default;
         NativeMethods.rocksdb_backup_engine_create_new_backup_flush(Handle, db.Handle, flushBeforeBackup ? (byte)1 : (byte)0, ref err);
         NativeMethods.ThrowOnError(err);
@@ -155,6 +160,9 @@ public sealed class BackupEngine : RocksDbHandle
     /// <summary>Restores the latest backup to <paramref name="dbDir"/>.</summary>
     public void RestoreDbFromLatestBackup(string dbDir, string walDir)
     {
+        ArgumentException.ThrowIfNullOrEmpty(dbDir);
+        ArgumentException.ThrowIfNullOrEmpty(walDir);
+
         using var restoreOptions = new RestoreOptions();
         RestoreDbFromLatestBackup(dbDir, walDir, restoreOptions);
     }
@@ -163,6 +171,8 @@ public sealed class BackupEngine : RocksDbHandle
     public void RestoreDbFromLatestBackup(string dbDir, string walDir, RestoreOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentException.ThrowIfNullOrEmpty(dbDir);
+        ArgumentException.ThrowIfNullOrEmpty(walDir);
 
         nint err = default;
         NativeMethods.rocksdb_backup_engine_restore_db_from_latest_backup(Handle, dbDir, walDir, options.Handle, ref err);
@@ -172,6 +182,9 @@ public sealed class BackupEngine : RocksDbHandle
     /// <summary>Restores a specific backup to <paramref name="dbDir"/>.</summary>
     public void RestoreDbFromBackup(string dbDir, string walDir, uint backupId, RestoreOptions? options = null)
     {
+        ArgumentException.ThrowIfNullOrEmpty(dbDir);
+        ArgumentException.ThrowIfNullOrEmpty(walDir);
+
         RestoreOptions restoreOptions = options ?? new RestoreOptions();
         try
         {
@@ -229,7 +242,7 @@ public sealed class BackupEngine : RocksDbHandle
             : new ReadOnlySpan<byte>(metadata, checked((int)length)).ToArray();
     }
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_backup_engine_close(Handle);
     }

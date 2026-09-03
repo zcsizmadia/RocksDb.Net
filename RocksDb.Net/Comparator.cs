@@ -115,7 +115,7 @@ public abstract class Comparator : RocksDbHandle
     /// </returns>
     public abstract int Compare(ReadOnlySpan<byte> keyA, ReadOnlySpan<byte> keyB);
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_comparator_destroy(Handle);
     }

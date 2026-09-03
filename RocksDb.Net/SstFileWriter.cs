@@ -101,7 +101,7 @@ public sealed class SstFileWriter : RocksDbHandle
         }
     }
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_sstfilewriter_destroy(Handle);
     }

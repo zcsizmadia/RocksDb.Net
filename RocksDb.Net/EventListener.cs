@@ -167,8 +167,8 @@ public sealed record CompactionJobInfo(
     string[] OutputFiles,
     ulong TotalInputBytes,
     ulong TotalOutputBytes,
-    uint InputRecords,
-    uint OutputRecords,
+    ulong InputRecords,
+    ulong OutputRecords,
     TimeSpan Elapsed,
     ulong NumOfCorruptKeys,
     int BaseInputLevel,
@@ -317,43 +317,43 @@ public abstract class EventListener : RocksDbHandle
     private delegate void DestructorDelegate(nint state);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    public delegate void OnFlushBeginDelegate(
+    private delegate void OnFlushBeginDelegate(
         nint state, nint db, nint info);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    public delegate void OnFlushCompletedDelegate(
+    private delegate void OnFlushCompletedDelegate(
         nint state, nint db, nint info);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    public delegate void OnCompactionBeginDelegate(
+    private delegate void OnCompactionBeginDelegate(
         nint state, nint db, nint info);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    public delegate void OnCompactionCompletedDelegate(
+    private delegate void OnCompactionCompletedDelegate(
         nint state, nint db, nint info);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    public delegate void OnSubCompactionBeginDelegate(
+    private delegate void OnSubCompactionBeginDelegate(
         nint state, nint info);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    public delegate void OnSubCompactionCompletedDelegate(
+    private delegate void OnSubCompactionCompletedDelegate(
         nint state, nint info);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    public delegate void OnExternalFileIngestedDelegate(
+    private delegate void OnExternalFileIngestedDelegate(
         nint state, nint db, nint info);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    public delegate void OnBackgroundErrorDelegate(
+    private delegate void OnBackgroundErrorDelegate(
         nint state, uint reason, nint info);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    public delegate void OnStallConditionsChangedDelegate(
+    private delegate void OnStallConditionsChangedDelegate(
         nint state, nint info);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    public delegate void OnMemTableSealedDelegate(
+    private delegate void OnMemTableSealedDelegate(
         nint state, nint info);
 
     // Delegate instances kept as fields to prevent GC from collecting the
@@ -734,8 +734,8 @@ public abstract class EventListener : RocksDbHandle
             OutputFiles: outputFiles,
             TotalInputBytes: NativeMethods.rocksdb_compactionjobinfo_total_input_bytes(info),
             TotalOutputBytes: NativeMethods.rocksdb_compactionjobinfo_total_output_bytes(info),
-            InputRecords: (uint)NativeMethods.rocksdb_compactionjobinfo_input_records(info),
-            OutputRecords: (uint)NativeMethods.rocksdb_compactionjobinfo_output_records(info),
+            InputRecords: NativeMethods.rocksdb_compactionjobinfo_input_records(info),
+            OutputRecords: NativeMethods.rocksdb_compactionjobinfo_output_records(info),
             Elapsed: TimeSpan.FromMicroseconds(NativeMethods.rocksdb_compactionjobinfo_elapsed_micros(info)),
             NumOfCorruptKeys: NativeMethods.rocksdb_compactionjobinfo_num_corrupt_keys(info),
             BaseInputLevel: NativeMethods.rocksdb_compactionjobinfo_base_input_level(info),
@@ -948,7 +948,7 @@ public abstract class EventListener : RocksDbHandle
 
     // ── Disposal ───────────────────────────────────────────────────────────
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_eventlistener_destroy(Handle);
     }

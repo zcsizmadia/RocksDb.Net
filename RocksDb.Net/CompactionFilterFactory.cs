@@ -108,7 +108,7 @@ public abstract class CompactionFilterFactory : RocksDbHandle
     /// </summary>
     protected abstract CompactionFilter CreateFilter(CompactionFilterContext context);
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_compactionfilterfactory_destroy(Handle);
     }

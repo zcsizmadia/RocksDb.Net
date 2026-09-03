@@ -172,7 +172,7 @@ public sealed class IngestExternalFileOptions : RocksDbHandle
         set => NativeMethods.rocksdb_ingestexternalfileoptions_set_file_opening_threads(Handle, value);
     }
 
-    public override void DisposeHandle()
+    protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_ingestexternalfileoptions_destroy(Handle);
     }
