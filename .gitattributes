@@ -1,0 +1,37 @@
+# Without this file, what lands in the index depends on each contributor's
+# core.autocrlf setting, so the repository accumulates both conventions and
+# diffs pick up line-ending noise that hides the real change. The index of
+# this repository had drifted to 87 CRLF and 62 LF-only .cs blobs before this
+# file was added.
+#
+# `text=auto` normalises text files to LF in the index while leaving the
+# working tree to each platform's convention, so Windows checkouts still get
+# CRLF.
+* text=auto
+
+# Being explicit for the types actually tracked here, so a new extension does
+# not quietly depend on Git's content sniffing.
+*.cs        text diff=csharp
+*.csproj    text
+*.props     text
+*.slnx      text
+*.md        text
+*.json      text
+*.jsonc     text
+*.yml       text
+*.editorconfig text
+LICENSE     text
+
+# Shell scripts must be LF in the working tree as well, not just in the index.
+# CRLF makes an interpreter treat the carriage return as part of the shebang
+# path and the script fails to run at all.
+*.sh        text eol=lf
+
+# Binary, so Git neither converts line endings nor tries to diff them.
+*.png       binary
+*.jpg       binary
+*.ico       binary
+*.dll       binary
+*.so        binary
+*.dylib     binary
+*.nupkg     binary
