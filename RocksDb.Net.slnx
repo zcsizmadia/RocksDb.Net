@@ -1,6 +1,5 @@
 <Solution>
   <Folder Name="/Documentation/">
-    <File Path="docs/API.md" />
     <File Path="LICENSE" />
     <File Path="README.md" />
   </Folder>
