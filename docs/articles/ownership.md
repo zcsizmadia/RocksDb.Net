@@ -46,6 +46,24 @@ Most methods copy the key or value, or use it only for the duration of the call,
 
 The iteration bounds are the exception, because RocksDb stores them by reference. `ReadOptions.SetIterateUpperBound` and `SetIterateLowerBound` copy the key into unmanaged memory owned by the `ReadOptions`, released when the bound is replaced or the options are disposed. Passing an empty span clears the bound. You do not need to pin or retain your own buffer.
 
+## Children must be released before their parent
+
+RocksDb requires an iterator, snapshot, pinned value, column family handle or transaction to be destroyed before the database it came from. Their native destructors reach into database internals, and releasing a snapshot dereferences the database pointer with no null check.
+
+You do not have to police this. Each of those types keeps its parent reachable, so the parent cannot be finalized first, and skips its native release if the parent has already been closed. Forgetting to dispose one leaks a small wrapper rather than terminating the process. Disposing in the natural `using` order costs nothing and reclaims everything.
+
+One case the mechanism cannot cover: an iterator holds its `ReadOptions` alive, because RocksDb stores an iterate bound as a pointer into the options struct. That protects against the options being collected, which is the common accident. It cannot protect against disposing them explicitly while the iterator is still in use, because the native struct is gone at that point.
+
+## Transactions
+
+`TransactionDb.Open` consumes its `DbOptions` exactly as `RocksDb.Open` does, and disposes them after the database closes. The `TransactionDbOptions` are copied instead, so dispose those whenever you like.
+
+A `Transaction` must be disposed whether or not it was committed. Neither `Commit` nor `Rollback` releases it; they decide what happens to its writes. A transaction that is never disposed keeps its locks until the database closes.
+
+An iterator created from a transaction is invalidated by `Commit`, `Rollback` and `RollbackToSavePoint`. RocksDb does not stop you using one afterwards, so those three dispose any open iterator first, and a later call throws `ObjectDisposedException` instead of reading freed memory.
+
+Three transaction functions are deliberately not wrapped, because each hands back a pointer to something the transaction still owns and the obvious disposal would free it twice: the transaction snapshot, its internal write batch, and the base database behind a transaction database.
+
 ## Snapshots you can keep, views you cannot
 
 Event listener info objects, and the `TableProperties` and `CompactionJobStats` they carry, are copied out before the callback returns, so they are safe to keep and to pass between threads.

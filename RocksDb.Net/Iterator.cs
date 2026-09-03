@@ -24,16 +24,16 @@ public sealed class Iterator : RocksDbHandle
     // common failure, where the options were simply not kept in a variable.
     private readonly ReadOptions? _options;
 
-    private Iterator(nint handle, RocksDb db, ReadOptions? options)
+    private Iterator(nint handle, RocksDbHandle owner, ReadOptions? options)
     {
         Handle = handle;
         _options = options;
-        SetParent(db);
+        SetParent(owner);
     }
 
-    internal static Iterator FromHandle(nint handle, RocksDb db, ReadOptions? options)
+    internal static Iterator FromHandle(nint handle, RocksDbHandle owner, ReadOptions? options)
     {
-        return new Iterator(handle, db, options);
+        return new Iterator(handle, owner, options);
     }
 
     /// <summary>Returns true if the iterator is positioned at a valid entry.</summary>

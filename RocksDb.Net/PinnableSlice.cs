@@ -29,10 +29,10 @@ namespace RocksDbNet;
 /// </remarks>
 public sealed class PinnableSlice : RocksDbHandle
 {
-    internal PinnableSlice(nint handle, RocksDb db)
+    internal PinnableSlice(nint handle, RocksDbHandle owner)
         : base(handle)
     {
-        SetParent(db);
+        SetParent(owner);
     }
 
     /// <summary>
