@@ -64,6 +64,27 @@ public sealed record FlushJobInfo(
 
     /// <summary>Blob files created by this flush. Empty when blob files are disabled.</summary>
     public IReadOnlyList<BlobFileAdditionInfo> BlobFileAdditions { get; init; } = [];
+
+    /// <summary>Identifier of the flush job, unique within the database's lifetime.</summary>
+    public int JobId { get; init; }
+
+    /// <summary>Identifier of the RocksDb background thread that ran the flush.</summary>
+    public ulong ThreadId { get; init; }
+
+    /// <summary>Identifier of the column family that was flushed.</summary>
+    public uint ColumnFamilyId { get; init; }
+
+    /// <summary>File number of the SST file this flush produced.</summary>
+    public ulong FileNumber { get; init; }
+
+    /// <summary>
+    /// File number of the oldest blob file the new SST references, or 0 when it
+    /// references none.
+    /// </summary>
+    public ulong OldestBlobFileNumber { get; init; }
+
+    /// <summary>Compression applied to any blob files this flush wrote.</summary>
+    public Compression BlobCompressionType { get; init; }
 }
 
 /// <summary>Information about a completed compaction job.</summary>
@@ -93,17 +114,96 @@ public sealed record CompactionJobInfo(
 
     /// <summary>Blob-file garbage discovered by this compaction.</summary>
     public IReadOnlyList<BlobFileGarbageInfo> BlobFileGarbage { get; init; } = [];
+
+    /// <summary>Identifier of the compaction job, unique within the database's lifetime.</summary>
+    public int JobId { get; init; }
+
+    /// <summary>Identifier of the RocksDb background thread that ran the compaction.</summary>
+    public ulong ThreadId { get; init; }
+
+    /// <summary>Identifier of the column family that was compacted.</summary>
+    public uint ColumnFamilyId { get; init; }
+
+    /// <summary>
+    /// <c>true</c> when the compaction was cancelled or otherwise did not finish.
+    /// The other values describe however much work it did before stopping.
+    /// </summary>
+    public bool Aborted { get; init; }
+
+    /// <summary>Compression applied to the SST files this compaction wrote.</summary>
+    public Compression Compression { get; init; }
+
+    /// <summary>Compression applied to any blob files this compaction wrote.</summary>
+    public Compression BlobCompressionType { get; init; }
+
+    /// <summary>
+    /// Number of level-0 files in the column family around the time of the
+    /// compaction. RocksDb documents this as the count "right before and after"
+    /// the compaction, and in practice a compaction that drains level 0 reports
+    /// 0 here.
+    /// </summary>
+    public int NumL0Files { get; init; }
+
+    /// <summary>Level and file number for each input file.</summary>
+    public IReadOnlyList<CompactionFileInfo> InputFileInfos { get; init; } = [];
+
+    /// <summary>Level and file number for each output file.</summary>
+    public IReadOnlyList<CompactionFileInfo> OutputFileInfos { get; init; } = [];
+
+    /// <summary>
+    /// Table properties for the files involved, keyed by file name. RocksDb
+    /// includes both inputs and outputs.
+    /// </summary>
+    public IReadOnlyDictionary<string, TableProperties> TablePropertiesByFile { get; init; }
+        = new Dictionary<string, TableProperties>();
 }
 
 /// <summary>Information about a sub-compaction job.</summary>
 public sealed record SubCompactionJobInfo(
     string? ColumnFamilyName,
-    string? Status);
+    string? Status)
+{
+    /// <summary>Identifier of the parent compaction job.</summary>
+    public int JobId { get; init; }
+
+    /// <summary>Identifier of this sub-compaction within its parent job.</summary>
+    public int SubCompactionJobId { get; init; }
+
+    /// <summary>Identifier of the column family being compacted.</summary>
+    public uint ColumnFamilyId { get; init; }
+
+    /// <summary>Compression applied to the SST files this sub-compaction wrote.</summary>
+    public Compression Compression { get; init; }
+
+    /// <summary>Compression applied to any blob files this sub-compaction wrote.</summary>
+    public Compression BlobCompressionType { get; init; }
+
+    /// <summary>
+    /// Statistics for this sub-compaction, or <c>null</c> if RocksDb reported
+    /// none.
+    /// </summary>
+    public CompactionJobStats? Stats { get; init; }
+}
 
 /// <summary>Information about an external file ingestion event.</summary>
 public sealed record ExternalFileIngestionInfo(
     string? ColumnFamilyName,
-    string? InternalFilePath);
+    string? InternalFilePath)
+{
+    /// <summary>Path the file was ingested from.</summary>
+    public string? ExternalFilePath { get; init; }
+
+    /// <summary>
+    /// Sequence number assigned to every key in the ingested file, or 0 when
+    /// RocksDb did not need to assign one.
+    /// </summary>
+    public ulong GlobalSeqno { get; init; }
+
+    /// <summary>
+    /// Properties of the ingested file, or <c>null</c> if RocksDb reported none.
+    /// </summary>
+    public TableProperties? TableProperties { get; init; }
+}
 
 /// <summary>Information about a background error.</summary>
 public sealed record BackgroundErrorInfo(
@@ -122,7 +222,15 @@ public sealed record MemTableInfo(
     ulong FirstSeqno,
     ulong EarliestSeqno,
     ulong NumEntries,
-    ulong NumDeletes);
+    ulong NumDeletes)
+{
+    /// <summary>
+    /// The newest user-defined timestamp in the sealed memtable, as raw bytes,
+    /// or empty when the column family does not use them. The encoding is the
+    /// application's own, so RocksDb passes it through untouched.
+    /// </summary>
+    public byte[] NewestUdt { get; init; } = [];
+}
 
 /// <summary>
 /// Base class for receiving database event notifications such as flushes,
@@ -454,6 +562,12 @@ public abstract class EventListener : RocksDbHandle
             BlobFileAdditions = ReadBlobFileAdditions(
                 NativeMethods.rocksdb_flushjobinfo_blob_file_addition_infos_count(info),
                 pos => NativeMethods.rocksdb_flushjobinfo_blob_file_addition_info_at(info, pos)),
+            JobId = NativeMethods.rocksdb_flushjobinfo_job_id(info),
+            ThreadId = NativeMethods.rocksdb_flushjobinfo_thread_id(info),
+            ColumnFamilyId = NativeMethods.rocksdb_flushjobinfo_cf_id(info),
+            FileNumber = NativeMethods.rocksdb_flushjobinfo_file_number(info),
+            OldestBlobFileNumber = NativeMethods.rocksdb_flushjobinfo_oldest_blob_file_number(info),
+            BlobCompressionType = (Compression)NativeMethods.rocksdb_flushjobinfo_blob_compression_type(info),
         };
     }
 
@@ -548,7 +662,70 @@ public abstract class EventListener : RocksDbHandle
             BlobFileGarbage = ReadBlobFileGarbage(
                 NativeMethods.rocksdb_compactionjobinfo_blob_file_garbage_infos_count(info),
                 pos => NativeMethods.rocksdb_compactionjobinfo_blob_file_garbage_info_at(info, pos)),
+            JobId = NativeMethods.rocksdb_compactionjobinfo_job_id(info),
+            ThreadId = NativeMethods.rocksdb_compactionjobinfo_thread_id(info),
+            ColumnFamilyId = NativeMethods.rocksdb_compactionjobinfo_cf_id(info),
+            Aborted = NativeMethods.rocksdb_compactionjobinfo_aborted(info) != 0,
+            Compression = (Compression)NativeMethods.rocksdb_compactionjobinfo_compression(info),
+            BlobCompressionType = (Compression)NativeMethods.rocksdb_compactionjobinfo_blob_compression_type(info),
+            NumL0Files = NativeMethods.rocksdb_compactionjobinfo_num_l0_files(info),
+            InputFileInfos = ReadCompactionFileInfos(
+                NativeMethods.rocksdb_compactionjobinfo_input_file_infos_count(info),
+                pos => NativeMethods.rocksdb_compactionjobinfo_input_file_info_at(info, pos)),
+            OutputFileInfos = ReadCompactionFileInfos(
+                NativeMethods.rocksdb_compactionjobinfo_output_file_infos_count(info),
+                pos => NativeMethods.rocksdb_compactionjobinfo_output_file_info_at(info, pos)),
+            TablePropertiesByFile = ReadTablePropertiesByFile(info),
         };
+    }
+
+    private static IReadOnlyList<CompactionFileInfo> ReadCompactionFileInfos(nuint count, Func<nuint, nint> at)
+    {
+        if (count == 0)
+        {
+            return [];
+        }
+
+        var result = new List<CompactionFileInfo>(checked((int)count));
+        for (nuint i = 0; i < count; i++)
+        {
+            if (CompactionFileInfo.Copy(at(i)) is { } fileInfo)
+            {
+                result.Add(fileInfo);
+            }
+        }
+
+        return result;
+    }
+
+    private static unsafe IReadOnlyDictionary<string, TableProperties> ReadTablePropertiesByFile(nint info)
+    {
+        nuint count = NativeMethods.rocksdb_compactionjobinfo_table_properties_count(info);
+        if (count == 0)
+        {
+            return new Dictionary<string, TableProperties>();
+        }
+
+        var result = new Dictionary<string, TableProperties>(checked((int)count));
+
+        // Both accessors index into a native map, so read each position once
+        // rather than looking up by file name.
+        for (nuint i = 0; i < count; i++)
+        {
+            byte* keyPtr = NativeMethods.rocksdb_compactionjobinfo_table_properties_key_at(info, i, out nuint keyLen);
+            string? fileName = keyPtr is null ? null : NativeMethods.PtrToStringUTF8(keyPtr, keyLen);
+            if (fileName is null)
+            {
+                continue;
+            }
+
+            if (TableProperties.Copy(NativeMethods.rocksdb_compactionjobinfo_table_properties_value_at(info, i)) is { } props)
+            {
+                result[fileName] = props;
+            }
+        }
+
+        return result;
     }
 
     // ── SubCompactionJobInfo ───────────────────────────────────────────────
@@ -563,7 +740,15 @@ public abstract class EventListener : RocksDbHandle
         NativeMethods.rocksdb_subcompactionjobinfo_status(info, ref errStr);
         var status = errStr != nint.Zero ? Marshal.PtrToStringAnsi(errStr) : "OK";
 
-        return new SubCompactionJobInfo(columnFamilyName, status);
+        return new SubCompactionJobInfo(columnFamilyName, status)
+        {
+            JobId = NativeMethods.rocksdb_subcompactionjobinfo_job_id(info),
+            SubCompactionJobId = NativeMethods.rocksdb_subcompactionjobinfo_subcompaction_job_id(info),
+            ColumnFamilyId = NativeMethods.rocksdb_subcompactionjobinfo_cf_id(info),
+            Compression = (Compression)NativeMethods.rocksdb_subcompactionjobinfo_compression(info),
+            BlobCompressionType = (Compression)NativeMethods.rocksdb_subcompactionjobinfo_blob_compression_type(info),
+            Stats = CompactionJobStats.Copy(NativeMethods.rocksdb_subcompactionjobinfo_stats(info)),
+        };
     }
 
     // ── ExternalFileIngestionInfo ──────────────────────────────────────────
@@ -577,9 +762,17 @@ public abstract class EventListener : RocksDbHandle
         str = NativeMethods.rocksdb_externalfileingestioninfo_internal_file_path(info, out length);
         var internalPath = NativeMethods.PtrToStringUTF8(str, length);
 
+        str = NativeMethods.rocksdb_externalfileingestioninfo_external_file_path(info, out length);
+        var externalPath = str is null ? null : NativeMethods.PtrToStringUTF8(str, length);
+
         return new ExternalFileIngestionInfo(
             ColumnFamilyName: columnFamilyName,
-            InternalFilePath: internalPath);
+            InternalFilePath: internalPath)
+        {
+            ExternalFilePath = externalPath,
+            GlobalSeqno = NativeMethods.rocksdb_externalfileingestioninfo_global_seqno(info),
+            TableProperties = TableProperties.Copy(NativeMethods.rocksdb_externalfileingestioninfo_table_properties(info)),
+        };
     }
 
     // ── BackgroundErrorInfo ─────────────────────────────────────────────────────
@@ -639,7 +832,23 @@ public abstract class EventListener : RocksDbHandle
             FirstSeqno: NativeMethods.rocksdb_memtableinfo_first_seqno(info),
             EarliestSeqno: NativeMethods.rocksdb_memtableinfo_earliest_seqno(info),
             NumEntries: NativeMethods.rocksdb_memtableinfo_num_entries(info),
-            NumDeletes: NativeMethods.rocksdb_memtableinfo_num_deletes(info));
+            NumDeletes: NativeMethods.rocksdb_memtableinfo_num_deletes(info))
+        {
+            NewestUdt = ReadNewestUdt(info),
+        };
+    }
+
+    /// <summary>
+    /// Copies the newest user-defined timestamp out. The pointer belongs to the
+    /// info object, so this cannot be deferred past the callback.
+    /// </summary>
+    private static unsafe byte[] ReadNewestUdt(nint info)
+    {
+        byte* udt = NativeMethods.rocksdb_memtableinfo_newest_udt(info, out nuint length);
+
+        return udt is null || length == 0
+            ? []
+            : new ReadOnlySpan<byte>(udt, checked((int)length)).ToArray();
     }
 
     // ── Disposal ───────────────────────────────────────────────────────────
