@@ -47,12 +47,21 @@ public static class RocksDbCallbacks
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The sender is the wrapper instance whose callback threw, for example the
-    /// <see cref="CompactionFilter"/> or <see cref="EventListener"/> that was
-    /// installed. Use it to tell several installed wrappers apart, since the
-    /// callback name alone does not identify which one failed. It is
-    /// <see langword="null"/> only when the instance cannot be identified, which
-    /// happens when resolving it is itself what failed.
+    /// The sender identifies what threw, so that several installed callbacks can
+    /// be told apart. The callback name alone cannot do that: two compaction
+    /// filters both report under <c>Filter</c>.
+    /// </para>
+    /// <para>
+    /// For callbacks installed as a subclass it is that instance, such as the
+    /// <see cref="CompactionFilter"/> or <see cref="EventListener"/>. For the two
+    /// installed as a plain delegate, <see cref="ReadOptions.SetTableFilter"/> and
+    /// the <see cref="CreateBackupOptions"/> callbacks, it is the delegate itself,
+    /// since that is what the callback holds. Compare with
+    /// <see cref="object.ReferenceEquals"/> against whichever you registered.
+    /// </para>
+    /// <para>
+    /// It is <see langword="null"/> only when the source cannot be identified,
+    /// which happens when resolving it is itself what failed.
     /// </para>
     /// <para>
     /// Handlers run on the thread that raised the exception, which is a RocksDb

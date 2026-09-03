@@ -352,6 +352,51 @@ public class ReadOptionsPropertyTests
         Assert.True(reported.Contains("SetTableFilter"));
     }
 
+    /// <summary>
+    /// For a callback installed as a plain delegate, the reported sender is that
+    /// delegate, not the <see cref="ReadOptions"/> that holds it.
+    /// </summary>
+    /// <remarks>
+    /// Worth pinning because it differs from the subclass-based callbacks, where
+    /// the sender is the wrapper. The pinned state behind a table filter is a
+    /// handle to the delegate, so that is what there is to report.
+    /// </remarks>
+    [Fact]
+    public void TableFilter_Throwing_ReportsTheDelegateAsTheSender()
+    {
+        using var db = new TempDb();
+        db.Db.Put("a", "1");
+        db.Db.Flush();
+
+        Func<TablePropertiesView, bool> filter =
+            _ => throw new InvalidOperationException("filter boom");
+
+        object? sender = null;
+        void Capture(object? s, CallbackExceptionEventArgs e)
+        {
+            if (e.CallbackName == "SetTableFilter")
+            {
+                sender = s;
+            }
+        }
+
+        RocksDbCallbacks.UnhandledException += Capture;
+        try
+        {
+            using var opts = new ReadOptions();
+            opts.SetTableFilter(filter);
+
+            using var iter = db.Db.NewIterator(opts);
+            iter.SeekToFirst();
+
+            Assert.Same(filter, sender);
+        }
+        finally
+        {
+            RocksDbCallbacks.UnhandledException -= Capture;
+        }
+    }
+
     [Fact]
     public void TableFilter_ReplacedRepeatedly_DoesNotLeakHandles()
     {
