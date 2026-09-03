@@ -618,6 +618,40 @@ public sealed class DbOptions : RocksDbHandle
     }
 
     /// <summary>
+    /// Attaches tuning for universal compaction.
+    /// </summary>
+    /// <remarks>
+    /// Only used when <see cref="CompactionStyle"/> is
+    /// <see cref="RocksDbNet.CompactionStyle.Universal"/>. RocksDb copies the
+    /// values, so the instance may be disposed immediately afterwards.
+    /// </remarks>
+    public UniversalCompactionOptions UniversalCompactionOptions
+    {
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            NativeMethods.rocksdb_options_set_universal_compaction_options(Handle, value.Handle);
+        }
+    }
+
+    /// <summary>
+    /// Attaches tuning for FIFO compaction.
+    /// </summary>
+    /// <remarks>
+    /// Only used when <see cref="CompactionStyle"/> is
+    /// <see cref="RocksDbNet.CompactionStyle.Fifo"/>. RocksDb copies the values,
+    /// so the instance may be disposed immediately afterwards.
+    /// </remarks>
+    public FifoCompactionOptions FifoCompactionOptions
+    {
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            NativeMethods.rocksdb_options_set_fifo_compaction_options(Handle, value.Handle);
+        }
+    }
+
+    /// <summary>
     /// Attaches a memtable memory budget shared across column families, and
     /// across databases if the same instance is given to each.
     /// </summary>
