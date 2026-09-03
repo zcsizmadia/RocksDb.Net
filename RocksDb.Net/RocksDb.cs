@@ -974,6 +974,95 @@ public sealed class RocksDb : RocksDbHandle
         return liveFilesHandle == nint.Zero ? null : new LiveFiles(liveFilesHandle);
     }
 
+    /// <summary>
+    /// Returns a consistent snapshot of every live file, described in enough
+    /// detail to copy the database elsewhere.
+    /// </summary>
+    /// <param name="options">
+    /// Settings for the call, or <c>null</c> for RocksDb's defaults.
+    /// </param>
+    /// <remarks>
+    /// More useful than <see cref="GetLiveFiles"/> for building a backup by hand:
+    /// each entry carries the target filename, the live byte count, the storage
+    /// temperature, optionally a checksum, and for small metadata files the
+    /// content to write rather than copy.
+    /// <para>
+    /// This flushes memtables by default, because
+    /// <see cref="LiveFilesStorageInfoOptions.WalSizeForFlush"/> defaults to 0,
+    /// meaning "always flush". Raise it to avoid that.
+    /// </para>
+    /// </remarks>
+    public unsafe IReadOnlyList<LiveFileStorageInfo> GetLiveFilesStorageInfo(LiveFilesStorageInfoOptions? options = null)
+    {
+        LiveFilesStorageInfoOptions effective = options ?? new LiveFilesStorageInfoOptions();
+        try
+        {
+            nint err = default;
+            nint info = NativeMethods.rocksdb_get_livefiles_storage_info(Handle, effective.Handle, ref err);
+            NativeMethods.ThrowOnError(err);
+
+            if (info == nint.Zero)
+            {
+                return [];
+            }
+
+            try
+            {
+                nuint count = NativeMethods.rocksdb_livefiles_storage_info_count(info);
+                var results = new List<LiveFileStorageInfo>(checked((int)count));
+
+                for (nuint i = 0; i < count; i++)
+                {
+                    byte* checksum = NativeMethods.rocksdb_livefiles_storage_info_file_checksum(info, i);
+                    byte* replacement = NativeMethods.rocksdb_livefiles_storage_info_replacement_contents(info, i, out nuint replacementLen);
+
+                    results.Add(new LiveFileStorageInfo
+                    {
+                        RelativeFilename = Marshal.PtrToStringUTF8((nint)NativeMethods.rocksdb_livefiles_storage_info_relative_filename(info, i)),
+                        Directory = Marshal.PtrToStringUTF8((nint)NativeMethods.rocksdb_livefiles_storage_info_directory(info, i)),
+                        Size = NativeMethods.rocksdb_livefiles_storage_info_size(info, i),
+                        FileType = (FileType)NativeMethods.rocksdb_livefiles_storage_info_file_type(info, i),
+                        FileNumber = NativeMethods.rocksdb_livefiles_storage_info_file_number(info, i),
+                        Temperature = (Temperature)NativeMethods.rocksdb_livefiles_storage_info_temperature(info, i),
+                        TrimToSize = NativeMethods.rocksdb_livefiles_storage_info_trim_to_size(info, i) != 0,
+
+                        // The checksum is a NUL-terminated string on the native
+                        // side but holds raw bytes, so read it as such.
+                        FileChecksum = checksum is null ? [] : ReadNulTerminatedBytes(checksum),
+                        FileChecksumFuncName = Marshal.PtrToStringUTF8((nint)NativeMethods.rocksdb_livefiles_storage_info_file_checksum_func_name(info, i)),
+                        ReplacementContents = replacement is null || replacementLen == 0
+                            ? []
+                            : new ReadOnlySpan<byte>(replacement, checked((int)replacementLen)).ToArray(),
+                    });
+                }
+
+                return results;
+            }
+            finally
+            {
+                NativeMethods.rocksdb_livefiles_storage_info_destroy(info);
+            }
+        }
+        finally
+        {
+            if (options is null)
+            {
+                effective.Dispose();
+            }
+        }
+    }
+
+    private static unsafe byte[] ReadNulTerminatedBytes(byte* ptr)
+    {
+        int length = 0;
+        while (ptr[length] != 0)
+        {
+            length++;
+        }
+
+        return length == 0 ? [] : new ReadOnlySpan<byte>(ptr, length).ToArray();
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Background work
     // ─────────────────────────────────────────────────────────────────────────
@@ -1004,6 +1093,180 @@ public sealed class RocksDb : RocksDbHandle
         nint err = default;
         NativeMethods.rocksdb_continue_background_work(Handle, ref err);
         NativeMethods.ThrowOnError(err);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // CompactFiles
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Compacts an explicit list of files into <paramref name="outputLevel"/>,
+    /// and returns the names of the files produced.
+    /// </summary>
+    /// <param name="options">
+    /// Compaction settings, or <c>null</c> for RocksDb's defaults.
+    /// </param>
+    /// <param name="inputFileNames">
+    /// File names as reported by <see cref="GetLiveFiles"/>, or by the input and
+    /// output lists on <see cref="CompactionJobInfo"/>.
+    /// </param>
+    /// <param name="outputLevel">The level to write the results into.</param>
+    /// <param name="outputPathId">
+    /// Index into the configured database paths, for a database spread over
+    /// several. 0 for the usual single-path case.
+    /// </param>
+    /// <remarks>
+    /// Unlike <see cref="CompactRange(ReadOnlySpan{byte}, ReadOnlySpan{byte})"/>
+    /// this names the files itself, so the caller controls exactly what gets
+    /// rewritten. RocksDb rejects a set of files it cannot legally compact
+    /// together.
+    /// </remarks>
+    public string[] CompactFiles(
+        CompactFilesOptions? options,
+        IReadOnlyList<string> inputFileNames,
+        int outputLevel,
+        int outputPathId = 0)
+        => CompactFilesCore(options, inputFileNames, outputLevel, outputPathId, cf: null, jobInfo: null);
+
+    /// <summary>Compacts an explicit list of files in a specific column family.</summary>
+    public string[] CompactFiles(
+        ColumnFamilyHandle cf,
+        CompactFilesOptions? options,
+        IReadOnlyList<string> inputFileNames,
+        int outputLevel,
+        int outputPathId = 0)
+    {
+        ArgumentNullException.ThrowIfNull(cf);
+        return CompactFilesCore(options, inputFileNames, outputLevel, outputPathId, cf, jobInfo: null);
+    }
+
+    /// <summary>
+    /// Compacts an explicit list of files and also reports what the compaction
+    /// did, through <paramref name="jobInfo"/>.
+    /// </summary>
+    /// <remarks>
+    /// This is the only way to obtain a fully populated
+    /// <see cref="CompactionJobInfo"/> synchronously. An
+    /// <see cref="EventListener"/> gets the same information, but only when
+    /// RocksDb happens to fire the event.
+    /// </remarks>
+    public string[] CompactFiles(
+        CompactFilesOptions? options,
+        IReadOnlyList<string> inputFileNames,
+        int outputLevel,
+        out CompactionJobInfo? jobInfo,
+        int outputPathId = 0)
+    {
+        // The info object is ours to create and destroy; RocksDb only fills it in.
+        nint infoHandle = NativeMethods.rocksdb_compactionjobinfo_create();
+        try
+        {
+            string[] outputs = CompactFilesCore(options, inputFileNames, outputLevel, outputPathId, cf: null, infoHandle);
+            jobInfo = EventListener.ReadCompactionJobInfo(infoHandle);
+            return outputs;
+        }
+        finally
+        {
+            NativeMethods.rocksdb_compactionjobinfo_destroy(infoHandle);
+        }
+    }
+
+    private unsafe string[] CompactFilesCore(
+        CompactFilesOptions? options,
+        IReadOnlyList<string> inputFileNames,
+        int outputLevel,
+        int outputPathId,
+        ColumnFamilyHandle? cf,
+        nint? jobInfo)
+    {
+        ArgumentNullException.ThrowIfNull(inputFileNames);
+        if (inputFileNames.Count == 0)
+        {
+            throw new ArgumentException("At least one input file is required.", nameof(inputFileNames));
+        }
+
+        var namePtrs = new byte*[inputFileNames.Count];
+        var pins = new GCHandle[inputFileNames.Count];
+
+        try
+        {
+            for (int i = 0; i < inputFileNames.Count; i++)
+            {
+                byte[] bytes = Encoding.UTF8.GetBytes(inputFileNames[i] + '\0');
+                pins[i] = GCHandle.Alloc(bytes, GCHandleType.Pinned);
+                namePtrs[i] = (byte*)pins[i].AddrOfPinnedObject();
+            }
+
+            byte** outputNames = null;
+            nuint outputCount = 0;
+            nint err = default;
+
+            fixed (byte** inputs = namePtrs)
+            {
+                if (cf is null)
+                {
+                    NativeMethods.rocksdb_compact_files(
+                        Handle,
+                        options?.Handle ?? nint.Zero,
+                        inputs,
+                        (nuint)inputFileNames.Count,
+                        outputLevel,
+                        outputPathId,
+                        &outputNames,
+                        &outputCount,
+                        jobInfo ?? nint.Zero,
+                        ref err);
+                }
+                else
+                {
+                    NativeMethods.rocksdb_compact_files_cf(
+                        Handle,
+                        cf.Handle,
+                        options?.Handle ?? nint.Zero,
+                        inputs,
+                        (nuint)inputFileNames.Count,
+                        outputLevel,
+                        outputPathId,
+                        &outputNames,
+                        &outputCount,
+                        jobInfo ?? nint.Zero,
+                        ref err);
+                }
+            }
+
+            NativeMethods.ThrowOnError(err);
+
+            try
+            {
+                if (outputNames is null || outputCount == 0)
+                {
+                    return [];
+                }
+
+                var results = new string[checked((int)outputCount)];
+                for (nuint i = 0; i < outputCount; i++)
+                {
+                    results[i] = Marshal.PtrToStringUTF8((nint)outputNames[i]) ?? string.Empty;
+                }
+
+                return results;
+            }
+            finally
+            {
+                // RocksDb allocated this array, so it has to free it.
+                if (outputNames is not null)
+                {
+                    NativeMethods.rocksdb_compact_files_output_file_names_destroy(outputNames, outputCount);
+                }
+            }
+        }
+        finally
+        {
+            for (int i = 0; i < pins.Length; i++)
+            {
+                if (pins[i].IsAllocated) pins[i].Free();
+            }
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────

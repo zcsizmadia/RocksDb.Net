@@ -611,6 +611,15 @@ public abstract class EventListener : RocksDbHandle
 
     // ── CompactionJobInfo ──────────────────────────────────────────────────
 
+    /// <summary>
+    /// Reads a <c>rocksdb_compactionjobinfo_t</c> into a managed record. Shared
+    /// with <see cref="RocksDb.CompactFiles(CompactFilesOptions, IReadOnlyList{string}, int, out CompactionJobInfo, int)"/>,
+    /// which creates the info object itself rather than receiving it from a
+    /// listener callback.
+    /// </summary>
+    internal static CompactionJobInfo ReadCompactionJobInfo(nint info)
+        => CreateCompactionJobInfo(info);
+
     private static unsafe CompactionJobInfo CreateCompactionJobInfo(nint info)
     {
         nuint length;
