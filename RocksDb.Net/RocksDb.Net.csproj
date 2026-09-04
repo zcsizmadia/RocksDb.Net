@@ -9,6 +9,18 @@
     <RootNamespace>RocksDbNet</RootNamespace>
     <IsPackable>true</IsPackable>
 
+    <!--
+      Turns on the trim and AOT analyzers, and implies IsTrimmable on net8.0 and
+      later. The point is to have the build report what stands between this
+      library and a working PublishAot rather than leaving the question open:
+      an embedded key-value store is a natural dependency for exactly the
+      deployments that care, and those users will try it.
+
+      Per target framework, and this library multi-targets, so all three are
+      analysed.
+    -->
+    <IsAotCompatible>true</IsAotCompatible>
+
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <!-- Suppress CS1591: library is documented on public API surface; Dispose/ToString are self-evident -->
     <NoWarn>$(NoWarn);CS1591</NoWarn>

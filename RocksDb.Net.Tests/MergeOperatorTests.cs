@@ -1,6 +1,5 @@
 using System.Text;
 
-using RocksDbNet.Extensions;
 
 namespace RocksDbNet.Tests;
 
@@ -184,10 +183,20 @@ public class MergeOperatorTests
     }
 
     [Fact]
-    public void PartialMerge_OverrideDetected()
+    public void PartialMerge_OverrideIsCalledRatherThanTheBase()
     {
-        var mergeOp = new PartialMergeOperator();
-        Assert.True(mergeOp.CheckIfMethodOverridden<MergeOperator>(nameof(MergeOperator.PartialMerge)));
+        using var mergeOp = new PartialMergeOperator();
+
+        // Was a reflection check that the method had been overridden, using a
+        // helper that has now gone: nothing in the library detects overrides any
+        // more, and MergeOperator never did — it always installs the slot and
+        // lets the base return false. So assert the override is reached, which
+        // is the part that mattered.
+        Assert.True(
+            mergeOp.PartialMerge("k"u8, [[1], [2]], out byte[]? value),
+            "the override should combine the operands");
+
+        Assert.NotNull(value);
     }
 
     [Fact]
@@ -246,13 +255,6 @@ public class MergeOperatorTests
 
         Assert.False(ok);
         Assert.Null(value);
-    }
-
-    [Fact]
-    public void MergeOperator_NoPartialOverrideDetected()
-    {
-        var mergeOp = new NoPartialOverrideMergeOperator();
-        Assert.False(mergeOp.CheckIfMethodOverridden<MergeOperator>(nameof(MergeOperator.PartialMerge)));
     }
 
     /// <summary>

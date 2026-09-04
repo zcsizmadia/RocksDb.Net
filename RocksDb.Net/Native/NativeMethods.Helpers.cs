@@ -26,6 +26,18 @@ internal static unsafe partial class NativeMethods
     /// <param name="searchPath">The DLL import search path hint.</param>
     /// <returns>A handle to the loaded native library, or <see cref="IntPtr.Zero"/> to fall back to default loading.</returns>
     [ExcludeFromCodeCoverage]
+    // IL3000 fires on any mention of Assembly.Location, and the analyser cannot
+    // see that the empty string it warns about is handled three lines below.
+    // Dropping the property instead would be a real regression: when this
+    // assembly is loaded from somewhere other than the app directory — a plugin
+    // folder, or a host resolving it out of a package cache — the runtimes
+    // folder sits beside the assembly and not beside the executable, and
+    // AppContext.BaseDirectory would not find it. So the property stays, the
+    // empty case is handled, and this says why.
+    [UnconditionalSuppressMessage(
+        "SingleFile",
+        "IL3000:Avoid accessing Assembly file path when publishing as a single file",
+        Justification = "The empty Location a single-file app reports is checked for, and falls back to AppContext.BaseDirectory.")]
     public static IntPtr ResolveRuntimeDll(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
     {
         // Only intercept the specific library
@@ -60,8 +72,18 @@ internal static unsafe partial class NativeMethods
             throw new PlatformNotSupportedException("Unsupported OS platform");
         }
 
-        // Attempt to load the library from the assembly location directory
-        string libPath = Path.Combine(Path.GetDirectoryName(assembly.Location) ?? AppContext.BaseDirectory, "runtimes", $"{os}-{arch}", "native", libraryNameExt);
+        // Attempt to load the library from the assembly location directory.
+        //
+        // Assembly.Location is an empty string for an assembly embedded in a
+        // single-file app, which includes anything published with PublishAot.
+        // Asking for the directory of an empty path happened to return null and
+        // so fell through to the base directory below, but only by accident, and
+        // the AOT analyser is right to object (IL3000). Say it deliberately.
+        string assemblyDirectory = string.IsNullOrEmpty(assembly.Location)
+            ? AppContext.BaseDirectory
+            : Path.GetDirectoryName(assembly.Location) ?? AppContext.BaseDirectory;
+
+        string libPath = Path.Combine(assemblyDirectory, "runtimes", $"{os}-{arch}", "native", libraryNameExt);
         if (File.Exists(libPath))
         {
             return NativeLibrary.Load(libPath);
