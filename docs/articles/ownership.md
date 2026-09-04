@@ -42,6 +42,10 @@ These copy an **existing** `shared_ptr`, so the native object is genuinely share
 
 For the two groups above, more than one holder is fine and you do not have to track it. Attaching registers a hold, and the native release happens when the last holder lets go, whichever order things are disposed in.
 
+**More than one holder at a time, though, not one after another.** The release happens when the last holder lets go, so a handle whose holders have all let go is gone. Closing a database disposes the options it took ownership of, which lets go of their holds, so attaching the same comparator or environment to a second database afterwards throws `ObjectDisposedException` even though you still hold it yourself and never disposed it. Your own reference is not a hold. Create one per database; these are cheap, and the wrapper has to free them because RocksDb never does.
+
+A `Cache` is the exception, and for a reason worth knowing: `SetBlockCache` and `BlobCache` register no hold at all. RocksDb copies the `shared_ptr`, so destroying the handle drops only this library's reference and RocksDb's copy keeps the cache alive. A cache can therefore be disposed under a live database, shared between the block and blob caches, and reused by a database opened later — which is what you want from a cache.
+
 That makes the ordinary shape safe:
 
 ```csharp
