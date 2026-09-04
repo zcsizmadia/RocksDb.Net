@@ -104,7 +104,9 @@ public class EventListenerTests
         db.Flush();
         db.CompactRange();
 
-        Assert.True(listener.FlushCompletedCount > 0, "the single override should still fire");
+        Assert.True(
+            Wait.Until(() => listener.FlushCompletedCount > 0),
+            "the single override should still fire");
     }
 
     [Fact]
@@ -257,6 +259,10 @@ public class EventListenerTests
         using var db = RocksDb.Open(dbOpts, dbPath);
         using var ingestOpts = new IngestExternalFileOptions();
         db.IngestExternalFile([sstPath], ingestOpts);
+
+        Assert.True(
+            Wait.Until(() => listener.Ingested.Count > 0),
+            "no external-file-ingested callback arrived");
 
         Assert.NotEmpty(listener.Ingested);
         var info = listener.Ingested[0];

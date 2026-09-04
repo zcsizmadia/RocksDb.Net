@@ -135,7 +135,7 @@ public class OwnershipRegressionTests
         protected override CompactionFilter CreateFilter(CompactionFilterContext context)
             => _shared;
 
-        private sealed class KeepEverything : CompactionFilter
+        internal sealed class KeepEverything : CompactionFilter
         {
             public KeepEverything()
                 : base("regression.keep")
@@ -152,21 +152,57 @@ public class OwnershipRegressionTests
     }
 
     /// <summary>
-    /// A factory that returns the same filter twice is reported, rather than
-    /// corrupting the heap when RocksDb deletes it a second time.
+    /// One filter cannot be handed to RocksDb twice.
     /// </summary>
     /// <remarks>
-    /// The second attachment throws inside the callback, which the callback
-    /// boundary catches and reports, and RocksDb treats the resulting null
-    /// filter as "no filtering for this job" — so the data is untouched and the
-    /// mistake is visible. Before, the second job deleted a pointer the first
-    /// had already deleted.
+    /// <para>
+    /// This is the invariant the fix introduced, asserted directly. RocksDb
+    /// wraps whatever <c>CreateFilter</c> returns in a fresh
+    /// <c>std::unique_ptr</c> per call, so a factory caching one instance had
+    /// it deleted twice. The second attachment now throws, the callback
+    /// boundary catches and reports it, and RocksDb treats the resulting null
+    /// filter as "no filtering for this job" — the data is untouched and the
+    /// mistake is visible.
+    /// </para>
+    /// <para>
+    /// Asserted on the attachment rather than by driving a compaction and
+    /// waiting for the report. That version only failed if RocksDb chose to ask
+    /// the factory a second time, which is a scheduling decision: it passed on
+    /// Windows, macOS, net8.0 and net10.0 and then spent the full wait timeout
+    /// failing on Ubuntu net9.0. A test that depends on how background work is
+    /// scheduled tests the scheduler.
+    /// </para>
     /// </remarks>
     [Fact]
-    public void AFactoryReturningTheSameFilterTwiceIsReported()
+    public void OneFilterCannotBeHandedToRocksDbTwice()
+    {
+        using var filter = new CachingFilterFactory.KeepEverything();
+
+        filter.AttachExclusively("CreateFilter");
+
+        InvalidOperationException ex = Assert.Throws<InvalidOperationException>(
+            () => filter.AttachExclusively("CreateFilter"));
+
+        // The message has to name the member, because the mistake surfaces a
+        // long way from the factory that made it.
+        Assert.Contains("CreateFilter", ex.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A factory returning a fresh filter each time drives a compaction with
+    /// nothing reported.
+    /// </summary>
+    /// <remarks>
+    /// The positive control for the test above: it proves the exclusivity check
+    /// does not fire for correct use, which is what would make the fix worse
+    /// than the defect. Deliberately asserts no report rather than waiting for
+    /// one, so it does not depend on how many filters RocksDb asks for.
+    /// </remarks>
+    [Fact]
+    public void AFactoryReturningAFreshFilterEachTimeIsNotReported()
     {
         using var recorder = new CallbackExceptionRecorder();
-        using var factory = new CachingFilterFactory();
+        using var factory = new FreshFilterFactory();
 
         using var db = new TempDb(o =>
         {
@@ -175,8 +211,6 @@ public class OwnershipRegressionTests
             o.Level0FileNumCompactionTrigger = 2;
         });
 
-        // Two flushes and a compaction, so the factory is asked for a filter
-        // more than once.
         for (int i = 0; i < 200; i++)
         {
             db.Db.Put($"key{i:D5}", new string('x', 64));
@@ -192,12 +226,19 @@ public class OwnershipRegressionTests
         db.Db.Flush();
         db.Db.CompactRange();
 
-        Assert.True(
-            Wait.Until(() => recorder.Contains("CreateFilter")),
-            "reusing one filter across compaction jobs was not reported");
-
-        // The data survived, which is what makes the degradation safe.
+        Assert.Empty(recorder.Reported);
         Assert.Equal(new string('y', 64), db.Db.GetString("key00300"));
+    }
+
+    private sealed class FreshFilterFactory : CompactionFilterFactory
+    {
+        public FreshFilterFactory()
+            : base("regression.fresh")
+        {
+        }
+
+        protected override CompactionFilter CreateFilter(CompactionFilterContext context)
+            => new CachingFilterFactory.KeepEverything();
     }
 
     private sealed class LoggerWithAThrowingConstructor : Logger

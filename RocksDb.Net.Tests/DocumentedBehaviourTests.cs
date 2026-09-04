@@ -97,8 +97,9 @@ public class DocumentedBehaviourTests
         }
 
         // The second assignment did not displace the first.
-        Assert.True(first.Flushes > 0, "the first listener should still receive events");
-        Assert.True(second.Flushes > 0, "the second listener should also receive events");
+        Assert.True(
+            Wait.Until(() => first.Flushes > 0 && second.Flushes > 0),
+            "both listeners should receive events");
     }
 
     // ── IsEmpty is an estimate that counts tombstones ───────────────────────

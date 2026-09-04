@@ -113,7 +113,9 @@ public class CallbackExceptionTests
         db.Db.Flush();
 
         Assert.Equal("1", db.Db.GetString("a"));
-        Assert.True(listener.Calls > 0, "the listener should have been invoked");
+        Assert.True(
+            Wait.Until(() => listener.Calls > 0),
+            "the listener should have been invoked");
         Assert.Contains(recorder.Reported, r => r.CallbackName == nameof(EventListener.OnFlushCompleted) && r.Exception is InvalidOperationException);
     }
 
