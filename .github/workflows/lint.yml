@@ -51,7 +51,21 @@ jobs:
         version="$(dotnet msbuild RocksDb.Net/ -getProperty:RocksDbVersion -nologo -v:q | tr -d '\r' | xargs)"
         echo "Regenerating for RocksDb $version"
 
-        dotnet run --project NativeMethodsGenerator -c Release -- --version "$version"
+        # No --version, so this runs the command the README documents and the
+        # generator resolves the version itself. Its first line reports what it
+        # resolved, which is checked against msbuild's own evaluation of the
+        # property: if the generator ever read that file differently from
+        # msbuild, every binding would be generated for the wrong library and
+        # nothing else here would notice.
+        dotnet run --project NativeMethodsGenerator -c Release | tee generator.log
+
+        if ! grep -qE "^RocksDb version : ${version}([[:space:]]|\$)" generator.log; then
+          echo "::error::The generator did not resolve RocksDb $version. It reported:"
+          head -1 generator.log
+          exit 1
+        fi
+
+        rm -f generator.log
 
         if ! git diff --exit-code -- RocksDb.Net/Native/NativeMethods.g.cs RocksDb.Net/StatisticsEnums.g.cs; then
           echo "::error::The generated files do not match a fresh generation for RocksDb $version. Re-run the generator and commit the result."
@@ -90,9 +104,10 @@ jobs:
           fi
         }
 
-        # The version badge and the build instructions in the README.
+        # The version badge in the README. The generator command below it does
+        # not repeat the version any more, since the generator reads it from
+        # Directory.Build.props, so there is nothing there to go stale.
         check README.md "RocksDb-${version}-blue" "the current version in the RocksDb badge"
-        check README.md "--version ${version}" "the current version in the generator instructions"
 
         # The binding count, where each file happens to format it.
         check README.md "(${grouped} functions)" "the current binding count"

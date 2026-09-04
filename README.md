@@ -334,10 +334,10 @@ dotnet test
 Two files are auto-generated from RocksDb's own headers at the pinned version: the P/Invoke bindings in `NativeMethods.g.cs`, from [c.h](https://github.com/facebook/rocksdb/blob/main/include/rocksdb/c.h), and the `Ticker` and `Histogram` enums in `StatisticsEnums.g.cs`, from [statistics.h](https://github.com/facebook/rocksdb/blob/main/include/rocksdb/statistics.h). The statistics counters are not declared in `c.h`, and their values are positional, so they are read from where they are defined rather than written out by hand. To regenerate both:
 
 ```shell
-dotnet run --project NativeMethodsGenerator -- --version 11.8.1
+dotnet run --project NativeMethodsGenerator
 ```
 
-Run it from the repository root; it writes both files into `RocksDb.Net`. Pass `--project <path>` to write somewhere else.
+Run it from the repository root. The version comes from `RocksDbVersion` in `Directory.Build.props`, which is the property that decides which native library the package binds to, so bumping that first and then regenerating is the whole upgrade sequence. `--version` and `--project` override the two if you need to.
 
 CI regenerates both and fails if either differs from what is committed, so a hand edit, a generator change that was never re-run, or a version bump that left the output behind all fail there rather than shipping.
 
