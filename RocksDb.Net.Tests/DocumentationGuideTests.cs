@@ -300,6 +300,7 @@ public class DocumentationGuideTests
     private sealed class ExpiryFilterFactory : CompactionFilterFactory
     {
         private readonly TimeSpan _retention;
+        private int _filtersCreated;
 
         public ExpiryFilterFactory(TimeSpan retention)
             : base("ExpiryFilterFactory")
@@ -307,8 +308,19 @@ public class DocumentationGuideTests
             _retention = retention;
         }
 
+        /// <summary>
+        /// How many filters the factory was asked for. Not part of the guide
+        /// snippet; the test needs it to check the claim in its own name.
+        /// </summary>
+        public int FiltersCreated => Volatile.Read(ref _filtersCreated);
+
         protected override CompactionFilter CreateFilter(CompactionFilterContext context)
-            => new ExpiryFilter(_retention);
+        {
+            // Compaction jobs run on background threads.
+            Interlocked.Increment(ref _filtersCreated);
+
+            return new ExpiryFilter(_retention);
+        }
     }
 
     [Fact]
@@ -316,8 +328,10 @@ public class DocumentationGuideTests
     {
         using var dir = new TempDir();
 
+        var factory = new ExpiryFilterFactory(TimeSpan.FromDays(30));
+
         var options = new DbOptions { CreateIfMissing = true };
-        options.CompactionFilterFactory = new ExpiryFilterFactory(TimeSpan.FromDays(30));
+        options.CompactionFilterFactory = factory;
 
         using var db = RocksDb.Open(options, dir.Path);
 
@@ -328,6 +342,22 @@ public class DocumentationGuideTests
 
         Assert.NotNull(db.Get("fresh"u8));
         Assert.Null(db.Get("stale"u8));
+
+        // What the name of this test claims, and what it never checked: the
+        // factory was actually asked for a filter. The two assertions above
+        // would hold identically if RocksDb had used one long-lived filter.
+        Assert.True(factory.FiltersCreated > 0, "the factory was never asked for a filter");
+
+        // A second compaction asks again rather than reusing the first.
+        int afterFirst = factory.FiltersCreated;
+
+        db.Put("second"u8, Stamped(DateTimeOffset.UtcNow));
+        db.Flush();
+        db.CompactRange();
+
+        Assert.True(
+            factory.FiltersCreated > afterFirst,
+            $"the second compaction reused a filter: {afterFirst} created, then {factory.FiltersCreated}");
     }
 
     // ─────────────────────────────────────────────────────────────────────────
