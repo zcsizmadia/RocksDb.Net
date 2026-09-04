@@ -11,7 +11,7 @@ These setters wrap the raw pointer in a **fresh** `shared_ptr` or `unique_ptr` o
 | Setter | Type handed over |
 | -------- | ------------------ |
 | `DbOptions.PrefixExtractor` | `SliceTransform` |
-| `DbOptions.EventListener`, `EventListeners` | `EventListener` |
+| `DbOptions.AddEventListener`, `AddEventListeners` | `EventListener` |
 | `DbOptions.MergeOperator` | `MergeOperator` |
 | `DbOptions.CompactionFilterFactory` | `CompactionFilterFactory` |
 | `BlockBasedTableOptions.SetFilterPolicy` | `FilterPolicy` |
@@ -33,7 +33,6 @@ The distinction is not cosmetic. `WalFilter` looks exactly like `EventListener` 
 
 These copy an **existing** `shared_ptr`, so the native object is genuinely shared and outlives any single holder:
 
-- `DbOptions.RateLimiter`
 - `DbOptions.InfoLog`
 
 `InfoLog` is the sharpest case, and worth knowing about even if you never touch it. The C API gives no destructor callback for a callback logger, so the wrapper cannot be told when RocksDb has finished with it. It stays pinned until the last holder lets go, rather than being unpinned when you dispose it, because RocksDb's copy of the pointer outlives that and would otherwise log through a freed handle.
@@ -44,7 +43,7 @@ For the two groups above, more than one holder is fine and you do not have to tr
 
 **More than one holder at a time, though, not one after another.** The release happens when the last holder lets go, so a handle whose holders have all let go is gone. Closing a database disposes the options it took ownership of, which lets go of their holds, so attaching the same comparator or environment to a second database afterwards throws `ObjectDisposedException` even though you still hold it yourself and never disposed it. Your own reference is not a hold. Create one per database; these are cheap, and the wrapper has to free them because RocksDb never does.
 
-A `Cache` is the exception, and for a reason worth knowing: `SetBlockCache` and `BlobCache` register no hold at all. RocksDb copies the `shared_ptr`, so destroying the handle drops only this library's reference and RocksDb's copy keeps the cache alive. A cache can therefore be disposed under a live database, shared between the block and blob caches, and reused by a database opened later — which is what you want from a cache.
+A `Cache` and a `RateLimiter` are the exceptions, and for a reason worth knowing: `SetBlockCache`, `BlobCache` and `RateLimiter` register no hold at all. RocksDb copies the `shared_ptr`, so destroying the handle drops only this library's reference and RocksDb's copy keeps the object alive. Either can therefore be disposed under a live database, shared between options objects, and reused by a database opened later — which is what you want from a cache, and from a rate limiter meant to be one process-wide I/O budget.
 
 That makes the ordinary shape safe:
 
