@@ -69,7 +69,11 @@ A `ColumnFamilyDescriptor` built from a name alone creates its own `DbOptions` a
 
 They are released when the descriptors are themselves collected, not when the database closes, and that is deliberate rather than a compromise. A descriptor and the options it owns belong to you, and the same list can be handed to a second database: create one, close it, reopen read-only with the same descriptors. Disposing those options as a side effect of closing one database would destroy something you still own and are about to reuse.
 
-Passing a disposed `DbOptions` to any `Open` overload now throws `ObjectDisposedException`, including one reached through a descriptor. Previously the null handle a disposed instance reports went straight into the native open, which requires every pointer argument to be non-null, and the result was an access violation rather than a message naming the mistake.
+## Using something after disposing it
+
+Every wrapper throws `ObjectDisposedException` when you use it after disposal, whichever way you reach it: options passed to a read or a write, a column family passed alongside a key, a descriptor's options passed to `Open`, an iterator you kept past its `using` block. Ask `IsDisposed` if you need to know without throwing.
+
+This used to be an access violation that took the process down. The C API dereferences every pointer it is given without a null check, so the zero a disposed wrapper reported went straight into the native call, and the crash named nothing that would lead you back to the object you had already disposed. The guard sits on the handle itself rather than on individual methods, so it covers paths nobody thought to guard.
 
 ## Caller-provided buffers
 
