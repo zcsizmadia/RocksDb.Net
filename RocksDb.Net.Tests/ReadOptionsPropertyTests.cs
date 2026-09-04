@@ -403,18 +403,43 @@ public class ReadOptionsPropertyTests
         }
     }
 
+    /// <summary>
+    /// Each <c>SetTableFilter</c> allocates a GCHandle and relies on RocksDb
+    /// running the previous destructor to release it. A missed release pins the
+    /// delegate forever.
+    /// </summary>
+    /// <remarks>
+    /// The old version asserted only that a filter was still installed, which is
+    /// true whether or not the previous few thousand were released. Giving each
+    /// delegate something substantial to capture makes the leak measurable:
+    /// a pinned delegate keeps its captures reachable, so a run that released
+    /// none of them holds on to every ballast array.
+    /// </remarks>
     [Fact]
     public void TableFilter_ReplacedRepeatedly_DoesNotLeakHandles()
     {
-        // Each SetTableFilter allocates a GCHandle and relies on RocksDb running
-        // the previous destructor to release it. If that were wrong, this would
-        // pin thousands of delegates.
+        const int Replacements = 2_000;
+        const int BallastBytes = 64 * 1024;
+
         using var opts = new ReadOptions();
 
-        for (int i = 0; i < 5_000; i++)
+        long before = GC.GetTotalMemory(forceFullCollection: true);
+
+        for (int i = 0; i < Replacements; i++)
         {
-            opts.SetTableFilter(_ => true);
+            byte[] ballast = new byte[BallastBytes];
+            opts.SetTableFilter(_ => ballast.Length == BallastBytes);
         }
+
+        long grew = GC.GetTotalMemory(forceFullCollection: true) - before;
+
+        // 128 MB pinned if nothing was released, against one ballast for the
+        // filter still installed if everything was.
+        const long Budget = 32L * 1024 * 1024;
+
+        Assert.True(
+            grew < Budget,
+            $"managed memory grew by {grew / (1024 * 1024)} MB over {Replacements} replacements, so the handles stayed pinned");
 
         Assert.True(opts.HasTableFilter);
     }

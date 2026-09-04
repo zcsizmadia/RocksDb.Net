@@ -253,17 +253,60 @@ public class ReadOptionsTests
         Assert.Equal(["a", "b", "c"], keys);
     }
 
+    /// <summary>
+    /// Each set copies the bound into unmanaged memory and must free the
+    /// previous copy.
+    /// </summary>
+    /// <remarks>
+    /// This used to assert nothing at all: it set ten thousand bounds and ended,
+    /// so leaking every one of them would have passed. The bounds are now large
+    /// enough that a leak is hundreds of megabytes rather than the hundred
+    /// kilobytes ten thousand short keys came to, and it measures the process
+    /// rather than the managed heap, since these copies are unmanaged.
+    /// </remarks>
     [Fact]
     public void SetIterateBounds_RepeatedSets_DoNotLeak()
     {
+        const int Sets = 4_000;
+        const int BoundBytes = 64 * 1024;
+
         using var readOpts = new ReadOptions();
 
-        // Each set must free the previous copy; without that this grows without bound.
-        for (int i = 0; i < 10_000; i++)
+        byte[] bound = new byte[BoundBytes];
+
+        // One of each first, so the initial allocation is not counted as growth.
+        readOpts.SetIterateUpperBound(bound);
+        readOpts.SetIterateLowerBound(bound);
+
+        long before = CurrentProcessBytes();
+
+        for (int i = 0; i < Sets; i++)
         {
-            readOpts.SetIterateUpperBound(Encoding.UTF8.GetBytes($"key{i:D8}"));
-            readOpts.SetIterateLowerBound(Encoding.UTF8.GetBytes($"key{i:D8}"));
+            readOpts.SetIterateUpperBound(bound);
+            readOpts.SetIterateLowerBound(bound);
         }
+
+        long grew = CurrentProcessBytes() - before;
+
+        // 512 MB held if nothing was freed, against 128 KB if everything was.
+        // The budget is wide because other test classes run in this process at
+        // the same time, and still nowhere near the leak it looks for.
+        const long Budget = 128L * 1024 * 1024;
+
+        Assert.True(
+            grew < Budget,
+            $"the process grew by {grew / (1024 * 1024)} MB over {Sets * 2} bound copies, so the old ones were not freed");
+    }
+
+    private static long CurrentProcessBytes()
+    {
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true);
+        GC.WaitForPendingFinalizers();
+
+        using var self = System.Diagnostics.Process.GetCurrentProcess();
+        self.Refresh();
+
+        return self.PrivateMemorySize64;
     }
 
     [Fact]
