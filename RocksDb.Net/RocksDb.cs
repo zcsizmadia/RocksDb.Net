@@ -2733,17 +2733,13 @@ public sealed class RocksDb : RocksDbHandle
 
     protected override void DisposeUnmanagedResources()
     {
-        // Column family handles must be destroyed before the database handle is
-        // closed, because their native destructors reach into database
-        // internals. This covers the ones opened with the database and the ones
-        // created since, which is why they are all registered.
-        foreach (ColumnFamilyHandle cfh in _columnFamilyHandles.Values)
-        {
-            cfh.Dispose();
-        }
-
-        _defaultColumnFamily?.Dispose();
-
+        // Column family handles, iterators and snapshots must all be destroyed
+        // before the database handle is closed, because their native destructors
+        // reach into database internals. Every one of them registered this as
+        // its parent, so the base releases them, newest first, before closing.
+        // This used to be a loop over the column families here, which released
+        // them ahead of the iterators reading from them and left the iterators
+        // and snapshots to their own finalizers.
         base.DisposeUnmanagedResources();
 
         // Dispose the options after rocksdb_close — sub-objects (CompactionFilter,
