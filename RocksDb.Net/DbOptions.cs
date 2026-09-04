@@ -1078,38 +1078,44 @@ public sealed class DbOptions : RocksDbHandle
 
     /// <summary>Adds an event listener to receive database event notifications.</summary>
     /// <remarks>
-    /// This appends rather than replaces, despite being a property setter.
-    /// Assigning twice installs two listeners and both receive every event;
-    /// the second assignment does not displace the first. There is no way to
-    /// remove one afterwards. Ownership of the listener transfers to these
-    /// options.
+    /// <para>
+    /// Adds, and never removes or replaces. Call it twice and both listeners
+    /// receive every event; RocksDb offers no way to take one back off. This
+    /// was a property setter, which made a call that accumulates look like an
+    /// assignment that replaces, so <c>options.EventListener = a;</c> followed
+    /// by <c>options.EventListener = b;</c> left both installed and no way to
+    /// undo it.
+    /// </para>
+    /// <para>
+    /// Ownership of the listener transfers to these options.
+    /// </para>
     /// </remarks>
-    public EventListener EventListener
+    /// <param name="listener">The listener to add.</param>
+    /// <returns>These options, for chaining.</returns>
+    public DbOptions AddEventListener(EventListener listener)
     {
-        set
-        {
-            ArgumentNullException.ThrowIfNull(value);
-            value.AttachExclusively(nameof(EventListener));
-            NativeMethods.rocksdb_options_add_eventlistener(Handle, value.Handle);
-        }
+        ArgumentNullException.ThrowIfNull(listener);
+
+        listener.AttachExclusively(nameof(AddEventListener));
+        NativeMethods.rocksdb_options_add_eventlistener(Handle, listener.Handle);
+
+        return this;
     }
 
-    /// <summary>Adds multiple event listeners to receive database event notifications.</summary>
-    /// <remarks>
-    /// Appends, as <see cref="EventListener"/> does, so this adds to any
-    /// listeners already installed rather than replacing them.
-    /// </remarks>
-    public IEnumerable<EventListener> EventListeners
+    /// <summary>Adds several event listeners.</summary>
+    /// <remarks>Adds, as <see cref="AddEventListener"/> does.</remarks>
+    /// <param name="listeners">The listeners to add.</param>
+    /// <returns>These options, for chaining.</returns>
+    public DbOptions AddEventListeners(IEnumerable<EventListener> listeners)
     {
-        set
+        ArgumentNullException.ThrowIfNull(listeners);
+
+        foreach (EventListener listener in listeners)
         {
-            ArgumentNullException.ThrowIfNull(value);
-            foreach (var listener in value)
-            {
-                listener.AttachExclusively(nameof(EventListeners));
-                NativeMethods.rocksdb_options_add_eventlistener(Handle, listener.Handle);
-            }
+            AddEventListener(listener);
         }
+
+        return this;
     }
 
     // ── Statistics ────────────────────────────────────────────────────────────

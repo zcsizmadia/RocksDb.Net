@@ -107,7 +107,7 @@ public class CallbackExceptionTests
     {
         using var recorder = new CallbackExceptionRecorder();
         var listener = new ThrowingEventListener();
-        using var db = new TempDb(o => o.EventListener = listener);
+        using var db = new TempDb(o => o.AddEventListener(listener));
 
         db.Db.Put("a", "1");
         db.Db.Flush();

@@ -426,10 +426,36 @@ public sealed class TransactionDb : RocksDbHandle
     }
 
     /// <summary>Flushes the write-ahead log.</summary>
-    public void FlushWal(bool sync = true)
+    /// <param name="sync">
+    /// Whether to fsync the file as well. Flushing without syncing hands the
+    /// buffer to the operating system and nothing more.
+    /// </param>
+    /// <remarks>
+    /// There is no default, and there used to be one that disagreed with
+    /// <see cref="RocksDb.FlushWal(bool)"/>. See that method for why both now
+    /// require the argument.
+    /// </remarks>
+    public void FlushWal(bool sync)
     {
         nint err = default;
         NativeMethods.rocksdb_transactiondb_flush_wal(Handle, sync ? (byte)1 : (byte)0, ref err);
+        NativeMethods.ThrowOnError(err);
+    }
+
+    /// <summary>
+    /// Flushes the write-ahead log, with control over the rate limiter priority
+    /// as well as syncing.
+    /// </summary>
+    /// <remarks>
+    /// The counterpart to <see cref="RocksDb.FlushWal(FlushWalOptions)"/>, which
+    /// this type was missing even though the C API has it.
+    /// </remarks>
+    public void FlushWal(FlushWalOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        nint err = default;
+        NativeMethods.rocksdb_transactiondb_flush_wal_with_options(Handle, options.Handle, ref err);
         NativeMethods.ThrowOnError(err);
     }
 

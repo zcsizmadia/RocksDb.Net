@@ -183,12 +183,12 @@ public sealed class FlushWatcher : EventListener
 
 ```csharp
 var options = new DbOptions { CreateIfMissing = true };
-options.EventListener = new FlushWatcher();
+options.AddEventListener(new FlushWatcher());
 ```
 
 Note the `Interlocked` calls. Most listener callbacks run on RocksDb's background threads, concurrently when several flushes or compactions are in flight, so a listener that accumulates anything must be thread-safe. `OnMemTableSealed` is the exception and runs on the writer's thread, which is not a reason to skip the synchronisation: the same listener still hears the rest from elsewhere.
 
-**The setter appends.** `EventListener` is a property, but assigning it twice installs two listeners and both receive every event; the second does not displace the first, and there is no way to remove one afterwards. That is RocksDb's behaviour, not a wrapper choice.
+**Adding accumulates.** Call `AddEventListener` twice and both listeners receive every event; the second does not displace the first, and there is no way to remove one afterwards. That is RocksDb's behaviour, not a wrapper choice, and it is why this is a method rather than the property it used to be: a property reads like an assignment that replaces.
 
 The info objects are copied out before the callback returns, so they are safe to keep and to pass between threads. That is not true of every callback argument: `ReadOptions.SetTableFilter` hands you a live view that dies when the callback returns, and `WalFilter` receives batches that belong to RocksDb.
 

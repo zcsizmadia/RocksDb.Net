@@ -100,7 +100,7 @@ public class PerOperationOptionsTests
         var listener = new CountingFlushListener();
 
         using var dbOpts = new DbOptions { CreateIfMissing = true };
-        dbOpts.EventListener = listener;
+        dbOpts.AddEventListener(listener);
 
         using var db = RocksDb.Open(dbOpts, dir.Path);
         db.Put("a", "1");
@@ -357,5 +357,58 @@ public class PerOperationOptionsTests
         db.Db.WaitForCompact(waitOpts);
 
         Assert.Equal("value", db.Db.GetString("key"));
+    }
+
+    // ── The surface changes from issue #125 ─────────────────────────────────
+
+    /// <summary>
+    /// <see cref="TransactionDb"/> takes the same options-carrying FlushWal as
+    /// <see cref="RocksDb"/>, which it was missing.
+    /// </summary>
+    /// <remarks>
+    /// The C API has had <c>rocksdb_transactiondb_flush_wal_with_options</c> all
+    /// along; only the wrapper was short an overload. The two types also had
+    /// opposite defaults for the bool overload, so both now require the argument.
+    /// </remarks>
+    [Fact]
+    public void TransactionDb_FlushWal_TakesOptions()
+    {
+        using var dir = new TempDir();
+
+        var dbOptions = new DbOptions { CreateIfMissing = true };
+        using var txnDbOptions = new TransactionDbOptions();
+        using var db = TransactionDb.Open(dbOptions, txnDbOptions, dir.Path);
+
+        db.Put("key", "value");
+
+        using var flushWalOptions = new FlushWalOptions { Sync = true };
+        db.FlushWal(flushWalOptions);
+
+        db.FlushWal(sync: false);
+
+        Assert.Throws<ArgumentNullException>(() => db.FlushWal(null!));
+        Assert.Equal("value", db.GetString("key"));
+    }
+
+    /// <summary>
+    /// The two compaction counts are unsigned, matching the sibling class and the
+    /// <c>uint32_t</c> RocksDb keeps them in.
+    /// </summary>
+    [Fact]
+    public void CompactRangeOptions_CountsAreUnsigned()
+    {
+        using var opts = new CompactRangeOptions
+        {
+            MaxSubcompactions = 4,
+            TargetPathId = 2,
+        };
+
+        Assert.Equal(4U, opts.MaxSubcompactions);
+        Assert.Equal(2U, opts.TargetPathId);
+
+        using var filesOpts = new CompactFilesOptions { MaxSubcompactions = 4 };
+
+        // The same concept, and now the same type, in both classes.
+        Assert.Equal(filesOpts.MaxSubcompactions, opts.MaxSubcompactions);
     }
 }

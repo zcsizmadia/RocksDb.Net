@@ -100,26 +100,11 @@ public class WriteBatchWithIndexTests
         Assert.Equal(1, batch.Count);
     }
 
-    [Fact]
-    public void DeleteRange_IsNotSupportedAndSaysSo()
-    {
-        using var batch = new WriteBatchWithIndex();
-
-        Assert.Throws<NotSupportedException>(
-#pragma warning disable CS0618 // asserting the obsolete member throws is the point
-            () => batch.DeleteRange(Encoding.UTF8.GetBytes("a"), Encoding.UTF8.GetBytes("z")));
-#pragma warning restore CS0618
-
-        using var cfOpts = new DbOptions();
-        Assert.Throws<NotSupportedException>(
-#pragma warning disable CS0618 // asserting the obsolete member throws is the point
-            () => batch.DeleteRange(Encoding.UTF8.GetBytes("a"), Encoding.UTF8.GetBytes("z"), null!));
-#pragma warning restore CS0618
-
-        // Nothing was queued, which is what made the old silent version
-        // dangerous rather than merely useless.
-        Assert.Equal(0, batch.Count);
-    }
+    // DeleteRange is gone from WriteBatchWithIndex, and so are the two tests
+    // that it threw. RocksDb returns NotSupported for every argument and the C
+    // API discards that status, so the original queued nothing and reported
+    // success; making it throw was the interim fix. Removing it turns the
+    // mistake into a compile error, which is the earliest anyone can find out.
 
     [Fact]
     public void PutLogData_DoesNotChangeCount()
@@ -237,28 +222,4 @@ public class WriteBatchWithIndexTests
     /// The column-family overload is unsupported for the same reason, and must
     /// say so before it validates its arguments.
     /// </summary>
-    [Fact]
-    public void DeleteRange_ColumnFamily_IsNotSupported()
-    {
-        using var dir = new TempDir();
-        using var opts = new DbOptions { CreateIfMissing = true, CreateMissingColumnFamilies = true };
-        var cfDescs = new List<ColumnFamilyDescriptor>
-        {
-            new("default"),
-            new("cf1"),
-        };
-
-        using var db = RocksDb.Open(opts, dir.Path, cfDescs);
-        ColumnFamilyHandle cf1 = db.GetColumnFamily("cf1");
-
-        using var batch = new WriteBatchWithIndex();
-
-        NotSupportedException ex = Assert.Throws<NotSupportedException>(
-#pragma warning disable CS0618 // asserting the obsolete member throws is the point
-            () => batch.DeleteRange(Encoding.UTF8.GetBytes("a"), Encoding.UTF8.GetBytes("z"), cf1));
-#pragma warning restore CS0618
-
-        Assert.Contains("WriteBatch.DeleteRange", ex.Message, StringComparison.Ordinal);
-        Assert.Equal(0, batch.Count);
-    }
 }

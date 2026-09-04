@@ -1505,16 +1505,17 @@ public sealed class RocksDb : RocksDbHandle
 
     /// <summary>Flushes the specified column families.</summary>
     /// <remarks>
-    /// An empty list is not "flush nothing": it falls through to
-    /// <see cref="Flush(FlushOptions)"/> and so flushes the <c>"default"</c>
-    /// family. If you mean to flush nothing, do not call this.
+    /// An empty list flushes nothing, which is what RocksDb does with an empty
+    /// list of handles. This used to fall through to flushing the <c>"default"</c>
+    /// family instead, so a caller filtering a list down to nothing flushed a
+    /// family they had not asked for.
     /// </remarks>
     public unsafe void Flush(IReadOnlyList<ColumnFamilyHandle> columnFamilies, FlushOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(columnFamilies);
+
         if (columnFamilies.Count == 0)
         {
-            Flush(options);
             return;
         }
 
@@ -1537,7 +1538,20 @@ public sealed class RocksDb : RocksDbHandle
     }
 
     /// <summary>Flushes the WAL buffer to disk.</summary>
-    public void FlushWal(bool sync = false)
+    /// <param name="sync">
+    /// Whether to fsync the file as well. Flushing without syncing hands the
+    /// buffer to the operating system and nothing more, so it survives the
+    /// process dying but not the machine.
+    /// </param>
+    /// <remarks>
+    /// There is no default. There used to be one on each of the two databases
+    /// and they disagreed: <c>RocksDb</c> defaulted to false and
+    /// <see cref="TransactionDb.FlushWal(bool)"/> to true, so the same call
+    /// spelled the same way meant different durability depending on the type it
+    /// was made on. Rather than pick a winner and silently change what one set
+    /// of callers gets, both now require the argument.
+    /// </remarks>
+    public void FlushWal(bool sync)
     {
         nint err = default;
         NativeMethods.rocksdb_flush_wal(Handle, sync ? (byte)1 : (byte)0, ref err);

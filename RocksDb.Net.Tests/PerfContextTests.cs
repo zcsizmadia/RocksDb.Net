@@ -227,28 +227,12 @@ public class PerfContextTests
     {
         Assert.Equal(0, (int)PerfMetric.UserKeyComparisonCount);
         Assert.Equal(1, (int)PerfMetric.BlockCacheHitCount);
-        Assert.Equal(83, (int)PerfMetric.BlobCacheReadByte);
-        Assert.Equal(84, Enum.GetValues<PerfMetric>().Length);
-    }
+        Assert.Equal(82, (int)PerfMetric.MetadataBlockReadByte);
 
-    /// <summary>
-    /// RocksDb names this metric but its C accessor has no case for it, so it
-    /// can only ever read back as zero. Pinned so the documented behaviour and
-    /// the real behaviour stay together.
-    /// </summary>
-    [Fact]
-    public void BlobCacheReadByte_IsAlwaysZeroBecauseTheCApiNeverReturnsIt()
-    {
-        using var scope = new LevelScope(PerfLevel.EnableCount);
-        using var db = new TempDb();
-        db.Db.Put("key", "value");
-        db.Db.Flush();
-
-        using PerfContext perf = PerfContext.CreateForCurrentThread();
-        perf.Reset();
-        _ = db.Db.GetString("key");
-
-        Assert.Equal(0UL, perf.GetMetric(PerfMetric.BlobCacheReadByte));
+        // 83 is absent: RocksDb names rocksdb_blob_cache_read_byte but its C
+        // accessor has no case for it, so it could only ever read back as zero.
+        Assert.Equal(83, Enum.GetValues<PerfMetric>().Length);
+        Assert.DoesNotContain(83, Enum.GetValues<PerfMetric>().Select(v => (int)v));
     }
 
     // ── Thread affinity ──────────────────────────────────────────────────────

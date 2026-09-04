@@ -143,6 +143,6 @@ See [Callbacks and exceptions](callbacks.md) for the full table of what each cal
 
 ## Two things not to reach for
 
-**`IgnoreSnapshots` is deprecated and refuses to be set false.** RocksDb always ignores snapshots for compaction filters now, and a filter reporting false makes RocksDb fail table file creation, which stops compaction. Since `rocksdb_compact_range` has no error channel, that failure was silent: the compaction simply did not happen. The property therefore throws rather than passing the value through.
+**There is no `IgnoreSnapshots` setting.** RocksDb always ignores snapshots for compaction filters now, and a filter reporting false makes RocksDb fail table file creation, which stops compaction. Since `rocksdb_compact_range` has no error channel, that failure was silent: the compaction simply did not happen. The wrapper offered the property for a while and threw on false; it is gone, because the only value it accepted was the one RocksDb already uses.
 
 **Table properties collectors are unreachable.** The C API exposes no way to create a collector factory, so `TableProperties.ReadableProperties` is always empty and user-defined collectors cannot be installed. Only the built-in compact-on-deletion collector is usable.

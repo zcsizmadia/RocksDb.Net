@@ -261,13 +261,7 @@ public enum PerfMetric
     /// <summary>Maps to <c>rocksdb_metadata_block_read_byte</c>.</summary>
     MetadataBlockReadByte = 82,
 
-    /// <summary>
-    /// Maps to <c>rocksdb_blob_cache_read_byte</c>.
-    /// </summary>
-    /// <remarks>
-    /// Always reads back as zero. RocksDb 11.8.1 names this metric but its C
-    /// accessor has no case for it, so the value never reaches a caller. Kept
-    /// for completeness and so the numbering stays aligned with the header.
-    /// </remarks>
-    BlobCacheReadByte = 83,
+    // rocksdb_blob_cache_read_byte, 83, is deliberately absent. RocksDb names
+    // the metric but its C accessor has no case for it, so it could only ever
+    // read back as zero. It was the last value, so nothing after it shifts.
 }

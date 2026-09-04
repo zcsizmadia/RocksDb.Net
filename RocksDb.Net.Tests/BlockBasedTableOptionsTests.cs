@@ -44,7 +44,7 @@ public class BlockBasedTableOptionsTests
     public void SetFilterPolicy_Bloom()
     {
         using var bbto = new BlockBasedTableOptions();
-        using var fp = FilterPolicy.CreateBloom(10);
+        using var fp = FilterPolicy.CreateBloomFull(10);
 
         bbto.SetFilterPolicy(fp);
     }

@@ -663,7 +663,7 @@ public class DbOptionsTests
         using var opts = new DbOptions();
         var listener = new TestEventListenerForOptions();
 
-        opts.EventListener = listener;
+        opts.AddEventListener(listener);
     }
 
     [Fact]
@@ -673,7 +673,7 @@ public class DbOptionsTests
         var listener1 = new TestEventListenerForOptions();
         var listener2 = new TestEventListenerForOptions();
 
-        opts.EventListeners = [listener1, listener2];
+        opts.AddEventListeners([listener1, listener2]);
     }
 
     [Fact]

@@ -129,29 +129,11 @@ public class CompactionFilterTests
         Assert.Throws<ArgumentNullException>(() => new NameValidatingFilter(null!));
     }
 
-    /// <summary>
-    /// Setting <c>IgnoreSnapshots</c> to false is refused.
-    /// </summary>
-    /// <remarks>
-    /// This test used to set it to false, compact, and assert that a key the
-    /// filter removes was still present, under the name "FalsePath_Works". That
-    /// assertion held for the wrong reason. RocksDb fails table file creation
-    /// when a filter reports false, so the compaction never ran and the filter
-    /// never applied. <c>rocksdb_compact_range</c> has no error output, so
-    /// nothing surfaced: the key survived because compaction had silently
-    /// failed, not because the false path worked.
-    /// </remarks>
-    [Fact]
-    [Obsolete("Exercises the obsolete IgnoreSnapshots setter deliberately.")]
-    public void CompactionFilter_IgnoreSnapshots_RefusesFalse()
-    {
-        using var filter = new PrefixFilter();
-
-        NotSupportedException ex = Assert.Throws<NotSupportedException>(
-            () => filter.IgnoreSnapshots = false);
-
-        Assert.Contains("table file creation", ex.Message);
-    }
+    // The IgnoreSnapshots setter is gone, and with it the test that it refused
+    // false. RocksDb deprecated the setting, always ignores snapshots for a
+    // compaction filter, and fails table file creation if a filter reports
+    // false, so the property could only accept the value it already had or
+    // throw. A caller reaching for it now gets a compile error instead.
 
     /// <summary>
     /// And with the setting left alone, which is the same as true, the filter

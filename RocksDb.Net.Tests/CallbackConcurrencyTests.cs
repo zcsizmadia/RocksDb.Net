@@ -216,7 +216,7 @@ public class CallbackConcurrencyTests
             Level0FileNumCompactionTrigger = 2,
             MaxBackgroundJobs = 8,
         };
-        opts.EventListener = listener;
+        opts.AddEventListener(listener);
 
         using (var db = RocksDb.Open(opts, dir.Path))
         {

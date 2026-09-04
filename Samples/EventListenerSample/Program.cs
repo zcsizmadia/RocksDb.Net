@@ -13,8 +13,11 @@ var options = new DbOptions
     CreateIfMissing = true,
     WriteBufferSize = 4 * 1024, // Tiny buffer to trigger flushes
     Level0FileNumCompactionTrigger = 2,
-    EventListener = listener,
 };
+
+// Added rather than assigned: a listener cannot be taken back off, so the
+// call says "add" rather than looking like an assignment that replaces.
+options.AddEventListener(listener);
 
 using var db = RocksDb.Open(options, dbPath);
 

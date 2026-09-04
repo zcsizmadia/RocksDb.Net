@@ -319,11 +319,11 @@ public class SmallGapsTests
         using var opts = new CompactRangeOptions
         {
             AllowWriteStall = true,
-            TargetPathId = 1,
+            TargetPathId = 1U,
         };
 
         Assert.True(opts.AllowWriteStall);
-        Assert.Equal(1, opts.TargetPathId);
+        Assert.Equal(1U, opts.TargetPathId);
 
         opts.AllowWriteStall = false;
         Assert.False(opts.AllowWriteStall);

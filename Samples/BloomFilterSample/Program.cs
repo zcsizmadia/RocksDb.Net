@@ -10,7 +10,7 @@ const string dbPath = "bloom_filter_db";
 
 // --- Configure block-based table with Bloom filter ---
 using var cache = Cache.CreateLru(64 * 1024 * 1024); // 64 MB block cache
-using var filterPolicy = FilterPolicy.CreateBloom(10); // 10 bits per key
+using var filterPolicy = FilterPolicy.CreateBloomFull(10); // 10 bits per key
 
 var tableOptions = new BlockBasedTableOptions
 {
@@ -88,8 +88,7 @@ while (iter.IsValid() && shown < 5)
 
 // --- Different filter policies ---
 Console.WriteLine("\n=== Available filter policies ===");
-Console.WriteLine("  - CreateBloom(bitsPerKey)         : Partitioned Bloom filter");
-Console.WriteLine("  - CreateBloomFull(bitsPerKey)      : Full (non-partitioned) Bloom");
+Console.WriteLine("  - CreateBloomFull(bitsPerKey)      : Bloom filter");
 Console.WriteLine("  - CreateRibbon(bitsPerKey)         : Space-efficient Ribbon filter");
 Console.WriteLine("  - CreateRibbonHybrid(bits, level)  : Ribbon with Bloom at lower levels");
 

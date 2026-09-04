@@ -38,7 +38,7 @@ public class DatabaseOperationsTests
         var listener = new CountingFlushListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
-        opts.EventListener = listener;
+        opts.AddEventListener(listener);
 
         // The floor RocksDb enforces. Asking for less does not get less.
         opts.WriteBufferSize = 64 * 1024;

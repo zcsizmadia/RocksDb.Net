@@ -148,23 +148,6 @@ public sealed class BackupEngineOptions : RocksDbHandle
     }
 
     /// <summary>
-    /// Caps how many of the latest non-corrupted backups are read when opening.
-    /// Has no effect through this library.
-    /// </summary>
-    /// <remarks>
-    /// RocksDb honours this only for a read-only backup engine. Every engine
-    /// this library opens is writable, and for those the setting is ignored
-    /// because capping it would break the accounting of shared files that
-    /// backup deletion depends on. Kept for completeness; setting it changes
-    /// nothing.
-    /// </remarks>
-    public int MaxValidBackupsToOpen
-    {
-        get => NativeMethods.rocksdb_backup_engine_options_get_max_valid_backups_to_open(Handle);
-        set => NativeMethods.rocksdb_backup_engine_options_set_max_valid_backups_to_open(Handle, value);
-    }
-
-    /// <summary>
     /// How shared file names encode their checksum. RocksDb does not publish
     /// these values through the C API, so this stays an <c>int</c>.
     /// </summary>
