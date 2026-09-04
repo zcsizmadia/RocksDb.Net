@@ -30,7 +30,6 @@ public class SmallGapsTests
     [Fact]
     public void PinningTiers_AreAcceptedAndTheDatabaseStillWorks()
     {
-        using var dir = new TempDir();
         using var cache = Cache.CreateLru(8 * 1024 * 1024);
         var tableOptions = new BlockBasedTableOptions
         {
@@ -43,7 +42,7 @@ public class SmallGapsTests
         var opts = new DbOptions { CreateIfMissing = true };
         opts.BlockBasedTableFactory = tableOptions;
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         for (int i = 0; i < 200; i++)
         {
@@ -165,12 +164,11 @@ public class SmallGapsTests
     [Fact]
     public void WithOptionsFromString_ProducesUsableOptions()
     {
-        using var dir = new TempDir();
         using var baseOptions = new DbOptions { CreateIfMissing = true };
 
         DbOptions parsed = baseOptions.WithOptionsFromString("write_buffer_size=131072");
 
-        using var db = RocksDb.Open(parsed, dir.Path);
+        using var db = TestDb.OpenInMemory(parsed);
         db.Put("key", "value");
         db.Flush();
 

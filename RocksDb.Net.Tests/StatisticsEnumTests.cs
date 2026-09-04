@@ -83,12 +83,10 @@ public class StatisticsEnumTests
     [Fact]
     public void Ticker_NumberingAgreesWithTheRunningLibrary()
     {
-        using var dir = new TempDir();
-
         var options = new DbOptions { CreateIfMissing = true };
         options.EnableStatistics();
 
-        using RocksDb db = RocksDb.Open(options, dir.Path);
+        using RocksDb db = TestDb.OpenInMemory(options);
 
         for (int i = 0; i < 5; i++)
         {
@@ -115,12 +113,10 @@ public class StatisticsEnumTests
     [Fact]
     public void EveryCounterCanBeRead()
     {
-        using var dir = new TempDir();
-
         var options = new DbOptions { CreateIfMissing = true };
         options.EnableStatistics();
 
-        using RocksDb db = RocksDb.Open(options, dir.Path);
+        using RocksDb db = TestDb.OpenInMemory(options);
 
         db.Put("a", "1");
         db.Flush();

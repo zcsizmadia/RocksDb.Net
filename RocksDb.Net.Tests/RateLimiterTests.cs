@@ -23,12 +23,11 @@ public class RateLimiterTests
     [Fact]
     public void RateLimiter_WithDatabase()
     {
-        using var dir = new TempDir();
         using var limiter = new RateLimiter(100 * 1024 * 1024);
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.RateLimiter = limiter;
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
         db.Put("key", "value");
         Assert.Equal("value", db.GetString("key"));
     }

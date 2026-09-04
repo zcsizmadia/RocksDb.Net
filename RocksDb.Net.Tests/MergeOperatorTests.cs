@@ -29,11 +29,10 @@ public class MergeOperatorTests
     [Fact]
     public void UInt64AddMergeOperator_Works()
     {
-        using var dir = new TempDir();
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.SetUInt64AddMergeOperator();
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         byte[] key = Encoding.UTF8.GetBytes("counter");
         byte[] one = BitConverter.GetBytes(1UL);
@@ -54,11 +53,10 @@ public class MergeOperatorTests
     [Fact]
     public void UInt64AddMergeOperator_WithExistingValue()
     {
-        using var dir = new TempDir();
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.SetUInt64AddMergeOperator();
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         byte[] key = Encoding.UTF8.GetBytes("counter");
         byte[] initial = BitConverter.GetBytes(10UL);
@@ -96,13 +94,12 @@ public class MergeOperatorTests
     [Fact]
     public void CustomMergeOperator_Works()
     {
-        using var dir = new TempDir();
         var mergeOp = new AppendMergeOperator();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.MergeOperator = mergeOp;
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         db.Merge("list", "a");
         db.Merge("list", "b");
@@ -115,13 +112,12 @@ public class MergeOperatorTests
     [Fact]
     public void CustomMergeOperator_WithExisting()
     {
-        using var dir = new TempDir();
         var mergeOp = new AppendMergeOperator();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.MergeOperator = mergeOp;
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         db.Put("list", "existing");
         db.Merge("list", "new");
@@ -133,11 +129,10 @@ public class MergeOperatorTests
     [Fact]
     public void Merge_String_Convenience()
     {
-        using var dir = new TempDir();
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.SetUInt64AddMergeOperator();
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         db.Merge(Encoding.UTF8.GetBytes("k"), BitConverter.GetBytes(1UL));
 
@@ -198,13 +193,12 @@ public class MergeOperatorTests
     [Fact]
     public void PartialMerge_IsCalledDuringCompaction()
     {
-        using var dir = new TempDir();
         var mergeOp = new PartialMergeOperator();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.MergeOperator = mergeOp;
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         db.Merge("list", "a");
         db.Merge("list", "b");

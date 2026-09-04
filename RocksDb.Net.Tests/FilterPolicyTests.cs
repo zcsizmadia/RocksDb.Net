@@ -33,7 +33,6 @@ public class FilterPolicyTests
     [Fact]
     public void BloomFilter_WithDatabase()
     {
-        using var dir = new TempDir();
         using var fp = FilterPolicy.CreateBloomFull(10);
         using var bbto = new BlockBasedTableOptions();
         bbto.SetFilterPolicy(fp);
@@ -41,7 +40,7 @@ public class FilterPolicyTests
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.BlockBasedTableFactory = bbto;
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         // Write and read with bloom filter active
         for (int i = 0; i < 100; i++)

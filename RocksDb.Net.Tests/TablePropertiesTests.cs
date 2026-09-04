@@ -48,13 +48,12 @@ public class TablePropertiesTests
     [Fact]
     public void FlushJobInfo_TableProperties_DescribeTheFlushedFile()
     {
-        using var dir = new TempDir();
         var listener = new CapturingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.AddEventListener(listener);
 
-        using (var db = RocksDb.Open(opts, dir.Path))
+        using (var db = TestDb.OpenInMemory(opts))
         {
             for (int i = 0; i < 10; i++)
             {
@@ -92,14 +91,13 @@ public class TablePropertiesTests
     [Fact]
     public void FlushJobInfo_TableProperties_CountsDeletionsAndMergeOperands()
     {
-        using var dir = new TempDir();
         var listener = new CapturingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.AddEventListener(listener);
         opts.SetUInt64AddMergeOperator();
 
-        using (var db = RocksDb.Open(opts, dir.Path))
+        using (var db = TestDb.OpenInMemory(opts))
         {
             db.Put("a", "1");
             db.Delete("b");
@@ -118,13 +116,12 @@ public class TablePropertiesTests
     [Fact]
     public void CompactionJobInfo_Stats_DescribeTheCompaction()
     {
-        using var dir = new TempDir();
         var listener = new CapturingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.AddEventListener(listener);
 
-        using (var db = RocksDb.Open(opts, dir.Path))
+        using (var db = TestDb.OpenInMemory(opts))
         {
             // Two flushes produce two L0 files covering the SAME keys, so the
             // compaction has to merge them. Disjoint files would be trivially
@@ -158,14 +155,13 @@ public class TablePropertiesTests
     [Fact]
     public void FlushJobInfo_BlobFileAdditions_ReportedWhenBlobFilesEnabled()
     {
-        using var dir = new TempDir();
         var listener = new CapturingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.AddEventListener(listener);
         opts.EnableBlobs();
 
-        using (var db = RocksDb.Open(opts, dir.Path))
+        using (var db = TestDb.OpenInMemory(opts))
         {
             db.Put("a", "a-reasonably-sized-value");
             db.Put("b", "another-reasonably-sized-value");
@@ -184,13 +180,12 @@ public class TablePropertiesTests
     [Fact]
     public void FlushJobInfo_BlobFileAdditions_EmptyWhenBlobFilesDisabled()
     {
-        using var dir = new TempDir();
         var listener = new CapturingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.AddEventListener(listener);
 
-        using (var db = RocksDb.Open(opts, dir.Path))
+        using (var db = TestDb.OpenInMemory(opts))
         {
             db.Put("a", "1");
             db.Flush();
@@ -204,14 +199,13 @@ public class TablePropertiesTests
     [Fact]
     public void CompactionJobInfo_BlobFileGarbage_ReportedWhenBlobsAreOverwritten()
     {
-        using var dir = new TempDir();
         var listener = new CapturingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.AddEventListener(listener);
         opts.EnableBlobs();
 
-        using (var db = RocksDb.Open(opts, dir.Path))
+        using (var db = TestDb.OpenInMemory(opts))
         {
             db.Put("a", "first-value-written-to-a-blob-file");
             db.Put("b", "another-first-value-in-a-blob-file");
@@ -246,13 +240,12 @@ public class TablePropertiesTests
         // The native struct is a borrowed view into the flush-info object, so it
         // is dead by the time the database is closed. If the copy were lazy this
         // would read freed memory.
-        using var dir = new TempDir();
         var listener = new CapturingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.AddEventListener(listener);
 
-        using (var db = RocksDb.Open(opts, dir.Path))
+        using (var db = TestDb.OpenInMemory(opts))
         {
             db.Put("a", "1");
             db.Flush();

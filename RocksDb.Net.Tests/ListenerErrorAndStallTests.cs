@@ -84,8 +84,6 @@ public class ListenerErrorAndStallTests
     [Fact]
     public void OnStallConditionsChanged_FiresWhenWritesAreThrottled()
     {
-        using var dir = new TempDir();
-
         var listener = new RecordingListener();
 
         var opts = new DbOptions
@@ -101,7 +99,7 @@ public class ListenerErrorAndStallTests
 
         opts.AddEventListener(listener);
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         for (int round = 0; round < 10; round++)
         {

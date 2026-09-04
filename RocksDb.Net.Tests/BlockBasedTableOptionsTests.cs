@@ -129,7 +129,6 @@ public class BlockBasedTableOptionsTests
     [Fact]
     public void FullConfiguration_Works()
     {
-        using var dir = new TempDir();
         using var cache = Cache.CreateLru(64 * 1024 * 1024);
         using var fp = FilterPolicy.CreateBloomFull(10);
         using var bbto = new BlockBasedTableOptions();
@@ -144,7 +143,7 @@ public class BlockBasedTableOptionsTests
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.BlockBasedTableFactory = bbto;
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
         db.Put("key", "value");
         Assert.Equal("value", db.GetString("key"));
     }

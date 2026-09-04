@@ -13,17 +13,20 @@ public class ListenerDetailTests
     [Fact]
     public void FlushJobInfo_IdentifiesTheJobAndFile()
     {
-        using var dir = new TempDir();
         var listener = new RecordingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.AddEventListener(listener);
 
-        using (var db = RocksDb.Open(opts, dir.Path))
+        using (var db = TestDb.OpenInMemory(opts))
         {
             db.Put("a", "1");
             db.Flush();
         }
+
+        Assert.True(
+            Wait.Until(() => listener.FlushCompleted.Count > 0),
+            "no flush-completed callback arrived");
 
         FlushJobInfo flush = Assert.Single(listener.FlushCompleted);
 
@@ -37,18 +40,21 @@ public class ListenerDetailTests
     [Fact]
     public void FlushJobInfo_ReportsOldestBlobFileNumberWhenBlobsAreUsed()
     {
-        using var dir = new TempDir();
         var listener = new RecordingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.AddEventListener(listener);
         opts.EnableBlobs();
 
-        using (var db = RocksDb.Open(opts, dir.Path))
+        using (var db = TestDb.OpenInMemory(opts))
         {
             db.Put("a", "a-value-large-enough-for-a-blob");
             db.Flush();
         }
+
+        Assert.True(
+            Wait.Until(() => listener.FlushCompleted.Count > 0),
+            "no flush-completed callback arrived");
 
         FlushJobInfo flush = Assert.Single(listener.FlushCompleted);
 
@@ -61,13 +67,12 @@ public class ListenerDetailTests
     [Fact]
     public void CompactionJobInfo_IdentifiesTheJobAndItsFiles()
     {
-        using var dir = new TempDir();
         var listener = new RecordingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true, Compression = Compression.None };
         opts.AddEventListener(listener);
 
-        using (var db = RocksDb.Open(opts, dir.Path))
+        using (var db = TestDb.OpenInMemory(opts))
         {
             // Overlapping keys in both files force a real merge rather than a
             // trivial move, which would leave most of this unpopulated.
@@ -80,6 +85,10 @@ public class ListenerDetailTests
 
             db.CompactRange();
         }
+
+        Assert.True(
+            Wait.Until(() => listener.CompactionCompleted.Count > 0),
+            "no compaction-completed callback arrived");
 
         Assert.NotEmpty(listener.CompactionCompleted);
         CompactionJobInfo compaction = listener.CompactionCompleted[0];
@@ -105,13 +114,12 @@ public class ListenerDetailTests
     [Fact]
     public void CompactionJobInfo_TablePropertiesByFile_CoversInputsAndOutputs()
     {
-        using var dir = new TempDir();
         var listener = new RecordingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.AddEventListener(listener);
 
-        using (var db = RocksDb.Open(opts, dir.Path))
+        using (var db = TestDb.OpenInMemory(opts))
         {
             db.Put("a", "1");
             db.Put("b", "2");
@@ -122,6 +130,10 @@ public class ListenerDetailTests
 
             db.CompactRange();
         }
+
+        Assert.True(
+            Wait.Until(() => listener.CompactionCompleted.Count > 0),
+            "no compaction-completed callback arrived");
 
         CompactionJobInfo compaction = listener.CompactionCompleted[0];
 
@@ -178,13 +190,12 @@ public class ListenerDetailTests
     [Fact]
     public void MemTableInfo_NewestUdt_IsEmptyWithoutUserDefinedTimestamps()
     {
-        using var dir = new TempDir();
         var listener = new RecordingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.AddEventListener(listener);
 
-        using (var db = RocksDb.Open(opts, dir.Path))
+        using (var db = TestDb.OpenInMemory(opts))
         {
             db.Put("a", "1");
             db.Flush();
@@ -192,7 +203,10 @@ public class ListenerDetailTests
 
         // Sealing happens on flush. The column family has no user-defined
         // timestamps, so RocksDb reports none.
-        Assert.NotEmpty(listener.MemTablesSealed);
+        Assert.True(
+            Wait.Until(() => listener.MemTablesSealed.Count > 0),
+            "no memtable-sealed callback arrived");
+
         Assert.All(listener.MemTablesSealed, m => Assert.Empty(m.NewestUdt));
     }
 

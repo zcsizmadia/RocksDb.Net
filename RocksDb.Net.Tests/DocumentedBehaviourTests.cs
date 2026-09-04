@@ -85,12 +85,12 @@ public class DocumentedBehaviourTests
         var first = new CountingListener();
         var second = new CountingListener();
 
-        using var dir = new TempDir();
         var opts = new DbOptions { CreateIfMissing = true };
         opts.AddEventListener(first);
         opts.AddEventListener(second);
 
-        using (var db = RocksDb.Open(opts, dir.Path))
+        string path = TestDb.InMemory(opts);
+        using (var db = RocksDb.Open(opts, path))
         {
             db.Put("k", "v");
             db.Flush();
@@ -195,7 +195,6 @@ public class DocumentedBehaviourTests
     [Fact]
     public void SetBlockCache_Null_DoesNotClearTheCacheAlreadySet()
     {
-        using var dir = new TempDir();
         using var cache = Cache.CreateLru(8 * 1024 * 1024);
 
         var tableOptions = new BlockBasedTableOptions();
@@ -207,7 +206,8 @@ public class DocumentedBehaviourTests
         var opts = new DbOptions { CreateIfMissing = true };
         opts.BlockBasedTableFactory = tableOptions;
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        string path = TestDb.InMemory(opts);
+        using var db = RocksDb.Open(opts, path);
 
         for (int i = 0; i < 200; i++)
         {

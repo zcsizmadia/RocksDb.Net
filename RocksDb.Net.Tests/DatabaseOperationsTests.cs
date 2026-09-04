@@ -34,7 +34,6 @@ public class DatabaseOperationsTests
     [Fact]
     public void PauseBackgroundWork_PreventsBackgroundFlush()
     {
-        using var dir = new TempDir();
         var listener = new CountingFlushListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
@@ -47,7 +46,7 @@ public class DatabaseOperationsTests
         // At the default of two, writes would stall instead.
         opts.MaxWriteBufferNumber = 8;
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         db.PauseBackgroundWork();
         try
@@ -197,13 +196,12 @@ public class DatabaseOperationsTests
     [Fact]
     public void VerifyFileChecksums_WithAGenerator_Succeeds()
     {
-        using var dir = new TempDir();
         using var factory = FileChecksumGenFactory.CreateCrc32c();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.SetFileChecksumGenFactory(factory);
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
         db.Put("a", "1");
         db.Put("b", "2");
         db.Flush();

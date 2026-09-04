@@ -200,11 +200,10 @@ public class PinnedReadTests
     [Fact]
     public void Slice_DisposedAfterTheDatabaseIsClosed_DoesNotCrash()
     {
-        using var dir = new TempDir();
         using var opts = new DbOptions { CreateIfMissing = true };
 
         PinnableSlice? slice;
-        using (var db = RocksDb.Open(opts, dir.Path))
+        using (var db = TestDb.OpenInMemory(opts))
         {
             db.Put("key", "value");
             slice = db.GetPinned("key"u8);

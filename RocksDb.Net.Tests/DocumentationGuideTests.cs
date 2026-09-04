@@ -10,8 +10,10 @@ namespace RocksDbNet.Tests;
 /// Each guide states that its snippets are compiled and run as part of the test
 /// suite, and this is what makes that true. The code here is kept identical to
 /// what the guides show, so a snippet that stops compiling or stops behaving as
-/// described fails CI rather than misleading a reader. If you change a guide,
-/// change the matching test with it.
+/// described fails CI rather than misleading a reader. Paths are the one
+/// deviation: they point at an in-memory environment, or at a temporary
+/// directory where the test needs real files. If you change a guide, change the
+/// matching test with it.
 /// </remarks>
 public class DocumentationGuideTests
 {
@@ -22,10 +24,9 @@ public class DocumentationGuideTests
     [Fact]
     public void GettingStarted_OpenPutGet()
     {
-        using var dir = new TempDir();
-
         var options = new DbOptions { CreateIfMissing = true };
-        using var db = RocksDb.Open(options, dir.Path);
+        string path = TestDb.InMemory(options);
+        using var db = RocksDb.Open(options, path);
 
         db.Put("hello", "world");
         string? value = db.GetString("hello");
@@ -215,14 +216,13 @@ public class DocumentationGuideTests
     [Fact]
     public void CompactionFilters_ExpiryFilterDropsOldEntries()
     {
-        using var dir = new TempDir();
-
         var filter = new ExpiryFilter(TimeSpan.FromDays(30));
 
         var options = new DbOptions { CreateIfMissing = true };
         options.CompactionFilter = filter;
 
-        using var db = RocksDb.Open(options, dir.Path);
+        string path = TestDb.InMemory(options);
+        using var db = RocksDb.Open(options, path);
 
         db.Put("fresh"u8, Stamped(DateTimeOffset.UtcNow));
         db.Put("stale"u8, Stamped(DateTimeOffset.UtcNow.AddDays(-90)));
@@ -243,13 +243,13 @@ public class DocumentationGuideTests
     [Fact]
     public void CompactionFilters_ShortValuesAreKept()
     {
-        using var dir = new TempDir();
         var filter = new ExpiryFilter(TimeSpan.Zero);
 
         var options = new DbOptions { CreateIfMissing = true };
         options.CompactionFilter = filter;
 
-        using var db = RocksDb.Open(options, dir.Path);
+        string path = TestDb.InMemory(options);
+        using var db = RocksDb.Open(options, path);
 
         db.Put("short"u8, "ab"u8);
         db.Flush();
@@ -282,13 +282,13 @@ public class DocumentationGuideTests
     [Fact]
     public void CompactionFilters_UppercaseFilterRewritesValues()
     {
-        using var dir = new TempDir();
         using var filter = new UppercaseFilter();
 
         var options = new DbOptions { CreateIfMissing = true };
         options.CompactionFilter = filter;
 
-        using var db = RocksDb.Open(options, dir.Path);
+        string path = TestDb.InMemory(options);
+        using var db = RocksDb.Open(options, path);
 
         db.Put("key", "value");
         db.Flush();
@@ -326,14 +326,13 @@ public class DocumentationGuideTests
     [Fact]
     public void CompactionFilters_FactoryProducesOneFilterPerJob()
     {
-        using var dir = new TempDir();
-
         var factory = new ExpiryFilterFactory(TimeSpan.FromDays(30));
 
         var options = new DbOptions { CreateIfMissing = true };
         options.CompactionFilterFactory = factory;
 
-        using var db = RocksDb.Open(options, dir.Path);
+        string path = TestDb.InMemory(options);
+        using var db = RocksDb.Open(options, path);
 
         db.Put("fresh"u8, Stamped(DateTimeOffset.UtcNow));
         db.Put("stale"u8, Stamped(DateTimeOffset.UtcNow.AddDays(-90)));
@@ -378,14 +377,13 @@ public class DocumentationGuideTests
     [Fact]
     public void WritingCallbacks_ComparatorChangesScanOrder()
     {
-        using var dir = new TempDir();
-
         var comparator = new ReverseComparator();
 
         var options = new DbOptions { CreateIfMissing = true };
         options.Comparator = comparator;
 
-        using var db = RocksDb.Open(options, dir.Path);
+        string path = TestDb.InMemory(options);
+        using var db = RocksDb.Open(options, path);
 
         db.Put("a", "1");
         db.Put("b", "2");
@@ -460,12 +458,11 @@ public class DocumentationGuideTests
     [Fact]
     public void WritingCallbacks_MergeOperatorAccumulates()
     {
-        using var dir = new TempDir();
-
         var options = new DbOptions { CreateIfMissing = true };
         options.MergeOperator = new CounterMergeOperator();
 
-        using var db = RocksDb.Open(options, dir.Path);
+        string path = TestDb.InMemory(options);
+        using var db = RocksDb.Open(options, path);
 
         db.Merge("visits"u8, Delta(1));
         db.Merge("visits"u8, Delta(5));
@@ -517,8 +514,6 @@ public class DocumentationGuideTests
     [Fact]
     public void WritingCallbacks_LoggerReceivesDiagnostics()
     {
-        using var dir = new TempDir();
-
         var logger = new CollectingLogger();
 
         var options = new DbOptions { CreateIfMissing = true };
@@ -529,7 +524,8 @@ public class DocumentationGuideTests
         logger.Dispose();
         Assert.False(logger.IsDisposed);
 
-        using (var db = RocksDb.Open(options, dir.Path))
+        string path = TestDb.InMemory(options);
+        using (var db = RocksDb.Open(options, path))
         {
             db.Put("key", "value");
             db.Flush();
@@ -558,14 +554,13 @@ public class DocumentationGuideTests
     [Fact]
     public void WritingCallbacks_EventListenerObservesFlushes()
     {
-        using var dir = new TempDir();
-
         var watcher = new FlushWatcher();
 
         var options = new DbOptions { CreateIfMissing = true };
         options.AddEventListener(watcher);
 
-        using (var db = RocksDb.Open(options, dir.Path))
+        string path = TestDb.InMemory(options);
+        using (var db = RocksDb.Open(options, path))
         {
             db.Put("key", "value");
             db.Flush();
@@ -580,8 +575,6 @@ public class DocumentationGuideTests
     [Fact]
     public void WritingCallbacks_AddEventListenerAccumulates()
     {
-        using var dir = new TempDir();
-
         var first = new FlushWatcher();
         var second = new FlushWatcher();
 
@@ -589,7 +582,8 @@ public class DocumentationGuideTests
         options.AddEventListener(first);
         options.AddEventListener(second);
 
-        using (var db = RocksDb.Open(options, dir.Path))
+        string path = TestDb.InMemory(options);
+        using (var db = RocksDb.Open(options, path))
         {
             db.Put("key", "value");
             db.Flush();

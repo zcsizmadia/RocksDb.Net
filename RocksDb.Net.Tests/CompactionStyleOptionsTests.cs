@@ -83,7 +83,6 @@ public class CompactionStyleOptionsTests
     [Fact]
     public void UniversalCompaction_DatabaseOpensAndCompacts()
     {
-        using var dir = new TempDir();
         var opts = new DbOptions
         {
             CreateIfMissing = true,
@@ -106,7 +105,7 @@ public class CompactionStyleOptionsTests
         }
 
         // Disposed above, because RocksDb copied the values.
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         for (int i = 0; i < 600; i++)
         {
@@ -170,7 +169,6 @@ public class CompactionStyleOptionsTests
     [Fact]
     public void FifoCompaction_DropsTheOldestDataPastTheSizeBound()
     {
-        using var dir = new TempDir();
         var opts = new DbOptions
         {
             CreateIfMissing = true,
@@ -183,7 +181,7 @@ public class CompactionStyleOptionsTests
             opts.FifoCompactionOptions = fifo;
         }
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         // Incompressible values, deliberately. A repeated character compresses
         // to almost nothing, so 1500 of them occupied 44 KB against a 128 KB
@@ -228,7 +226,6 @@ public class CompactionStyleOptionsTests
     [Fact]
     public void FifoCompaction_WithoutASizeBound_KeepsEverything()
     {
-        using var dir = new TempDir();
         var opts = new DbOptions
         {
             CreateIfMissing = true,
@@ -236,7 +233,7 @@ public class CompactionStyleOptionsTests
             WriteBufferSize = 16 * 1024,
         };
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         var random = new Random(1);
         byte[] value = new byte[512];

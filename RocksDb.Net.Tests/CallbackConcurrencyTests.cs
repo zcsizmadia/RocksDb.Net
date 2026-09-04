@@ -153,8 +153,6 @@ public class CallbackConcurrencyTests
     [Fact]
     public void CompactionFilter_UnderParallelBackgroundWork_ResolvesTheSameInstance()
     {
-        using var dir = new TempDir();
-
         var probe = new ConcurrencyProbe();
         using var filter = new ProbedCompactionFilter(probe);
 
@@ -176,7 +174,7 @@ public class CallbackConcurrencyTests
         };
         opts.CompactionFilter = filter;
 
-        using (var db = RocksDb.Open(opts, dir.Path))
+        using (var db = TestDb.OpenInMemory(opts))
         {
             DriveParallelBackgroundWork(db);
         }
@@ -198,8 +196,6 @@ public class CallbackConcurrencyTests
     [Fact]
     public void EventListener_UnderParallelBackgroundWork_ResolvesTheSameInstance()
     {
-        using var dir = new TempDir();
-
         var probe = new ConcurrencyProbe();
         var listener = new ProbedListener(probe);
 
@@ -218,7 +214,7 @@ public class CallbackConcurrencyTests
         };
         opts.AddEventListener(listener);
 
-        using (var db = RocksDb.Open(opts, dir.Path))
+        using (var db = TestDb.OpenInMemory(opts))
         {
             DriveParallelBackgroundWork(db);
         }
@@ -236,8 +232,6 @@ public class CallbackConcurrencyTests
     [Fact]
     public void CompactionFilter_SurvivesCollectionDuringCompaction()
     {
-        using var dir = new TempDir();
-
         var probe = new ConcurrencyProbe();
         using var filter = new ProbedCompactionFilter(probe);
 
@@ -275,7 +269,7 @@ public class CallbackConcurrencyTests
 
         try
         {
-            using var db = RocksDb.Open(opts, dir.Path);
+            using var db = TestDb.OpenInMemory(opts);
 
             for (int i = 0; i < 1_500; i++)
             {
@@ -367,8 +361,6 @@ public class CallbackConcurrencyTests
     [Fact]
     public void ParallelBackgroundWork_PreservesEveryWrite()
     {
-        using var dir = new TempDir();
-
         var probe = new ConcurrencyProbe();
         using var filter = new ProbedCompactionFilter(probe);
 
@@ -386,7 +378,7 @@ public class CallbackConcurrencyTests
         const int threads = 4;
         const int writesPerThread = 400;
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
         DriveParallelBackgroundWork(db, threads, writesPerThread);
 
         string expected = new('v', 512);

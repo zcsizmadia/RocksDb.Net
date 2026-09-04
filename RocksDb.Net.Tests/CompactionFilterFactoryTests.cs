@@ -40,13 +40,12 @@ public class CompactionFilterFactoryTests
     [Fact]
     public void CompactionFilterFactory_CreatesFilterPerCompaction()
     {
-        using var dir = new TempDir();
         var factory = new TestFilterFactory("tmp_");
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.CompactionFilterFactory = factory;
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         db.Put("tmp_1", "v1");
         db.Put("tmp_2", "v2");

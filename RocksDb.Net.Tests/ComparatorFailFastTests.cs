@@ -48,14 +48,12 @@ public class ComparatorFailFastTests
             return;
         }
 
-        using var dir = new TempDir();
-
         var comparator = new ThrowingComparator();
 
         var options = new DbOptions { CreateIfMissing = true };
         options.Comparator = comparator;
 
-        using var db = RocksDb.Open(options, dir.Path);
+        using var db = TestDb.OpenInMemory(options);
 
         // Two keys, so RocksDb has to order them and must ask the comparator.
         db.Put("a", "1");

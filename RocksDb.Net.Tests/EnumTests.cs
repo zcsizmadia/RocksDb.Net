@@ -123,11 +123,10 @@ public class NativeEnumValueTests
     {
         var listener = new RecordingListener();
 
-        using var dir = new TempDir();
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.AddEventListener(listener);
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         db.Put("key", "value");
         db.Flush();
@@ -143,17 +142,17 @@ public class NativeEnumValueTests
     {
         var listener = new RecordingListener();
 
-        using var dir = new TempDir();
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.AddEventListener(listener);
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         db.WriteOverlappingSstFiles();
         db.CompactRange();
 
-        Assert.Contains(
-            listener.CompactionCompleted,
-            c => c.CompactionReason == CompactionReason.ManualCompaction);
+        Assert.True(
+            Wait.Until(() => listener.CompactionCompleted.Any(
+                c => c.CompactionReason == CompactionReason.ManualCompaction)),
+            "no compaction was reported as manual");
     }
 }

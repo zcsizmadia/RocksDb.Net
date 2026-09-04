@@ -89,13 +89,12 @@ public class EventListenerTests
     [Fact]
     public void EventListener_PartialOverride_DoesNotCrash()
     {
-        using var dir = new TempDir();
         var listener = new SingleOverrideListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.AddEventListener(listener);
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         // Drive flush, compaction and memtable-sealed events, none of which this
         // listener overrides except OnFlushCompleted.
@@ -111,17 +110,21 @@ public class EventListenerTests
     [Fact]
     public void EventListener_ReceivesFlushEvents()
     {
-        using var dir = new TempDir();
         var listener = new RecordingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.AddEventListener(listener);
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         db.Put("key1", "value1");
         db.Put("key2", "value2");
         db.Flush();
+
+        Assert.True(
+            Wait.Until(() =>
+                listener.FlushBegin.Count > 0 && listener.FlushCompleted.Count > 0),
+            "no flush callback arrived");
 
         Assert.NotEmpty(listener.FlushBegin);
         var beginInfo = listener.FlushBegin[0];
@@ -137,7 +140,6 @@ public class EventListenerTests
     [Fact]
     public void EventListener_ReceivesCompactionEvents()
     {
-        using var dir = new TempDir();
         var listener = new RecordingListener();
 
         using var opts = new DbOptions
@@ -148,7 +150,7 @@ public class EventListenerTests
         };
         opts.AddEventListener(listener);
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         // Write enough data to trigger compaction
         for (int i = 0; i < 200; i++)
@@ -165,6 +167,10 @@ public class EventListenerTests
 
         db.CompactRange();
 
+        Assert.True(
+            Wait.Until(() => listener.CompactionCompleted.Count > 0),
+            "no compaction-completed callback arrived");
+
         Assert.NotEmpty(listener.CompactionCompleted);
 
         var info = listener.CompactionCompleted[0];
@@ -175,17 +181,21 @@ public class EventListenerTests
     [Fact]
     public void EventListener_AddMultiple()
     {
-        using var dir = new TempDir();
         var listener1 = new RecordingListener();
         var listener2 = new RecordingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.AddEventListeners([listener1, listener2]);
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         db.Put("key1", "value1");
         db.Flush();
+
+        Assert.True(
+            Wait.Until(() =>
+                listener1.FlushCompleted.Count > 0 && listener2.FlushCompleted.Count > 0),
+            "one of the two listeners saw no flush");
 
         Assert.NotEmpty(listener1.FlushCompleted);
         Assert.NotEmpty(listener2.FlushCompleted);
@@ -194,16 +204,19 @@ public class EventListenerTests
     [Fact]
     public void EventListener_FlushJobInfo_Properties()
     {
-        using var dir = new TempDir();
         var listener = new RecordingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.AddEventListener(listener);
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         db.Put("a", "1");
         db.Flush();
+
+        Assert.True(
+            Wait.Until(() => listener.FlushCompleted.Count > 0),
+            "no flush-completed callback arrived");
 
         FlushJobInfo info = Assert.Single(listener.FlushCompleted);
 
@@ -253,24 +266,24 @@ public class EventListenerTests
     [Fact]
     public void EventListener_ReceivesFlushBeginEvent()
     {
-        using var dir = new TempDir();
         var listener = new RecordingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.AddEventListener(listener);
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         db.Put("key", "value");
         db.Flush();
 
-        Assert.NotEmpty(listener.FlushBegin);
+        Assert.True(
+            Wait.Until(() => listener.FlushBegin.Count > 0),
+            "no flush-begin callback arrived");
     }
 
     [Fact]
     public void EventListener_CompactionJobInfo_HasInputAndOutputFiles()
     {
-        using var dir = new TempDir();
         var listener = new RecordingListener();
 
         using var opts = new DbOptions
@@ -281,7 +294,7 @@ public class EventListenerTests
         };
         opts.AddEventListener(listener);
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         for (int i = 0; i < 200; i++)
             db.Put($"key_{i:D5}", new string('x', 100));

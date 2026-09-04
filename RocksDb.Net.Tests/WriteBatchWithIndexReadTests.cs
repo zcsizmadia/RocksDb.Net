@@ -151,11 +151,10 @@ public class WriteBatchWithIndexReadTests
     [Fact]
     public void GetFromBatchAndDb_ResolvesAQueuedMergeAgainstTheStoredValue()
     {
-        using var dir = new TempDir();
         var options = new DbOptions { CreateIfMissing = true };
         options.SetUInt64AddMergeOperator();
 
-        using var db = RocksDb.Open(options, dir.Path);
+        using var db = TestDb.OpenInMemory(options);
         db.Put("counter"u8, BitConverter.GetBytes(10UL));
 
         using var batch = new WriteBatchWithIndex();

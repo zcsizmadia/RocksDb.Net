@@ -20,8 +20,9 @@ namespace RocksDbNet.Tests;
 /// </para>
 /// <para>
 /// The code here is kept identical to what the README shows, apart from paths,
-/// which point at a temporary directory rather than <c>"mydb"</c>. If you change
-/// the README, change the matching test with it.
+/// which point at an in-memory environment, or at a temporary directory where
+/// the test needs real files, rather than <c>"mydb"</c>. If you change the
+/// README, change the matching test with it.
 /// </para>
 /// </remarks>
 public class ReadmeSnippetTests
@@ -29,11 +30,10 @@ public class ReadmeSnippetTests
     [Fact]
     public void BasicUsage()
     {
-        using var dir = new TempDir();
-
         // No `using` on the options: Open takes ownership of them.
         var options = new DbOptions { CreateIfMissing = true };
-        using var db = RocksDb.Open(options, dir.Path);
+        string path = TestDb.InMemory(options);
+        using var db = RocksDb.Open(options, path);
 
         // Write
         db.Put("hello", "world");
@@ -137,12 +137,11 @@ public class ReadmeSnippetTests
     [Fact]
     public void MergeOperators()
     {
-        using var dir = new TempDir();
-
         // Built-in UInt64 addition
         var options = new DbOptions { CreateIfMissing = true };
         options.SetUInt64AddMergeOperator();
-        using var db = RocksDb.Open(options, dir.Path);
+        string path = TestDb.InMemory(options);
+        using var db = RocksDb.Open(options, path);
 
         db.Merge("visits"u8, BitConverter.GetBytes(1UL));
         db.Merge("visits"u8, BitConverter.GetBytes(5UL));
@@ -156,14 +155,13 @@ public class ReadmeSnippetTests
     [Fact]
     public void MetadataAndStatistics()
     {
-        using var dir = new TempDir();
-
         // Statistics live on the options, so keep a reference to read them back.
         // These are the options the database owns; do not dispose them yourself.
         var options = new DbOptions { CreateIfMissing = true };
         options.EnableStatistics();
 
-        using var db = RocksDb.Open(options, dir.Path);
+        string path = TestDb.InMemory(options);
+        using var db = RocksDb.Open(options, path);
 
         db.Put("a", "1");
         db.Flush();
@@ -270,15 +268,14 @@ public class ReadmeSnippetTests
     [Fact]
     public void BloomFilters()
     {
-        using var dir = new TempDir();
-
         using var tableOptions = new BlockBasedTableOptions();
         tableOptions.SetFilterPolicy(FilterPolicy.CreateBloomFull(10));
 
         var options = new DbOptions { CreateIfMissing = true };
         options.BlockBasedTableFactory = tableOptions;
 
-        using var db = RocksDb.Open(options, dir.Path);
+        string path = TestDb.InMemory(options);
+        using var db = RocksDb.Open(options, path);
 
         db.Put("key", "value");
         Assert.Equal("value", db.GetString("key"));

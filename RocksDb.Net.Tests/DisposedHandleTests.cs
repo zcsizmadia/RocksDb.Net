@@ -127,10 +127,9 @@ public class DisposedHandleTests
     [Fact]
     public void Get_OnDisposedDatabase_Throws()
     {
-        using var dir = new TempDir();
         using var options = new DbOptions { CreateIfMissing = true };
 
-        var db = RocksDb.Open(options, dir.Path);
+        var db = TestDb.OpenInMemory(options);
         db.Put("a", "1");
         db.Dispose();
 

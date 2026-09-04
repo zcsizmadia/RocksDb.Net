@@ -228,14 +228,13 @@ public class ResourceGovernanceTests
     [Fact]
     public void WriteBufferManager_WithACache_ReservesThroughDummyEntries()
     {
-        using var dir = new TempDir();
         using Cache cache = Cache.CreateLru(64 * 1024 * 1024);
         using WriteBufferManager manager = WriteBufferManager.Create(32 * 1024 * 1024, cache);
 
         var opts = new DbOptions { CreateIfMissing = true };
         opts.WriteBufferManager = manager;
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         for (int i = 0; i < 500; i++)
         {

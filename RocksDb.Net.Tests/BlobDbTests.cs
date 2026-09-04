@@ -135,12 +135,10 @@ public class BlobDbTests
     [Fact]
     public void BlobWrites_AreCounted()
     {
-        using var dir = new TempDir();
-
         DbOptions options = BlobOptions();
         options.EnableStatistics();
 
-        using RocksDb db = RocksDb.Open(options, dir.Path);
+        using RocksDb db = TestDb.OpenInMemory(options);
 
         Assert.Equal(0UL, options.GetTickerCount(Ticker.BlobDbBlobFileSynced));
 
@@ -174,8 +172,6 @@ public class BlobDbTests
     [Fact]
     public void BlobCache_CanBeAttachedAndServesReads()
     {
-        using var dir = new TempDir();
-
         using var cache = Cache.CreateLru(8 * 1024 * 1024);
 
         DbOptions options = BlobOptions();
@@ -183,7 +179,7 @@ public class BlobDbTests
         options.BlobCache = cache;
         options.PrepopulateBlobCache = PrepopulateBlobCache.FlushOnly;
 
-        using RocksDb db = RocksDb.Open(options, dir.Path);
+        using RocksDb db = TestDb.OpenInMemory(options);
 
         db.Put("large", new string('L', MinBlobSize * 4));
         db.Flush();
@@ -233,14 +229,12 @@ public class BlobDbTests
     [Fact]
     public void BlobCache_CanBeDisposedUnderALiveDatabase()
     {
-        using var dir = new TempDir();
-
         var cache = Cache.CreateLru(8 * 1024 * 1024);
 
         DbOptions options = BlobOptions();
         options.BlobCache = cache;
 
-        using RocksDb db = RocksDb.Open(options, dir.Path);
+        using RocksDb db = TestDb.OpenInMemory(options);
 
         for (int i = 0; i < 50; i++)
         {
