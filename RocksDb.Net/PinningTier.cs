@@ -62,9 +62,17 @@ public sealed class DbPath : RocksDbHandle
     /// How much data to place here before moving to the next path. Zero means
     /// no limit, which only makes sense for the last entry.
     /// </param>
+    /// <remarks>
+    /// The validation is in the body rather than folded into a base-constructor
+    /// argument. Throwing from there would leave an allocated object whose base
+    /// constructor never ran, with every inherited field at its default, and the
+    /// finalizer still runs on that.
+    /// </remarks>
     public DbPath(string path, ulong targetSizeBytes)
-        : base(Create(path, targetSizeBytes))
     {
+        ArgumentException.ThrowIfNullOrEmpty(path);
+
+        Handle = NativeMethods.rocksdb_dbpath_create(path, targetSizeBytes);
         Path = path;
         TargetSizeBytes = targetSizeBytes;
     }
@@ -75,12 +83,6 @@ public sealed class DbPath : RocksDbHandle
     /// <summary>How much data to place here before using the next path.</summary>
     public ulong TargetSizeBytes { get; }
 
-    private static nint Create(string path, ulong targetSizeBytes)
-    {
-        ArgumentException.ThrowIfNullOrEmpty(path);
-
-        return NativeMethods.rocksdb_dbpath_create(path, targetSizeBytes);
-    }
 
     protected override void DisposeHandle()
     {

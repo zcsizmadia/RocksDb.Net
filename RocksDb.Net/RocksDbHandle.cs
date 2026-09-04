@@ -86,6 +86,12 @@ public abstract class RocksDbHandle : IDisposable
     /// </remarks>
     public bool IsDisposed => Volatile.Read(ref _disposed) != Alive;
 
+    // Disposal finished, as opposed to merely started. The child guard needs
+    // this rather than IsDisposed: a parent that is midway through its own
+    // teardown is disposing its children on purpose, and they must still
+    // release. Only once the parent has closed has RocksDb freed them for us.
+    internal bool IsReleased => Volatile.Read(ref _disposed) == Released;
+
     ~RocksDbHandle()
     {
         Dispose(false);
@@ -423,21 +429,103 @@ public abstract class RocksDbHandle : IDisposable
     /// <remarks>Protected for the same reason as <see cref="DisposeHandle"/>.</remarks>
     protected virtual void DisposeUnmanagedResources()
     {
-        // Dispose the native handle if this instance owns it, and if whatever it
-        // lives inside is still open. See SetParent for why the second condition
-        // exists.
-        if (_owned != 0 && _handle != IntPtr.Zero && _parent?.IsDisposed != true)
+        // Whatever lives inside this handle goes first. RocksDb requires it, and
+        // for a handle being finalized it is the only chance they get: their own
+        // finalizers may not have run yet and may never run in time.
+        DisposeChildren();
+
+        // Then this handle, if it owns one and if whatever it lives inside has
+        // not already been closed. A parent that is midway through its own
+        // teardown does not count as closed: it is disposing this handle on
+        // purpose, and skipping the release there would leak. See SetParent.
+        if (_owned != 0 && _handle != IntPtr.Zero && _parent?.IsReleased != true)
         {
             DisposeHandle();
         }
 
         Handle = IntPtr.Zero;
+
+        // Out of the parent's list, so a long-lived database does not accumulate
+        // every iterator and snapshot ever opened against it.
+        RocksDbHandle? parent = _parent;
         _parent = null;
+        parent?.RemoveChild(this);
     }
 
     // The object this handle lives inside, or null for a root handle. Held as a
     // strong reference on purpose: see SetParent.
     private RocksDbHandle? _parent;
+
+    // The handles that live inside this one, held as strong references for as
+    // long as they are open. See SetParent for why both directions are needed.
+    private List<RocksDbHandle>? _children;
+    private readonly object _childGate = new();
+
+    private void AddChild(RocksDbHandle child)
+    {
+        lock (_childGate)
+        {
+            (_children ??= []).Add(child);
+        }
+    }
+
+    private void RemoveChild(RocksDbHandle child)
+    {
+        lock (_childGate)
+        {
+            _children?.Remove(child);
+        }
+    }
+
+    /// <summary>
+    /// Releases every handle that lives inside this one, before this one goes.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Last opened, first released. Children nest: an iterator is opened over a
+    /// column family that already existed, so releasing in reverse order takes
+    /// the iterator down before the family it reads from.
+    /// </para>
+    /// <para>
+    /// The list is taken and cleared under the lock and the children disposed
+    /// outside it, because each of them calls back into
+    /// <see cref="RemoveChild"/> as it goes.
+    /// </para>
+    /// </remarks>
+    private void DisposeChildren()
+    {
+        RocksDbHandle[] open;
+
+        // A handle whose base constructor never ran has no children, and
+        // locking on its null gate would throw. That instance exists: a derived
+        // constructor that throws while evaluating the arguments it passes to
+        // base(...) leaves an allocated object with every base field at its
+        // default, and the finalizer still runs on it. An exception from a
+        // finalizer takes the process down, so this is checked rather than
+        // assumed.
+        object? gate = _childGate;
+
+        if (gate is null)
+        {
+            return;
+        }
+
+        lock (gate)
+        {
+            if (_children is not { Count: > 0 })
+            {
+                return;
+            }
+
+            open = [.. _children];
+            _children.Clear();
+        }
+
+        for (int i = open.Length - 1; i >= 0; i--)
+        {
+            open[i].Dispose();
+        }
+    }
 
     /// <summary>
     /// Records that this handle is only valid while <paramref name="parent"/> is
@@ -453,18 +541,33 @@ public abstract class RocksDbHandle : IDisposable
     /// pointer, on the finalizer thread where nothing can catch it.
     /// </para>
     /// <para>
-    /// Two things fix that together. The strong reference keeps the parent
-    /// reachable for as long as this handle is, so the parent's finalizer cannot
-    /// run first. And when the parent has already been disposed explicitly, the
-    /// check in <see cref="DisposeUnmanagedResources"/> skips the native release
+    /// Three things fix that together. The strong reference upwards keeps the
+    /// parent reachable for as long as this handle is, so the parent's finalizer
+    /// cannot run first. The strong reference downwards, which the parent keeps,
+    /// means the parent releases this handle as part of its own teardown rather
+    /// than leaving it to a finalizer that may never run in time. And when the
+    /// parent has already finished closing, the check in
+    /// <see cref="DisposeUnmanagedResources"/> skips the native release
     /// entirely, because the parent's own close already reclaimed what it
-    /// referred to. That leaks a small wrapper struct in a case that used to
-    /// terminate the process.
+    /// referred to.
+    /// </para>
+    /// <para>
+    /// The downward reference is what makes the check safe. Without it, a
+    /// snapshot nobody disposed could be finalized on the finalizer thread at
+    /// the same moment the database was closing on another, and release itself
+    /// against a database mid-close. That was an access violation, and it is why
+    /// the check was once written against
+    /// <see cref="IsDisposed"/> instead: skipping the release for every child of
+    /// a closing parent avoided the race by leaking all of them. Holding the
+    /// children reachable removes the race instead, because a handle the parent
+    /// still points at cannot be collected while the parent is in use.
     /// </para>
     /// </remarks>
     internal void SetParent(RocksDbHandle parent)
     {
         ArgumentNullException.ThrowIfNull(parent);
+
         _parent = parent;
+        parent.AddChild(this);
     }
 }

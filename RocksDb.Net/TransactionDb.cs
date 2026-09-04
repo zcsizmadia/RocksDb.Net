@@ -480,13 +480,10 @@ public sealed class TransactionDb : RocksDbHandle
 
     protected override void DisposeUnmanagedResources()
     {
-        // Column family handles must go before the database closes, for the same
-        // reason as on RocksDb: their destructors reach into database internals.
-        foreach (ColumnFamilyHandle cf in _columnFamilyHandles.Values)
-        {
-            cf.Dispose();
-        }
-
+        // Column family handles and transactions must go before the database
+        // closes, for the same reason as on RocksDb: their destructors reach
+        // into database internals. Each registered this as its parent, so the
+        // base releases them, newest first, before closing.
         base.DisposeUnmanagedResources();
 
         // After the close, so that callbacks the options own outlive the
