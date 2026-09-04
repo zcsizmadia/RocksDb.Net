@@ -1,9 +1,66 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-using RocksDbNet.Extensions;
-
 namespace RocksDbNet;
+
+/// <summary>
+/// The events an <see cref="EventListener"/> wants to be told about.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Override <see cref="EventListener.Subscribed"/> to narrow this. The default
+/// is <see cref="All"/>, so a listener that says nothing receives everything
+/// and narrowing is an optimisation rather than a requirement — a listener
+/// cannot go silent by forgetting to declare an event it overrode.
+/// </para>
+/// <para>
+/// What narrowing saves is the construction of the job-info object an event
+/// carries, which is measurable: a listener overriding five of the ten events
+/// allocates about twice what one overriding none does, while the boundary
+/// crossing itself costs nothing detectable. See the benchmarks.
+/// </para>
+/// </remarks>
+[Flags]
+public enum EventKinds
+{
+    /// <summary>No events.</summary>
+    None = 0,
+
+    /// <summary><see cref="EventListener.OnFlushBegin"/>.</summary>
+    FlushBegin = 1 << 0,
+
+    /// <summary><see cref="EventListener.OnFlushCompleted"/>.</summary>
+    FlushCompleted = 1 << 1,
+
+    /// <summary><see cref="EventListener.OnCompactionBegin"/>.</summary>
+    CompactionBegin = 1 << 2,
+
+    /// <summary><see cref="EventListener.OnCompactionCompleted"/>.</summary>
+    CompactionCompleted = 1 << 3,
+
+    /// <summary><see cref="EventListener.OnSubCompactionBegin"/>.</summary>
+    SubCompactionBegin = 1 << 4,
+
+    /// <summary><see cref="EventListener.OnSubCompactionCompleted"/>.</summary>
+    SubCompactionCompleted = 1 << 5,
+
+    /// <summary><see cref="EventListener.OnExternalFileIngested"/>.</summary>
+    ExternalFileIngested = 1 << 6,
+
+    /// <summary><see cref="EventListener.OnBackgroundError"/>.</summary>
+    BackgroundError = 1 << 7,
+
+    /// <summary><see cref="EventListener.OnStallConditionsChanged"/>.</summary>
+    StallConditionsChanged = 1 << 8,
+
+    /// <summary><see cref="EventListener.OnMemTableSealed"/>.</summary>
+    MemTableSealed = 1 << 9,
+
+    /// <summary>Every event. The default.</summary>
+    All = FlushBegin | FlushCompleted | CompactionBegin | CompactionCompleted
+        | SubCompactionBegin | SubCompactionCompleted | ExternalFileIngested
+        | BackgroundError | StallConditionsChanged | MemTableSealed,
+}
 
 /// <summary>
 /// Why RocksDb flushed a memtable, mapped from <c>rocksdb::FlushReason</c> in
@@ -330,19 +387,32 @@ public abstract class EventListener : RocksDbHandle
     // ── Static callbacks ─────────────────────────────────────────────────────
     // Using static methods avoids unsafe-lambda syntax issues.
 
-    // Whether the derived class overrides each event, decided once in the
-    // constructor. See the comment there for why this cannot be expressed by
-    // passing a null callback to RocksDb.
-    private readonly bool _hasOnFlushBegin;
-    private readonly bool _hasOnFlushCompleted;
-    private readonly bool _hasOnCompactionBegin;
-    private readonly bool _hasOnCompactionCompleted;
-    private readonly bool _hasOnSubCompactionBegin;
-    private readonly bool _hasOnSubCompactionCompleted;
-    private readonly bool _hasOnExternalFileIngested;
-    private readonly bool _hasOnBackgroundError;
-    private readonly bool _hasOnStallConditionsChanged;
-    private readonly bool _hasOnMemTableSealed;
+    /// <summary>
+    /// Which events this listener wants. Every one, unless a subclass narrows
+    /// it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This replaced a reflection check that asked, once per instance, whether
+    /// each of the ten virtuals had been overridden. The check worked, but
+    /// <c>GetMethod</c> by name on a runtime-known type is the shape trimming
+    /// and NativeAOT analysers object to, and it was the only reflection left in
+    /// the library.
+    /// </para>
+    /// <para>
+    /// What it bought is worth keeping, so this is the same saving stated
+    /// explicitly rather than inferred: an event nobody wants costs no job-info
+    /// object. That is the measurable part — a listener overriding five events
+    /// allocates about twice what one overriding none does, while the boundary
+    /// crossing itself costs nothing detectable.
+    /// </para>
+    /// <para>
+    /// Read when an event arrives rather than cached at construction, so an
+    /// override may depend on the subclass's own fields. A virtual called from
+    /// this base constructor would run before those fields were assigned.
+    /// </para>
+    /// </remarks>
+    protected virtual EventKinds Subscribed => EventKinds.All;
 
     /// <summary>
     /// Invokes a listener method when the derived class overrides it, keeping any
@@ -356,16 +426,16 @@ public abstract class EventListener : RocksDbHandle
     /// </remarks>
     private static void Notify(
         string callbackName,
+        EventKinds kind,
         nint state,
         nint info,
-        Func<EventListener, bool> isOverridden,
         Action<EventListener, nint> body)
     {
         try
         {
             EventListener self = SelfFromState(state);
 
-            if (isOverridden(self))
+            if ((self.Subscribed & kind) != 0)
             {
                 body(self, info);
             }
@@ -396,56 +466,47 @@ public abstract class EventListener : RocksDbHandle
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void OnFlushBeginCallback(nint state, nint db, nint info)
-        => Notify(nameof(OnFlushBegin), state, info,
-            static self => self._hasOnFlushBegin,
+        => Notify(nameof(OnFlushBegin), EventKinds.FlushBegin, state, info,
             static (self, i) => self.OnFlushBegin(CreateFlushJobInfo(i)));
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void OnFlushCompletedCallback(nint state, nint db, nint info)
-        => Notify(nameof(OnFlushCompleted), state, info,
-            static self => self._hasOnFlushCompleted,
+        => Notify(nameof(OnFlushCompleted), EventKinds.FlushCompleted, state, info,
             static (self, i) => self.OnFlushCompleted(CreateFlushJobInfo(i)));
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void OnCompactionBeginCallback(nint state, nint db, nint info)
-        => Notify(nameof(OnCompactionBegin), state, info,
-            static self => self._hasOnCompactionBegin,
+        => Notify(nameof(OnCompactionBegin), EventKinds.CompactionBegin, state, info,
             static (self, i) => self.OnCompactionBegin(CreateCompactionJobInfo(i)));
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void OnCompactionCompletedCallback(nint state, nint db, nint info)
-        => Notify(nameof(OnCompactionCompleted), state, info,
-            static self => self._hasOnCompactionCompleted,
+        => Notify(nameof(OnCompactionCompleted), EventKinds.CompactionCompleted, state, info,
             static (self, i) => self.OnCompactionCompleted(CreateCompactionJobInfo(i)));
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void OnSubCompactionBeginCallback(nint state, nint info)
-        => Notify(nameof(OnSubCompactionBegin), state, info,
-            static self => self._hasOnSubCompactionBegin,
+        => Notify(nameof(OnSubCompactionBegin), EventKinds.SubCompactionBegin, state, info,
             static (self, i) => self.OnSubCompactionBegin(CreateSubCompactionJobInfo(i)));
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void OnSubCompactionCompletedCallback(nint state, nint info)
-        => Notify(nameof(OnSubCompactionCompleted), state, info,
-            static self => self._hasOnSubCompactionCompleted,
+        => Notify(nameof(OnSubCompactionCompleted), EventKinds.SubCompactionCompleted, state, info,
             static (self, i) => self.OnSubCompactionCompleted(CreateSubCompactionJobInfo(i)));
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void OnExternalFileIngestedCallback(nint state, nint db, nint info)
-        => Notify(nameof(OnExternalFileIngested), state, info,
-            static self => self._hasOnExternalFileIngested,
+        => Notify(nameof(OnExternalFileIngested), EventKinds.ExternalFileIngested, state, info,
             static (self, i) => self.OnExternalFileIngested(CreateExternalFileIngestionInfo(i)));
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void OnStallConditionsChangedCallback(nint state, nint info)
-        => Notify(nameof(OnStallConditionsChanged), state, info,
-            static self => self._hasOnStallConditionsChanged,
+        => Notify(nameof(OnStallConditionsChanged), EventKinds.StallConditionsChanged, state, info,
             static (self, i) => self.OnStallConditionsChanged(CreateWriteStallInfo(i)));
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void OnMemTableSealedCallback(nint state, nint info)
-        => Notify(nameof(OnMemTableSealed), state, info,
-            static self => self._hasOnMemTableSealed,
+        => Notify(nameof(OnMemTableSealed), EventKinds.MemTableSealed, state, info,
             static (self, i) => self.OnMemTableSealed(CreateMemTableInfo(i)));
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
@@ -455,7 +516,7 @@ public abstract class EventListener : RocksDbHandle
         {
             EventListener self = SelfFromState(state);
 
-            if (self._hasOnBackgroundError)
+            if ((self.Subscribed & EventKinds.BackgroundError) != 0)
             {
                 self.OnBackgroundError(CreateBackgroundErrorInfo(reason, info));
             }
@@ -476,28 +537,13 @@ public abstract class EventListener : RocksDbHandle
         PinGarbageCollector();
 
 
-        // Skip work for events the derived class does not care about, so that no
-        // info object is built and no virtual call is made for them.
-        //
-        // The check has to happen on this side of the boundary. Handing RocksDb a
-        // null function pointer is not a way to opt out: rocksdb_eventlistener_t
-        // in db/c.cc overrides all ten EventListener virtuals and invokes the
-        // stored pointer with no null check, so a null crashes the process the
-        // first time that event fires. See issue #35.
-        //
-        // Detecting an override uses reflection to see whether the declaring type
-        // is still this base class. It runs once per instance, and listeners are
-        // created infrequently, so the cost is irrelevant.
-        _hasOnFlushBegin = this.CheckIfMethodOverridden<EventListener>(nameof(OnFlushBegin));
-        _hasOnFlushCompleted = this.CheckIfMethodOverridden<EventListener>(nameof(OnFlushCompleted));
-        _hasOnCompactionBegin = this.CheckIfMethodOverridden<EventListener>(nameof(OnCompactionBegin));
-        _hasOnCompactionCompleted = this.CheckIfMethodOverridden<EventListener>(nameof(OnCompactionCompleted));
-        _hasOnSubCompactionBegin = this.CheckIfMethodOverridden<EventListener>(nameof(OnSubCompactionBegin));
-        _hasOnSubCompactionCompleted = this.CheckIfMethodOverridden<EventListener>(nameof(OnSubCompactionCompleted));
-        _hasOnExternalFileIngested = this.CheckIfMethodOverridden<EventListener>(nameof(OnExternalFileIngested));
-        _hasOnBackgroundError = this.CheckIfMethodOverridden<EventListener>(nameof(OnBackgroundError));
-        _hasOnStallConditionsChanged = this.CheckIfMethodOverridden<EventListener>(nameof(OnStallConditionsChanged));
-        _hasOnMemTableSealed = this.CheckIfMethodOverridden<EventListener>(nameof(OnMemTableSealed));
+        // Every one of the ten slots is installed, whatever the subclass wants.
+        // Handing RocksDb a null function pointer is not a way to opt out:
+        // rocksdb_eventlistener_t in db/c.cc overrides all ten EventListener
+        // virtuals and invokes the stored pointer with no null check, so a null
+        // crashes the process the first time that event fires. See issue #35.
+        // Which events are actually delivered is decided on this side, by
+        // Subscribed.
 
         Handle = NativeMethods.rocksdb_eventlistener_create(
             GetPinnedIntPtr(),

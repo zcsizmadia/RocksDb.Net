@@ -1,6 +1,5 @@
 using System.Text;
 
-using RocksDbNet.Extensions;
 
 namespace RocksDbNet.Tests;
 
@@ -409,22 +408,71 @@ public class EventListenerTests
             NumDeletes: 0));
     }
 
+    /// <summary>
+    /// A listener that says nothing about what it wants receives everything.
+    /// </summary>
+    /// <remarks>
+    /// This is what replaced the reflection that used to decide which of the
+    /// ten virtuals a subclass had overridden. The default matters more than the
+    /// mechanism: a listener cannot go silent by forgetting to declare an event
+    /// it overrode, which is the trap the reflection could not fall into and the
+    /// reason not to make the declaration required.
+    /// </remarks>
     [Fact]
-    public void EventListener_DetectOverrides_All()
+    public void EventListener_SubscribesToEverythingByDefault()
     {
-        var listener = new AllEventListener();
+        using var listener = new DeclaringListener();
 
-        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnFlushBegin)));
-        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnFlushCompleted)));
-        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnCompactionBegin)));
-        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnCompactionCompleted)));
-        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnSubCompactionBegin)));
-        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnSubCompactionCompleted)));
-        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnExternalFileIngested)));
-        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnBackgroundError)));
-        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnStallConditionsChanged)));
-        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnMemTableSealed)));
+        Assert.Equal(EventKinds.All, listener.Declared);
+
+        // Every flag, not just a value that happens to compare equal.
+        foreach (EventKinds kind in Enum.GetValues<EventKinds>())
+        {
+            if (kind is EventKinds.None or EventKinds.All)
+            {
+                continue;
+            }
+
+            Assert.True(
+                (listener.Declared & kind) != 0,
+                $"{kind} should be included in the default subscription");
+        }
     }
+
+    /// <summary>A listener may narrow what it is told about.</summary>
+    /// <remarks>
+    /// Narrowing is the optimisation the old reflection performed
+    /// automatically: an event nobody wants costs no job-info object. Stated
+    /// rather than inferred, it survives trimming and NativeAOT.
+    /// </remarks>
+    [Fact]
+    public void EventListener_CanNarrowItsSubscription()
+    {
+        using var listener = new FlushOnlyListener();
+
+        Assert.Equal(EventKinds.FlushCompleted, listener.Declared);
+        Assert.True((listener.Declared & EventKinds.FlushCompleted) != 0);
+        Assert.True((listener.Declared & EventKinds.CompactionCompleted) == 0);
+    }
+
+    /// <summary>Takes the default, and exposes it for the assertion.</summary>
+    private sealed class DeclaringListener : EventListener
+    {
+        public EventKinds Declared => Subscribed;
+    }
+
+    /// <summary>Wants one event, though it could receive ten.</summary>
+    private sealed class FlushOnlyListener : EventListener
+    {
+        public int Flushes;
+
+        public EventKinds Declared => Subscribed;
+
+        protected override EventKinds Subscribed => EventKinds.FlushCompleted;
+
+        public override void OnFlushCompleted(FlushJobInfo info) => Flushes++;
+    }
+
 
     /// <summary>
     /// Overrides some callbacks and not others, which is the whole point of
@@ -461,54 +509,76 @@ public class EventListenerTests
         }
     }
 
+    /// <summary>
+    /// A narrowed listener still receives the event it asked for, end to end.
+    /// </summary>
+    /// <remarks>
+    /// The assertion above is about the declaration; this one is about the
+    /// delivery, which is what a caller actually cares about.
+    /// </remarks>
     [Fact]
-    public void EventListener_DetectOverrides_Some()
+    public void EventListener_NarrowedSubscriptionStillDelivers()
     {
-        var listener = new PartiallyOverridingListener();
+        using var listener = new FlushOnlyListener();
 
-        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnFlushBegin)));
-        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnFlushCompleted)));
-        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnCompactionBegin)));
-        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnCompactionCompleted)));
-        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnSubCompactionBegin)));
-        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnSubCompactionCompleted)));
-        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnExternalFileIngested)));
-        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnBackgroundError)));
-        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnStallConditionsChanged)));
-        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnMemTableSealed)));
+        using var db = new TempDb(o => o.AddEventListener(listener));
+
+        db.Db.Put("key", "value");
+        db.Db.Flush();
+
+        Assert.True(
+            Wait.Until(() => listener.Flushes > 0),
+            "a narrowed subscription did not receive the event it asked for");
     }
 
+    /// <summary>A listener that overrides nothing is attached and driven without crashing.</summary>
+    /// <remarks>
+    /// RocksDb installs all ten slots regardless, and invokes each without a null
+    /// check, so this is issue #35: the crash came from a slot left null for an
+    /// event the subclass did not override. Nothing detects overrides any more,
+    /// so what has to hold is that an unwanted event is delivered to a base
+    /// implementation that does nothing at all.
+    /// </remarks>
     [Fact]
-    public void EventListener_DetectOverrides_None()
+    public void EventListener_OverridingNothingIsHarmless()
     {
-        var listener = new PassiveEventListener();
+        using var listener = new PassiveEventListener();
 
-        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnFlushBegin)));
-        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnFlushCompleted)));
-        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnCompactionBegin)));
-        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnCompactionCompleted)));
-        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnSubCompactionBegin)));
-        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnSubCompactionCompleted)));
-        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnExternalFileIngested)));
-        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnBackgroundError)));
-        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnStallConditionsChanged)));
-        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnMemTableSealed)));
+        using var db = new TempDb(o => o.AddEventListener(listener));
+
+        for (int i = 0; i < 50; i++)
+        {
+            db.Db.Put($"key{i:D3}", "value");
+        }
+
+        db.Db.Flush();
+        db.Db.CompactRange();
+
+        // Reached only if no unwanted notification faulted.
+        Assert.Equal("value", db.Db.GetString("key000"));
     }
 
+    /// <summary>A listener that overrides only the completion events receives them.</summary>
+    /// <remarks>
+    /// The partial case, which is the ordinary one: a listener wants two of the ten
+    /// events and the other eight reach a base implementation that ignores them.
+    /// </remarks>
     [Fact]
-    public void EventListener_DetectOverrides_Completed()
+    public void EventListener_OverridingSomeReceivesThose()
     {
-        var listener = new CompletedEventListener();
-        
-        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnFlushBegin)));
-        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnFlushCompleted)));
-        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnCompactionBegin)));
-        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnCompactionCompleted)));
-        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnSubCompactionBegin)));
-        Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnSubCompactionCompleted)));
-        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnExternalFileIngested)));
-        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnBackgroundError)));
-        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnStallConditionsChanged)));
-        Assert.False(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnMemTableSealed)));
+        using var listener = new CompletedEventListener();
+
+        using var db = new TempDb(o => o.AddEventListener(listener));
+
+        for (int i = 0; i < 50; i++)
+        {
+            db.Db.Put($"key{i:D3}", "value");
+        }
+
+        db.Db.Flush();
+        db.Db.CompactRange();
+
+        // Reached only if no unwanted notification faulted.
+        Assert.Equal("value", db.Db.GetString("key000"));
     }
 }

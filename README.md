@@ -17,6 +17,7 @@ A modern C# wrapper for [RocksDb](https://rocksdb.org/), the high-performance em
 
 - **Full RocksDb C API coverage** — every exported function in the official `rocksdb/c.h` header, auto-generated into P/Invoke bindings
 - **Modern .NET** — targets .NET 8, 9 and 10, uses `LibraryImport`, `ReadOnlySpan<byte>`, and `ref struct` iterators
+- **NativeAOT and trimming** — `IsAotCompatible`, no reflection, and callbacks reached through `[UnmanagedCallersOnly]` function pointers rather than marshalled delegates. CI publishes samples with `PublishAot=true` and runs them, one of them with a managed merge operator, so the claim is checked rather than asserted
 - **Idiomatic C# API** — `IDisposable` handles, properties, string overloads, LINQ-compatible iterators
 - **Column families** — create, drop, and operate on multiple column families, with metadata inspection
 - **Merge operators** — built-in `UInt64Add` and custom merge operator support

@@ -168,3 +168,52 @@ jobs:
       with:
         name: nuget-package
         path: nupkgs/*.nupkg
+
+  aot:
+    name: NativeAOT
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Install .NET SDKs
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: |
+          10.0.x
+
+    - name: Install the AOT toolchain
+      # ILC needs a native linker. Nothing else in the build does, so this is
+      # the only job that pays for it.
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang zlib1g-dev
+
+    - name: Publish and run samples with PublishAot
+      shell: bash
+      run: |
+        # Publishing is not enough on its own, and neither are the analysers.
+        # IsAotCompatible on the library turns on the trim and AOT analysers, so
+        # a build already reports what they can see — but they cannot see a
+        # native library that fails to load next to an AOT-published executable,
+        # or a callback that faults once the runtime is gone. Both of those are
+        # the likely failures for this library, so the samples are run and their
+        # exit codes checked.
+        #
+        # Two samples on purpose. BasicSample covers open, put, get, delete and
+        # close, which is the native library resolution path. MergeOperatorSample
+        # covers a managed callback reached from native code through an
+        # [UnmanagedCallersOnly] function pointer, which is the part most likely
+        # to break and least likely to be caught by anything else.
+        #
+        # Linux only. PublishAot needs a platform toolchain on each runner and
+        # one answer to "does this work under AOT" is enough; Windows can follow
+        # if it turns out to be cheap.
+        for sample in BasicSample MergeOperatorSample; do
+          echo "::group::$sample"
+          out="$(mktemp -d)"
+          dotnet publish "Samples/$sample" -c Release -r linux-x64 \
+            -p:PublishAot=true -warnaserror -o "$out"
+          (cd "$out" && "./$sample")
+          echo "::endgroup::"
+        done
