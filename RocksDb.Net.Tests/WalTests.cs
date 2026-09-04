@@ -37,33 +37,104 @@ public class WalTests
         Assert.All(files, f => Assert.True(f.LogNumber > 0));
     }
 
+    /// <summary>
+    /// Both ordering tests need more than one WAL file to mean anything: a
+    /// single-element list is trivially sorted and is trivially its own last
+    /// entry, which is all the two tests below used to establish.
+    /// </summary>
+    /// <remarks>
+    /// A flush rolls the WAL, but RocksDb deletes the retired file immediately
+    /// unless something asks it to keep it. A TTL archives them instead.
+    /// </remarks>
+    private static RocksDb OpenWithSeveralWalFiles(string path)
+    {
+        using var opts = new DbOptions { CreateIfMissing = true, WalTtlSeconds = 600 };
+
+        RocksDb db = RocksDb.Open(opts, path);
+
+        for (int i = 0; i < 4; i++)
+        {
+            db.Put($"key{i}", $"value{i}");
+            db.Flush();
+        }
+
+        return db;
+    }
+
     [Fact]
     public void GetSortedWalFiles_IsOrderedByLogNumber()
     {
-        using var db = new TempDb();
+        using var dir = new TempDir();
+        using RocksDb db = OpenWithSeveralWalFiles(dir.Path);
 
-        db.Db.Put("a", "1");
-
-        IReadOnlyList<WalFile> files = db.Db.GetSortedWalFiles();
+        IReadOnlyList<WalFile> files = db.GetSortedWalFiles();
         ulong[] logNumbers = [.. files.Select(f => f.LogNumber)];
 
+        Assert.True(logNumbers.Length > 1, $"only {logNumbers.Length} WAL file, nothing to order");
+        Assert.Equal(logNumbers.Distinct().Count(), logNumbers.Length);
         Assert.Equal(logNumbers.OrderBy(n => n), logNumbers);
     }
 
     [Fact]
     public void GetCurrentWalFile_MatchesTheLastSortedEntry()
     {
-        using var db = new TempDb();
+        using var dir = new TempDir();
+        using RocksDb db = OpenWithSeveralWalFiles(dir.Path);
 
-        db.Db.Put("a", "1");
+        // The flush that made the last file left the new live log empty, and an
+        // empty live log is not listed. See the test below.
+        db.Put("live", "1");
 
-        WalFile? current = db.Db.GetCurrentWalFile();
-        IReadOnlyList<WalFile> sorted = db.Db.GetSortedWalFiles();
+        WalFile? current = db.GetCurrentWalFile();
+        IReadOnlyList<WalFile> sorted = db.GetSortedWalFiles();
 
         Assert.NotNull(current);
-        Assert.NotEmpty(sorted);
+        Assert.True(sorted.Count > 1, $"only {sorted.Count} WAL file, so any entry is the last one");
+
+        // The live log is the highest-numbered one, and the archived files
+        // before it are genuinely older rather than the same file counted once.
         Assert.Equal(sorted[^1].LogNumber, current!.LogNumber);
+        Assert.True(current.LogNumber > sorted[0].LogNumber);
         Assert.Equal(WalFileType.AliveLog, current.Type);
+        Assert.Equal(WalFileType.ArchivedLog, sorted[0].Type);
+    }
+
+    /// <summary>
+    /// A live log with nothing written to it yet does not appear in the sorted
+    /// list at all, so the last entry there is an archived file and
+    /// <c>GetCurrentWalFile</c> is the only way to see the live one.
+    /// </summary>
+    /// <remarks>
+    /// Worth pinning because it contradicts the obvious reading of the two
+    /// methods, and it only shows up once there is more than one WAL file: with
+    /// one file the list and the current entry trivially agree. Anyone using
+    /// the last sorted entry to find the live log gets the wrong file for as
+    /// long as the new log stays empty.
+    /// </remarks>
+    [Fact]
+    public void GetSortedWalFiles_OmitsTheLiveLogWhileItIsEmpty()
+    {
+        using var dir = new TempDir();
+
+        // Ends with a flush, so the live log exists but holds nothing.
+        using RocksDb db = OpenWithSeveralWalFiles(dir.Path);
+
+        WalFile? current = db.GetCurrentWalFile();
+        IReadOnlyList<WalFile> sorted = db.GetSortedWalFiles();
+
+        Assert.NotNull(current);
+        Assert.Equal(WalFileType.AliveLog, current!.Type);
+        Assert.All(sorted, f => Assert.Equal(WalFileType.ArchivedLog, f.Type));
+        Assert.DoesNotContain(sorted, f => f.LogNumber == current.LogNumber);
+        Assert.True(current.LogNumber > sorted[^1].LogNumber);
+
+        // One write is enough to bring it into the list.
+        db.Put("live", "1");
+
+        IReadOnlyList<WalFile> afterWriting = db.GetSortedWalFiles();
+
+        Assert.Equal(current.LogNumber, afterWriting[^1].LogNumber);
+        Assert.Equal(WalFileType.AliveLog, afterWriting[^1].Type);
     }
 
     /// <summary>

@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace RocksDbNet.Tests;
 
 /// <summary>
@@ -115,10 +117,16 @@ public class TransactionOptionsTests
     }
 
     /// <summary>
-    /// A per-transaction lock timeout must actually take effect, not just round
-    /// trip. A generous one lets a second writer wait and succeed once the first
-    /// transaction releases.
+    /// A per-transaction lock timeout must actually take effect, not merely
+    /// round trip.
     /// </summary>
+    /// <remarks>
+    /// The timing is the whole test. Both settings end in the same exception,
+    /// so asserting only that it throws passes just as well when the
+    /// per-transaction value is ignored and the ten-second database-wide
+    /// ceiling is what fires. The difference between the two is how long the
+    /// caller waited.
+    /// </remarks>
     [Fact]
     public void TransactionOptions_LockTimeout_IsHonoured()
     {
@@ -134,7 +142,17 @@ public class TransactionOptionsTests
         using var impatient = new TransactionOptions { LockTimeout = 0 };
         using Transaction waiter = db.BeginTransaction(transactionOptions: impatient);
 
+        var elapsed = Stopwatch.StartNew();
+
         Assert.Throws<RocksDbException>(() => waiter.Put("key", "blocked"));
+
+        elapsed.Stop();
+
+        // Generous against a loaded build agent, and still nowhere near the ten
+        // seconds the database-wide ceiling would have cost.
+        Assert.True(
+            elapsed.Elapsed < TimeSpan.FromSeconds(2),
+            $"waited {elapsed.Elapsed.TotalSeconds:F1}s, so the per-transaction timeout was ignored");
     }
 
     /// <summary>
