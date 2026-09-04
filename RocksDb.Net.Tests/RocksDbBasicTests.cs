@@ -262,36 +262,27 @@ public class RocksDbBasicTests
         // for every possible value, including the all-zeroes a statistics
         // object that was never attached returns.
         //
-        // No ticker enum is exposed and the ids move between RocksDb releases,
-        // so rather than naming one counter this asserts that the subsystem
-        // recorded something. The range stays well inside the smallest ticker
-        // count any supported release has.
-        ulong recorded = 0;
+        // Named counters rather than a sweep over numeric ids. The sweep was
+        // what this had to do before the Ticker and Histogram enums existed,
+        // and it could only assert that something somewhere had moved.
+        Assert.Equal(1UL, opts.GetTickerCount(Ticker.NumberKeysWritten));
+        Assert.True(opts.GetTickerCount(Ticker.BytesWritten) > 0);
 
-        for (uint id = 0; id < 100; id++)
-        {
-            recorded += opts.GetTickerCount(id);
-        }
+        // Nothing was read, so this one has to still be zero. Without it the
+        // assertions above would pass against a stub that returned a constant.
+        Assert.Equal(0UL, opts.GetTickerCount(Ticker.NumberKeysRead));
 
-        Assert.True(recorded > 0, "statistics recorded nothing after a put and a flush");
+        Assert.Equal("value", db.GetString("key"));
+        Assert.Equal(1UL, opts.GetTickerCount(Ticker.NumberKeysRead));
 
-        HistogramData? sampled = null;
-
-        for (uint id = 0; id < 30 && sampled is null; id++)
-        {
-            HistogramData? candidate = opts.GetHistogramData(id);
-
-            if (candidate is { Count: > 0 })
-            {
-                sampled = candidate;
-            }
-        }
+        HistogramData? sampled = opts.GetHistogramData(Histogram.DbWrite);
 
         Assert.NotNull(sampled);
+        Assert.True(sampled!.Count > 0, "the write histogram recorded no samples");
 
         // Self-consistent, which all-zero data from an unattached statistics
         // object would satisfy only by accident of the bounds being equal.
-        Assert.True(sampled!.Sum > 0);
+        Assert.True(sampled.Sum > 0);
         Assert.True(sampled.Min <= sampled.Median);
         Assert.True(sampled.Median <= sampled.Max);
         Assert.True(sampled.Average > 0);

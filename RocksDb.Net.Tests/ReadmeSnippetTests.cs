@@ -171,7 +171,7 @@ public class ReadmeSnippetTests
         var metadata = db.GetColumnFamilyMetadata();
         Assert.Equal("default", metadata?.Name); // "default"
 
-        var histogram = options.GetHistogramData(0);
+        var histogram = options.GetHistogramData(Histogram.DbWrite);
         Assert.NotNull(histogram);
     }
 

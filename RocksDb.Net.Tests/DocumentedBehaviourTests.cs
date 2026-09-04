@@ -298,7 +298,7 @@ public class DocumentedBehaviourTests
     {
         using var opts = new DbOptions();
 
-        HistogramData? data = opts.GetHistogramData(0);
+        HistogramData? data = opts.GetHistogramData(Histogram.DbGet);
 
         Assert.NotNull(data);
         Assert.Equal(0UL, data.Count);

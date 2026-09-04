@@ -192,7 +192,7 @@ db.Flush();
 var metadata = db.GetColumnFamilyMetadata();
 Console.WriteLine(metadata?.Name); // "default"
 
-var histogram = options.GetHistogramData(0);
+var histogram = options.GetHistogramData(Histogram.DbWrite);
 Console.WriteLine(histogram?.Count);
 ```
 
@@ -331,13 +331,15 @@ dotnet build
 dotnet test
 ```
 
-The P/Invoke bindings in `NativeMethods.g.cs` are auto-generated from the [RocksDb C header](https://github.com/facebook/rocksdb/blob/main/include/rocksdb/c.h). To regenerate:
+Two files are auto-generated from RocksDb's own headers at the pinned version: the P/Invoke bindings in `NativeMethods.g.cs`, from [c.h](https://github.com/facebook/rocksdb/blob/main/include/rocksdb/c.h), and the `Ticker` and `Histogram` enums in `StatisticsEnums.g.cs`, from [statistics.h](https://github.com/facebook/rocksdb/blob/main/include/rocksdb/statistics.h). The statistics counters are not declared in `c.h`, and their values are positional, so they are read from where they are defined rather than written out by hand. To regenerate both:
 
 ```shell
-dotnet run --project NativeMethodsGenerator -- \
-    --version 11.8.1 \
-    --output RocksDb.Net/Native/NativeMethods.g.cs
+dotnet run --project NativeMethodsGenerator -- --version 11.8.1
 ```
+
+Run it from the repository root; it writes both files into `RocksDb.Net`. Pass `--project <path>` to write somewhere else.
+
+CI regenerates both and fails if either differs from what is committed, so a hand edit, a generator change that was never re-run, or a version bump that left the output behind all fail there rather than shipping.
 
 ## Acknowledgements
 
