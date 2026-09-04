@@ -13,6 +13,15 @@
     <RocksDbVersion>11.8.1</RocksDbVersion>
 
     <!--
+      The package version is <RocksDbVersion>.<Revision>, so 11.8.1.2 wraps
+      RocksDb 11.8.1. Bump this for a release that does not change the native
+      version; breaking changes wait for a RocksDbVersion bump, because a
+      revision alone must not break source or binary compatibility. See
+      CHANGELOG.md under Versioning.
+    -->
+    <Revision>2</Revision>
+
+    <!--
       VersionPrefix rather than Version, so that a prerelease can be built by
       supplying VersionSuffix. Setting Version outright makes the SDK ignore
       VersionSuffix entirely, which meant there was no way to produce a
@@ -20,10 +29,10 @@
       this property, so a `-preview.1` tag failed the version gate with a
       mismatch rather than publishing anything.
 
-      With a prefix, `-p:VersionSuffix=preview.1` yields 11.8.1.1-preview.1,
-      and an empty suffix yields 11.8.1.1 exactly as before.
+      With a prefix, `-p:VersionSuffix=preview.1` yields 11.8.1.2-preview.1,
+      and an empty suffix yields the plain version exactly as before.
     -->
-    <VersionPrefix>$(RocksDbVersion).1</VersionPrefix>
+    <VersionPrefix>$(RocksDbVersion).$(Revision)</VersionPrefix>
 
     <!--
       The next RocksDb patch version, used to put an exclusive upper bound on

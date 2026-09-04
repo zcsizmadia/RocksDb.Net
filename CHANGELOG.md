@@ -6,6 +6,74 @@ The package version is `<RocksDbVersion>.<Revision>`, so `11.8.1.1` wraps RocksD
 
 Breaking changes land only when `RocksDbVersion` changes. A revision bump alone, `11.8.1.1` to `11.8.1.2`, never breaks source or binary compatibility. A RocksDb version bump already means a different native library and a required re-test, which is the point at which API cleanup costs least.
 
+## 11.8.1.2
+
+Same RocksDb version, so nothing here breaks source or binary compatibility.
+Everything below is either additive or internal, which is what a revision bump
+is allowed to be.
+
+### Added
+
+- **NativeAOT and trimming are supported, and verified rather than claimed.**
+  `IsAotCompatible` is set on the library, which implies `IsTrimmable` and turns
+  on both analysers for all three target frameworks. CI publishes two samples
+  with `PublishAot=true` and runs them — one of them driving a managed merge
+  operator through a function pointer — because the analysers cannot see a
+  native library that fails to load beside an AOT-published executable, or a
+  callback that faults once the runtime is gone.
+- **`EventListener.Subscribed`** narrows which of the ten events a listener is
+  told about, as `EventKinds` flags. The default is every event, so an existing
+  listener behaves exactly as before and cannot go silent by forgetting to
+  declare something it overrode. Narrowing is an optimisation: what it saves is
+  constructing the job-info object an event carries, which the benchmarks put at
+  roughly half the allocation of a listener taking five events.
+- **`LoadedOptions.LoadLatest`** reads the `OPTIONS-` file RocksDb writes into a
+  database directory and hands back the options it was last opened with, with
+  each column family's options separately. For reopening a database you did not
+  configure, where the alternative is to guess. Note the split: RocksDb builds
+  the database options from the file's DBOptions plus *default* column family
+  options, so a column-family setting — the write buffer size, compression, the
+  comparator — reads back as its default from `DatabaseOptions` and is only
+  correct in `ColumnFamilyOptions`.
+- **`MemoryConsumers` and `ApproximateMemoryUsage`** take one memory snapshot
+  spanning several databases and several caches at once. Only the aggregation is
+  new: the individual figures are already reachable through `Cache.Usage` and
+  property reads, and for a single database those remain the simpler answer.
+- **A benchmark project**, `RocksDb.Net.Benchmarks`, deliberately outside the
+  solution so the ordinary build does not pay for it. Not a CI gate: hosted
+  runners are too noisy for a throughput threshold, and a performance gate that
+  fails at random gets disabled and then discredits the checks that matter. Run
+  on demand, with results committed next to the machine and version they came
+  from.
+
+### Fixed
+
+- **The native library resolver mishandled a single-file or AOT publish.**
+  `Assembly.Location` returns an empty string for an assembly embedded in one,
+  and the code survived only because asking for the directory of an empty path
+  returns null and fell through to `AppContext.BaseDirectory` — correct by
+  accident. Now handled deliberately. This is the path AOT actually takes: the
+  native library lands beside the executable rather than under `runtimes/`.
+
+### Changed
+
+- **Callbacks reach managed code through `[UnmanagedCallersOnly]` function
+  pointers instead of marshalled delegates.** All 38
+  `Marshal.GetFunctionPointerForDelegate` sites are gone, along with the
+  delegate types and the fields that existed only to keep them alive. What
+  RocksDb receives is now the address of the method rather than of a
+  runtime-generated thunk. Measured at about 6% on a comparator-heavy read
+  workload, with no change in allocation; the larger reason is that it was the
+  main obstacle to `PublishAot`.
+- **`EventListener` no longer uses reflection** to work out which events a
+  subclass wants. `GetMethod` by name on a runtime-known type is the shape trim
+  and AOT analysers object to, and it was the last reflection in the library.
+- **`Logger`'s message length is `nuint` rather than `uint`**, matching the
+  `size_t` the native callback passes. Latent rather than a live defect — it is
+  the last parameter, register-passed on every 64-bit target and genuinely four
+  bytes on win-x86 — but free to correct while the signature was being
+  rewritten.
+
 ## 11.8.1.1
 
 Upgrades the native library from RocksDb 11.1.2 to 11.8.1, which added 697 exported C functions and removed one, taking the total from 1,049 to 1,745. The wrapper exposes them.
