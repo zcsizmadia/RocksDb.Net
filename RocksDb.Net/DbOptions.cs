@@ -217,6 +217,24 @@ public sealed class DbOptions : RocksDbHandle
     }
 
     /// <summary>
+    /// Wraps options that belong to something else, so this instance never frees
+    /// them.
+    /// </summary>
+    /// <remarks>
+    /// For <see cref="LoadedOptions"/>, where RocksDb allocates the database
+    /// options and every column family's options in one call and takes them all
+    /// back in one call. Disposing this marks it unusable without freeing
+    /// anything, so a use after the owner is disposed throws rather than reading
+    /// freed memory.
+    /// </remarks>
+    internal static DbOptions Borrowed(nint handle)
+    {
+        var options = new DbOptions(handle);
+        options.TransferOwnership();
+        return options;
+    }
+
+    /// <summary>
     /// Creates a copy of this options object that shares its attached callback
     /// objects.
     /// </summary>
