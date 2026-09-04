@@ -101,10 +101,10 @@ public sealed class TransactionOptions : RocksDbHandle
     /// Maximum size in bytes of the transaction's pending writes, or zero for no
     /// limit. A write that would exceed it fails.
     /// </summary>
-    public nuint MaxWriteBatchSize
+    public ulong MaxWriteBatchSize
     {
-        get => NativeMethods.rocksdb_transaction_options_get_max_write_batch_size(Handle);
-        set => NativeMethods.rocksdb_transaction_options_set_max_write_batch_size(Handle, value);
+        get => (ulong)NativeMethods.rocksdb_transaction_options_get_max_write_batch_size(Handle);
+        set => NativeMethods.rocksdb_transaction_options_set_max_write_batch_size(Handle, checked((nuint)value));
     }
 
     /// <summary>

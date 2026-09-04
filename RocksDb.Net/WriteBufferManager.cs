@@ -33,8 +33,9 @@ public sealed class WriteBufferManager : RocksDbHandle
     /// Whether writers are stalled when the budget is exhausted. When false, the
     /// budget is enforced by flushing sooner rather than by blocking.
     /// </param>
-    public static WriteBufferManager Create(nuint bufferSize, bool allowStall = false)
-        => new(NativeMethods.rocksdb_write_buffer_manager_create(bufferSize, allowStall ? (byte)1 : (byte)0));
+    public static WriteBufferManager Create(ulong bufferSize, bool allowStall = false)
+        => new(NativeMethods.rocksdb_write_buffer_manager_create(
+            checked((nuint)bufferSize), allowStall ? (byte)1 : (byte)0));
 
     /// <summary>
     /// Creates a manager that charges its memory against
@@ -47,12 +48,12 @@ public sealed class WriteBufferManager : RocksDbHandle
     /// into the cache to account for what the memtables hold; see
     /// <see cref="DummyEntriesInCacheUsage"/>.
     /// </remarks>
-    public static WriteBufferManager Create(nuint bufferSize, Cache cache, bool allowStall = false)
+    public static WriteBufferManager Create(ulong bufferSize, Cache cache, bool allowStall = false)
     {
         ArgumentNullException.ThrowIfNull(cache);
 
         return new WriteBufferManager(NativeMethods.rocksdb_write_buffer_manager_create_with_cache(
-            bufferSize, cache.Handle, allowStall ? (byte)1 : (byte)0));
+            checked((nuint)bufferSize), cache.Handle, allowStall ? (byte)1 : (byte)0));
     }
 
     /// <summary>
@@ -65,10 +66,10 @@ public sealed class WriteBufferManager : RocksDbHandle
     public bool CostsToCache => NativeMethods.rocksdb_write_buffer_manager_cost_to_cache(Handle) != 0;
 
     /// <summary>The budget, in bytes. Zero disables enforcement.</summary>
-    public nuint BufferSize
+    public ulong BufferSize
     {
-        get => NativeMethods.rocksdb_write_buffer_manager_buffer_size(Handle);
-        set => NativeMethods.rocksdb_write_buffer_manager_set_buffer_size(Handle, value);
+        get => (ulong)NativeMethods.rocksdb_write_buffer_manager_buffer_size(Handle);
+        set => NativeMethods.rocksdb_write_buffer_manager_set_buffer_size(Handle, checked((nuint)value));
     }
 
     /// <summary>
@@ -86,7 +87,7 @@ public sealed class WriteBufferManager : RocksDbHandle
     /// Memory currently attributed to memtables, in bytes, including those
     /// already sealed and waiting to be flushed.
     /// </summary>
-    public nuint MemoryUsage => NativeMethods.rocksdb_write_buffer_manager_memory_usage(Handle);
+    public ulong MemoryUsage => (ulong)NativeMethods.rocksdb_write_buffer_manager_memory_usage(Handle);
 
     /// <summary>
     /// Memory attributed to memtables still accepting writes, in bytes.
@@ -96,8 +97,8 @@ public sealed class WriteBufferManager : RocksDbHandle
     /// by memtables that are sealed and waiting on a flush. A large gap means
     /// flushing is not keeping up.
     /// </remarks>
-    public nuint MutableMemtableMemoryUsage
-        => NativeMethods.rocksdb_write_buffer_manager_mutable_memtable_memory_usage(Handle);
+    public ulong MutableMemtableMemoryUsage
+        => (ulong)NativeMethods.rocksdb_write_buffer_manager_mutable_memtable_memory_usage(Handle);
 
     /// <summary>
     /// Memory the manager has reserved in its cache through placeholder
@@ -107,8 +108,8 @@ public sealed class WriteBufferManager : RocksDbHandle
     /// Zero unless the manager was created with a cache. This is how memtable
     /// memory is made visible to the cache's accounting.
     /// </remarks>
-    public nuint DummyEntriesInCacheUsage
-        => NativeMethods.rocksdb_write_buffer_manager_dummy_entries_in_cache_usage(Handle);
+    public ulong DummyEntriesInCacheUsage
+        => (ulong)NativeMethods.rocksdb_write_buffer_manager_dummy_entries_in_cache_usage(Handle);
 
     protected override void DisposeHandle()
     {

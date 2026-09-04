@@ -70,14 +70,106 @@ public class BlockBasedTableOptionsPropertyTests
         Assert.Equal(5, opts.FormatVersion);
     }
 
+    /// <summary>
+    /// Every <see cref="ChecksumType"/> round-trips, and the default is the one
+    /// RocksDb reports for a fresh options object.
+    /// </summary>
     [Fact]
     public void Checksum_RoundTrips()
     {
         using var opts = new BlockBasedTableOptions();
 
-        // Setter takes sbyte, getter returns int.
-        opts.Checksum = 4;
-        Assert.Equal(4, opts.Checksum);
+        Assert.Equal(ChecksumType.Xxh3, opts.Checksum);
+
+        foreach (ChecksumType type in Enum.GetValues<ChecksumType>())
+        {
+            opts.Checksum = type;
+            Assert.Equal(type, opts.Checksum);
+        }
+    }
+
+    /// <summary>
+    /// The enum covers exactly the values RocksDb accepts, no more and no less.
+    /// </summary>
+    /// <remarks>
+    /// This is the part of <see cref="ChecksumType"/> that is measured rather
+    /// than taken from RocksDb's header. The C API validates the value when the
+    /// table factory is used, so each is checked by opening a database with it,
+    /// and by confirming that the values either side of the range are refused
+    /// with RocksDb naming <c>ChecksumType</c> in the message.
+    /// </remarks>
+    [Fact]
+    public void Checksum_EnumCoversExactlyWhatRocksDbAccepts()
+    {
+        foreach (ChecksumType type in Enum.GetValues<ChecksumType>())
+        {
+            using var dir = new TempDir();
+            using var table = new BlockBasedTableOptions { Checksum = type };
+
+            var options = new DbOptions { CreateIfMissing = true };
+            options.BlockBasedTableFactory = table;
+
+            using RocksDb db = RocksDb.Open(options, dir.Path);
+
+            db.Put("a", "1");
+            db.Flush();
+
+            Assert.Equal("1", db.GetString("a"));
+        }
+
+        // One past each end is refused.
+        foreach (int outside in new[] { -1, 5 })
+        {
+            using var dir = new TempDir();
+            using var table = new BlockBasedTableOptions { Checksum = (ChecksumType)outside };
+
+            var options = new DbOptions { CreateIfMissing = true };
+            options.BlockBasedTableFactory = table;
+
+            RocksDbException ex = Assert.Throws<RocksDbException>(() => RocksDb.Open(options, dir.Path));
+
+            Assert.Contains("ChecksumType", ex.Message, StringComparison.Ordinal);
+        }
+    }
+
+    /// <summary>
+    /// RocksDb's own option parser accepts exactly the five names the enum
+    /// mirrors, which is how the member list was checked.
+    /// </summary>
+    /// <remarks>
+    /// The pairing of name to number cannot be read back through the C API, so
+    /// it comes from RocksDb's header. This at least pins the set of names, so
+    /// a release that added or renamed one would fail here.
+    /// </remarks>
+    [Fact]
+    public void Checksum_NamesRocksDbAcceptsMatchTheEnumMembers()
+    {
+        string[] names = ["kNoChecksum", "kCRC32c", "kxxHash", "kxxHash64", "kXXH3"];
+
+        Assert.Equal(names.Length, Enum.GetValues<ChecksumType>().Length);
+
+        foreach (string name in names)
+        {
+            using var dir = new TempDir();
+
+            var options = new DbOptions { CreateIfMissing = true };
+            options.WithOptionsFromString($"block_based_table_factory={{checksum={name};}}");
+
+            using RocksDb db = RocksDb.Open(options, dir.Path);
+
+            db.Put("a", "1");
+            db.Flush();
+
+            Assert.Equal("1", db.GetString("a"));
+        }
+
+        // And a name it does not know is refused, so the loop above is not
+        // passing because the parser ignores what it cannot read.
+        using var badDir = new TempDir();
+        using var bad = new DbOptions();
+
+        Assert.Throws<RocksDbException>(
+            () => bad.WithOptionsFromString("block_based_table_factory={checksum=kNotAChecksum;}"));
     }
 
     [Theory]

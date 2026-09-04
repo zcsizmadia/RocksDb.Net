@@ -41,7 +41,7 @@ public class TransactionOptionsTests
         Assert.Equal(1234, opts.TransactionLockTimeout);
         Assert.Equal(5678, opts.DefaultLockTimeout);
         Assert.Equal(999, opts.MaxNumLocks);
-        Assert.Equal((nuint)32, opts.NumStripes);
+        Assert.Equal((ulong)32, opts.NumStripes);
         Assert.Equal(7u, opts.MaxNumDeadlocks);
         Assert.Equal(4096, opts.DefaultWriteBatchFlushThreshold);
         Assert.Equal(8192u, opts.CommitBypassMemtableThreshold);
@@ -84,7 +84,7 @@ public class TransactionOptionsTests
         Assert.Equal(64, opts.DeadlockDetectDepth);
         Assert.Equal(250, opts.LockTimeout);
         Assert.Equal(30_000, opts.Expiration);
-        Assert.Equal((nuint)(1 << 20), opts.MaxWriteBatchSize);
+        Assert.Equal((ulong)(1 << 20), opts.MaxWriteBatchSize);
         Assert.Equal(1500, opts.DeadlockTimeoutMicros);
         Assert.Equal(2048, opts.WriteBatchFlushThreshold);
         Assert.Equal(100u, opts.LargeTransactionCommitOptimizeThreshold);

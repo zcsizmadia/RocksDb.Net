@@ -42,7 +42,7 @@ P/Invoke declarations are generated from exactly that version's `c.h`, so a
 runtimes package built from a different RocksDb version could disagree with them
 about the native ABI, and nothing would catch it at build or load time.
 
-**Upgrading from 11.1.2.1 to 11.8.1.1 has breaking changes.** See the [changelog](https://github.com/zcsizmadia/RocksDb.Net/blob/main/CHANGELOG.md#breaking-changes) for the full list and migrations. In short: the 12 deprecated fluent setters on `DbOptions` are gone in favour of the properties that replaced them, `ReadOptions.ReadTier` is now an enum, three metadata counts return `int` instead of `nuint`, and some `RocksDbHandle` helpers are no longer public.
+**Upgrading from 11.1.2.1 to 11.8.1.1 has breaking changes.** See the [changelog](https://github.com/zcsizmadia/RocksDb.Net/blob/main/CHANGELOG.md#breaking-changes) for the full list and migrations. In short: the 12 deprecated fluent setters on `DbOptions` are gone in favour of the properties that replaced them, `FlushWal` requires its `sync` argument on both database types, `options.EventListener = x` becomes `options.AddEventListener(x)`, the size options that were `nuint` are `ulong`, `ReadTier`, `Checksum` and `VerifyOutputFlags` are enums, and a handful of members that could not work are removed.
 
 ## Documentation
 

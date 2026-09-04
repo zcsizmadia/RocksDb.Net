@@ -31,6 +31,49 @@ public enum BlockBasedTableIndexType
     TwoLevelIndexSearch = 2,
 }
 
+/// <summary>Checksum algorithm used to protect each block.</summary>
+/// <remarks>
+/// <para>
+/// Mirrors <c>ChecksumType</c> in <c>include/rocksdb/table.h</c> at the pinned
+/// version. The numbering is doubly safe to rely on: the value is written into
+/// every SST file and read back by whichever version opens it later, so it
+/// cannot be renumbered without breaking every file already on disk.
+/// </para>
+/// <para>
+/// Checked against the running library as well as the header. The C API
+/// accepts exactly 0 to 4 and rejects anything outside, naming
+/// <c>ChecksumType</c> when it does; a fresh
+/// <see cref="BlockBasedTableOptions"/> reports 4; and RocksDb's own option
+/// parser accepts exactly the five names these members are called after.
+/// </para>
+/// <para>
+/// Selecting one by name also works without this enum, through
+/// <c>DbOptions.WithOptionsFromString("block_based_table_factory={checksum=kXXH3;}")</c>.
+/// </para>
+/// </remarks>
+public enum ChecksumType
+{
+    /// <summary>
+    /// No checksum. Corruption in a block is not detected, so this trades the
+    /// only mechanism that notices a damaged file for a little write time.
+    /// </summary>
+    None = 0,
+
+    /// <summary>CRC32C, hardware-accelerated on most processors.</summary>
+    Crc32c = 1,
+
+    /// <summary>xxHash, 32-bit output.</summary>
+    XxHash = 2,
+
+    /// <summary>xxHash64, truncated to 32 bits in the block trailer.</summary>
+    XxHash64 = 3,
+
+    /// <summary>
+    /// XXH3, the default. Faster than the rest on current processors.
+    /// </summary>
+    Xxh3 = 4,
+}
+
 /// <summary>
 /// Index type used inside a data block, which controls how a key is located
 /// once its block has been read.
@@ -246,13 +289,21 @@ public sealed class BlockBasedTableOptions : RocksDbHandle
         set => NativeMethods.rocksdb_block_based_options_set_block_align(Handle, value ? (byte)1 : (byte)0);
     }
 
-    /// <summary>
-    /// Checksum algorithm used for block integrity. RocksDb does not publish
-    /// these values through the C API, so this stays an <c>int</c>.
-    /// </summary>
-    public int Checksum
+    /// <summary>Checksum algorithm used to protect each block.</summary>
+    /// <remarks>
+    /// Defaults to <see cref="ChecksumType.Xxh3"/>. This was an <c>int</c>, on
+    /// the grounds that the C API does not publish the values. It does not, but
+    /// the header does, and it rejects everything outside 0 to 4, which is the
+    /// range the enum covers.
+    /// </remarks>
+    /// <exception cref="RocksDbException">
+    /// The value is not one RocksDb recognises. It is reported when the
+    /// database is opened rather than here, since that is when the table
+    /// factory is validated.
+    /// </exception>
+    public ChecksumType Checksum
     {
-        get => NativeMethods.rocksdb_block_based_options_get_checksum(Handle);
+        get => (ChecksumType)NativeMethods.rocksdb_block_based_options_get_checksum(Handle);
         set => NativeMethods.rocksdb_block_based_options_set_checksum(Handle, checked((sbyte)value));
     }
 
