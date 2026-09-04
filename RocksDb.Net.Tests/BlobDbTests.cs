@@ -220,11 +220,18 @@ public class BlobDbTests
     }
 
     /// <summary>
-    /// The cache is shared with RocksDb rather than handed over, so disposing it
-    /// while a database still uses it defers rather than freeing it.
+    /// Disposing the cache under a live database is safe and immediate.
     /// </summary>
+    /// <remarks>
+    /// RocksDb copies the shared pointer, so destroying the handle drops only
+    /// this library's reference and RocksDb's copy keeps the cache alive. This
+    /// first registered a hold and asserted the disposal was deferred, which
+    /// made a blob cache behave unlike a block cache: the block-cache setter
+    /// registers none, so that one could be reused by a later database and this
+    /// one could not. Same object, two lifetimes, for no reason.
+    /// </remarks>
     [Fact]
-    public void BlobCache_IsHeldWhileTheOptionsUseIt()
+    public void BlobCache_CanBeDisposedUnderALiveDatabase()
     {
         using var dir = new TempDir();
 
@@ -235,14 +242,59 @@ public class BlobDbTests
 
         using RocksDb db = RocksDb.Open(options, dir.Path);
 
-        // The caller lets go while the database is open.
-        cache.Dispose();
-        Assert.False(cache.IsDisposed);
+        for (int i = 0; i < 50; i++)
+        {
+            db.Put($"key{i:D3}", new string('v', MinBlobSize * 2));
+        }
 
-        db.Put("large", new string('L', MinBlobSize * 4));
         db.Flush();
 
-        Assert.Equal(new string('L', MinBlobSize * 4), db.GetString("large"));
+        // The caller is finished with it while the database is not, and this is
+        // honoured rather than deferred.
+        cache.Dispose();
+        Assert.True(cache.IsDisposed);
+
+        // Reads go through the blob cache, so this is what would fault if the
+        // native cache had really been freed.
+        for (int i = 0; i < 50; i++)
+        {
+            Assert.Equal(new string('v', MinBlobSize * 2), db.GetString($"key{i:D3}"));
+        }
+
+        db.CompactRange();
+    }
+
+    /// <summary>
+    /// One cache serves several databases, including ones opened after an
+    /// earlier database using it has closed.
+    /// </summary>
+    /// <remarks>
+    /// The point of a cache is to be shared, so this is the case that matters
+    /// and the one a hold would have broken. Handles that do register a hold,
+    /// such as a comparator or an environment, cannot be reused this way: see
+    /// the ownership guide.
+    /// </remarks>
+    [Fact]
+    public void BlobCache_CanBeReusedByALaterDatabase()
+    {
+        using var cache = Cache.CreateLru(8 * 1024 * 1024);
+
+        for (int i = 0; i < 3; i++)
+        {
+            using var dir = new TempDir();
+
+            DbOptions options = BlobOptions();
+            options.BlobCache = cache;
+
+            using RocksDb db = RocksDb.Open(options, dir.Path);
+
+            db.Put("large", new string('L', MinBlobSize * 4));
+            db.Flush();
+
+            Assert.Equal(new string('L', MinBlobSize * 4), db.GetString("large"));
+        }
+
+        Assert.False(cache.IsDisposed);
     }
 
     // ── Garbage collection ──────────────────────────────────────────────────
