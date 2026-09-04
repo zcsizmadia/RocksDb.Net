@@ -288,6 +288,13 @@ public class BlobDbTests
         options.BlobGarbageCollectionAgeCutoff = 0.25;
         options.BlobGarbageCollectionForceThreshold = 0.5;
 
+        // No background compaction, so the four flushes below leave four blob
+        // files for the manual compaction to collect. Without this the test
+        // depends on whether a background compaction got there first, which is
+        // a race it lost on a macOS runner: the setup had already been merged
+        // down to one file before the assertion that there were several.
+        options.DisableAutoCompactions = true;
+
         using RocksDb db = RocksDb.Open(options, dir.Path);
 
         for (int round = 0; round < 4; round++)
