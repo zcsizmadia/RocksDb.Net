@@ -131,7 +131,10 @@ public class NativeEnumValueTests
         db.Put("key", "value");
         db.Flush();
 
-        Assert.Contains(listener.FlushCompleted, f => f.FlushReason == FlushReason.ManualFlush);
+        Assert.True(
+            Wait.Until(() => listener.FlushCompleted.Any(
+                f => f.FlushReason == FlushReason.ManualFlush)),
+            "no flush was reported as manual");
     }
 
     /// <summary>

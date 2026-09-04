@@ -63,6 +63,8 @@ public class TablePropertiesTests
             db.Flush();
         }
 
+        Assert.True(Wait.Until(() => listener.Flushes.Count > 0), "no flush was reported");
+
         FlushJobInfo flush = Assert.Single(listener.Flushes);
         TableProperties props = Assert.IsType<TableProperties>(flush.TableProperties);
 
@@ -105,6 +107,8 @@ public class TablePropertiesTests
             db.Flush();
         }
 
+        Assert.True(Wait.Until(() => listener.Flushes.Count > 0), "no flush was reported");
+
         FlushJobInfo flush = Assert.Single(listener.Flushes);
         TableProperties props = Assert.IsType<TableProperties>(flush.TableProperties);
 
@@ -135,6 +139,10 @@ public class TablePropertiesTests
 
             db.CompactRange();
         }
+
+        Assert.True(
+            Wait.Until(() => listener.Compactions.Count > 0),
+            "no compaction was reported");
 
         Assert.NotEmpty(listener.Compactions);
         CompactionJobInfo compaction = listener.Compactions[0];
@@ -168,6 +176,8 @@ public class TablePropertiesTests
             db.Flush();
         }
 
+        Assert.True(Wait.Until(() => listener.Flushes.Count > 0), "no flush was reported");
+
         FlushJobInfo flush = Assert.Single(listener.Flushes);
         BlobFileAdditionInfo blob = Assert.Single(flush.BlobFileAdditions);
 
@@ -190,6 +200,8 @@ public class TablePropertiesTests
             db.Put("a", "1");
             db.Flush();
         }
+
+        Assert.True(Wait.Until(() => listener.Flushes.Count > 0), "no flush was reported");
 
         FlushJobInfo flush = Assert.Single(listener.Flushes);
         Assert.Empty(flush.BlobFileAdditions);
@@ -220,6 +232,10 @@ public class TablePropertiesTests
 
             db.CompactRange();
         }
+
+        Assert.True(
+            Wait.Until(() => listener.Compactions.Count > 0),
+            "no compaction was reported");
 
         Assert.NotEmpty(listener.Compactions);
         Assert.Contains(listener.Compactions, c => c.BlobFileGarbage.Count > 0);
@@ -254,6 +270,8 @@ public class TablePropertiesTests
         // Database and options are gone; the snapshot must still read correctly.
         GC.Collect();
         GC.WaitForPendingFinalizers();
+
+        Assert.True(Wait.Until(() => listener.Flushes.Count > 0), "no flush was reported");
 
         TableProperties props = Assert.IsType<TableProperties>(Assert.Single(listener.Flushes).TableProperties);
         Assert.Equal(1UL, props.NumEntries);

@@ -176,6 +176,10 @@ public class ListenerDetailTests
             db.IngestExternalFile([sstPath], ingestOpts);
         }
 
+        Assert.True(
+            Wait.Until(() => listener.Ingested.Count > 0),
+            "no external-file-ingested callback arrived");
+
         ExternalFileIngestionInfo ingestion = Assert.Single(listener.Ingested);
 
         Assert.Equal(sstPath, ingestion.ExternalFilePath);

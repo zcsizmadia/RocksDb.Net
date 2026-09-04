@@ -10,9 +10,12 @@ namespace RocksDbNet.Tests;
 /// Each guide states that its snippets are compiled and run as part of the test
 /// suite, and this is what makes that true. The code here is kept identical to
 /// what the guides show, so a snippet that stops compiling or stops behaving as
-/// described fails CI rather than misleading a reader. Paths are the one
-/// deviation: they point at an in-memory environment, or at a temporary
-/// directory where the test needs real files. If you change a guide, change the
+/// described fails CI rather than misleading a reader. Two things are added or
+/// changed: paths, which point at an in-memory environment or at a temporary
+/// directory where the test needs real files, and assertions, which a snippet
+/// does not carry — including waits, because a guide showing an event listener
+/// does not have to say that RocksDb delivers the callback on its own thread
+/// while a test asserting on it does. If you change a guide, change the
 /// matching test with it.
 /// </remarks>
 public class DocumentationGuideTests
@@ -566,7 +569,7 @@ public class DocumentationGuideTests
             db.Flush();
         }
 
-        Assert.True(watcher.Flushes > 0);
+        Assert.True(Wait.Until(() => watcher.Flushes > 0), "no flush was observed");
     }
 
     /// <summary>
@@ -589,8 +592,9 @@ public class DocumentationGuideTests
             db.Flush();
         }
 
-        Assert.True(first.Flushes > 0, "the first listener should still receive events");
-        Assert.True(second.Flushes > 0, "the second listener should also receive events");
+        Assert.True(
+            Wait.Until(() => first.Flushes > 0 && second.Flushes > 0),
+            "both listeners should receive events");
     }
 
     [Fact]
