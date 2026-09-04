@@ -300,8 +300,8 @@ public class DbOptionsTests
     {
         using var opts = new DbOptions();
 
-        opts.EnableBlobGc = true;
-        Assert.True(opts.EnableBlobGc);
+        opts.EnableBlobGarbageCollection = true;
+        Assert.True(opts.EnableBlobGarbageCollection);
     }
 
     [Fact]
