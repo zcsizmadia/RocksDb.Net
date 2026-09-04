@@ -258,17 +258,26 @@ public class ReadOptionsTests
     /// previous copy.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// This used to assert nothing at all: it set ten thousand bounds and ended,
     /// so leaking every one of them would have passed. The bounds are now large
-    /// enough that a leak is hundreds of megabytes rather than the hundred
-    /// kilobytes ten thousand short keys came to, and it measures the process
-    /// rather than the managed heap, since these copies are unmanaged.
+    /// enough that a leak is a gigabyte rather than the hundred kilobytes ten
+    /// thousand short keys came to, and it measures the process rather than the
+    /// managed heap, since these copies are unmanaged.
+    /// </para>
+    /// <para>
+    /// The budget is wide, and deliberately so. Every test class runs in this
+    /// same process, several at once, and their native allocations move the
+    /// number this reads: a run on a Linux agent measured 179 MB of growth with
+    /// nothing leaking at all. The signal has to stay well clear of that, which
+    /// is why the leak is sized in gigabytes.
+    /// </para>
     /// </remarks>
     [Fact]
     public void SetIterateBounds_RepeatedSets_DoNotLeak()
     {
         const int Sets = 4_000;
-        const int BoundBytes = 64 * 1024;
+        const int BoundBytes = 128 * 1024;
 
         using var readOpts = new ReadOptions();
 
@@ -288,10 +297,9 @@ public class ReadOptionsTests
 
         long grew = CurrentProcessBytes() - before;
 
-        // 512 MB held if nothing was freed, against 128 KB if everything was.
-        // The budget is wide because other test classes run in this process at
-        // the same time, and still nowhere near the leak it looks for.
-        const long Budget = 128L * 1024 * 1024;
+        // A gigabyte held if nothing was freed, against 256 KB if everything
+        // was. See the remarks for why the budget sits where it does.
+        const long Budget = 512L * 1024 * 1024;
 
         Assert.True(
             grew < Budget,
