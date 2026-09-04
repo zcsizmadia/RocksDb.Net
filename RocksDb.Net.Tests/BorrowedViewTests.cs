@@ -190,11 +190,16 @@ public class BorrowedViewTests
         GC.WaitForPendingFinalizers();
 
         Assert.NotNull(op.Kept);
-        Assert.NotEmpty(op.Kept);
 
         // The operands are managed copies, so they still read correctly.
+        //
+        // Exact values, not just non-empty ones. The hazard this test exists
+        // for is reading memory RocksDb has freed, and freed memory reads back
+        // as garbage far more often than it reads back as an empty string, so
+        // a non-empty assertion would have passed on exactly the failure it was
+        // written to catch.
         string[] kept = [.. op.Kept.Select(o => Encoding.UTF8.GetString(o))];
-        Assert.All(kept, s => Assert.False(string.IsNullOrEmpty(s)));
+        Assert.Equal(["a", "b", "c"], kept);
     }
 
     /// <summary>
