@@ -3,6 +3,65 @@ using System.Runtime.InteropServices;
 namespace RocksDbNet;
 
 /// <summary>
+/// Reads the strings and keys the column-family metadata accessors return,
+/// which the caller owns.
+/// </summary>
+/// <remarks>
+/// The C API distinguishes the two kinds of pointer in the return type, and
+/// nothing else: <c>char*</c> is a fresh <c>strdup</c> or copy the caller must
+/// free, <c>const char*</c> points into the native object and must not be
+/// freed. Every accessor on this page returns the first kind, while the
+/// <c>rocksdb_livefiles_*</c> accessors used by <see cref="LiveFileMetadata"/>
+/// return the second. The two read almost identically from C#, which is how
+/// these came to leak.
+/// </remarks>
+internal static class OwnedNativeString
+{
+    /// <summary>Copies a NUL-terminated string and frees the original.</summary>
+    internal static string ReadAndFree(nint ptr)
+    {
+        if (ptr == nint.Zero)
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            return Marshal.PtrToStringUTF8(ptr) ?? string.Empty;
+        }
+        finally
+        {
+            NativeMethods.rocksdb_free(ptr);
+        }
+    }
+
+    /// <summary>Copies a counted byte buffer and frees the original.</summary>
+    internal static byte[]? ReadKeyAndFree(nint ptr, nuint len)
+    {
+        if (ptr == nint.Zero)
+        {
+            return null;
+        }
+
+        try
+        {
+            if (len == 0)
+            {
+                return [];
+            }
+
+            var bytes = new byte[checked((int)len)];
+            Marshal.Copy(ptr, bytes, 0, bytes.Length);
+            return bytes;
+        }
+        finally
+        {
+            NativeMethods.rocksdb_free(ptr);
+        }
+    }
+}
+
+/// <summary>
 /// Metadata describing a column family, including its size and the levels
 /// currently stored.
 /// </summary>
@@ -43,8 +102,8 @@ public sealed record ColumnFamilyMetadata(
             }
 
             return new ColumnFamilyMetadata(
-                Name: Marshal.PtrToStringUTF8(
-                    NativeMethods.rocksdb_column_family_metadata_get_name(handle)) ?? string.Empty,
+                Name: OwnedNativeString.ReadAndFree(
+                    NativeMethods.rocksdb_column_family_metadata_get_name(handle)),
                 Size: NativeMethods.rocksdb_column_family_metadata_get_size(handle),
                 FileCount: checked((int)NativeMethods.rocksdb_column_family_metadata_get_file_count(handle)),
                 LevelCount: levelCount,
@@ -122,34 +181,19 @@ public sealed record SstFileMetadata(
         try
         {
             return new SstFileMetadata(
-                RelativeFilename: Marshal.PtrToStringUTF8(
-                    NativeMethods.rocksdb_sst_file_metadata_get_relative_filename(handle)) ?? string.Empty,
-                Directory: Marshal.PtrToStringUTF8(
-                    NativeMethods.rocksdb_sst_file_metadata_get_directory(handle)) ?? string.Empty,
+                RelativeFilename: OwnedNativeString.ReadAndFree(
+                    NativeMethods.rocksdb_sst_file_metadata_get_relative_filename(handle)),
+                Directory: OwnedNativeString.ReadAndFree(
+                    NativeMethods.rocksdb_sst_file_metadata_get_directory(handle)),
                 Size: NativeMethods.rocksdb_sst_file_metadata_get_size(handle),
-                SmallestKey: ReadKey(NativeMethods.rocksdb_sst_file_metadata_get_smallestkey(handle, out nuint smallestLen), smallestLen),
-                LargestKey: ReadKey(NativeMethods.rocksdb_sst_file_metadata_get_largestkey(handle, out nuint largestLen), largestLen));
+                SmallestKey: OwnedNativeString.ReadKeyAndFree(
+                    NativeMethods.rocksdb_sst_file_metadata_get_smallestkey(handle, out nuint smallestLen), smallestLen),
+                LargestKey: OwnedNativeString.ReadKeyAndFree(
+                    NativeMethods.rocksdb_sst_file_metadata_get_largestkey(handle, out nuint largestLen), largestLen));
         }
         finally
         {
             NativeMethods.rocksdb_sst_file_metadata_destroy(handle);
         }
-    }
-
-    private static byte[]? ReadKey(nint ptr, nuint len)
-    {
-        if (ptr == nint.Zero)
-        {
-            return null;
-        }
-
-        if (len == 0)
-        {
-            return [];
-        }
-
-        var bytes = new byte[checked((int)len)];
-        Marshal.Copy(ptr, bytes, 0, bytes.Length);
-        return bytes;
     }
 }

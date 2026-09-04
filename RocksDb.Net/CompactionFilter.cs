@@ -96,6 +96,25 @@ public abstract class CompactionFilter : RocksDbHandle
     private readonly ConcurrentDictionary<int, nint> _lastNewValueBufsByThread = new();
     private readonly ConcurrentDictionary<nint, byte> _newValueBufs = new();
 
+    /// <summary>Releases every outstanding new-value buffer.</summary>
+    /// <remarks>
+    /// Called from two places, and both are needed. A filter the caller owns
+    /// releases them when it is disposed; a filter RocksDb owns, which is any
+    /// filter a factory produced, is never disposed by the wrapper and
+    /// releases them from its native destructor callback instead.
+    /// </remarks>
+    private void FreeNewValueBuffers()
+    {
+        _lastNewValueBufsByThread.Clear();
+
+        foreach (nint buf in _newValueBufs.Keys)
+        {
+            Marshal.FreeHGlobal(buf);
+        }
+
+        _newValueBufs.Clear();
+    }
+
     // ── Static callbacks ─────────────────────────────────────────────────────
     // Using static methods avoids unsafe-lambda syntax issues.
 
@@ -105,6 +124,14 @@ public abstract class CompactionFilter : RocksDbHandle
         {
             var self = GetSelfFromPinnedIntPtr<CompactionFilter>(state);
             self.TransferOwnership();
+
+            // A filter RocksDb owns, which is every filter a factory
+            // produced, never has DisposeUnmanagedResources called on it, so
+            // this destructor callback is the only place its new-value
+            // buffers can be released. Without it each compaction job leaked
+            // one buffer per thread that changed a value.
+            self.FreeNewValueBuffers();
+
             self.UnpinGarbageCollector();
         }
         catch (Exception ex)
@@ -304,12 +331,6 @@ public abstract class CompactionFilter : RocksDbHandle
         // Free up all the newValue allocations which were not freed yet.
         // This is a safety net in case the filter was disposed before all threads finished using it.
 
-        _lastNewValueBufsByThread.Clear();
-
-        foreach (var buf in _newValueBufs.Keys)
-        {
-            Marshal.FreeHGlobal(buf);
-        }
-        _newValueBufs.Clear();
+        FreeNewValueBuffers();
     }
 }

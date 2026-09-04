@@ -58,6 +58,16 @@ public sealed record LiveFileMetadata(
     /// <summary>
     /// Reads every entry out of a native live-files handle and destroys it.
     /// </summary>
+    /// <remarks>
+    /// Nothing here frees the individual strings and keys, and that is correct:
+    /// every <c>rocksdb_livefiles_*</c> accessor returns <c>const char*</c>,
+    /// pointing into the live-files object, so only that object is destroyed.
+    /// <see cref="ColumnFamilyMetadata"/> reads what looks like the same data
+    /// through accessors returning plain <c>char*</c>, which are fresh copies
+    /// the caller owns and must free. The return type is the only thing that
+    /// distinguishes them, and it does not survive into the C# declaration,
+    /// which is how the metadata side came to leak.
+    /// </remarks>
     internal static unsafe IReadOnlyList<LiveFileMetadata> ReadAndDestroy(nint handle)
     {
         try

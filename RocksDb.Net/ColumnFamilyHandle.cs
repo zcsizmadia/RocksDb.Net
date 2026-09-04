@@ -16,12 +16,31 @@ public class ColumnFamilyHandle : RocksDbHandle
     public uint Id => NativeMethods.rocksdb_column_family_handle_get_id(Handle);
 
     /// <summary>Name of this column family.</summary>
+    /// <remarks>
+    /// The native accessor returns a fresh copy rather than a pointer into
+    /// the handle, so the caller owns it. Reading this without freeing leaked
+    /// the name on every access, and the database constructor reads it once
+    /// per column family.
+    /// </remarks>
     public unsafe string Name
     {
         get
         {
             nint ptr = NativeMethods.rocksdb_column_family_handle_get_name(Handle, out nuint len);
-            return NativeMethods.PtrToStringUTF8((byte*)ptr, len) ?? string.Empty;
+
+            if (ptr == nint.Zero)
+            {
+                return string.Empty;
+            }
+
+            try
+            {
+                return NativeMethods.PtrToStringUTF8((byte*)ptr, len) ?? string.Empty;
+            }
+            finally
+            {
+                NativeMethods.rocksdb_free(ptr);
+            }
         }
     }
 
