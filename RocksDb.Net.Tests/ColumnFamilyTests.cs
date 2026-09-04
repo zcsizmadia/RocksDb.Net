@@ -354,4 +354,52 @@ public class ColumnFamilyTests
         Assert.Equal("value", rodb.GetString("key", roCf1));
     }
 
+    /// <summary>
+    /// The default family stays in the listing after another family is created
+    /// on a database that was opened without an explicit family list.
+    /// </summary>
+    /// <remarks>
+    /// It did not. The dictionary behind the listing is empty for such a
+    /// database, and the default name was substituted only while it stayed empty,
+    /// so creating a family replaced the default in the listing instead of
+    /// joining it. Found while adding GetAggregatedPropertyInt, which walks this
+    /// listing and so reported a total that omitted the default family entirely.
+    /// </remarks>
+    [Fact]
+    public void ColumnFamilyNames_KeepsTheDefaultAfterOneIsCreated()
+    {
+        using var db = new TempDb();
+
+        Assert.Equal(["default"], db.Db.ColumnFamilyNames);
+
+        using var cfOpts = new DbOptions();
+        db.Db.CreateColumnFamily(cfOpts, "added");
+
+        Assert.Contains("default", db.Db.ColumnFamilyNames);
+        Assert.Contains("added", db.Db.ColumnFamilyNames);
+
+        // And the lookup agrees with the listing, which is the inconsistency the
+        // old behaviour created: this resolved a family the listing denied.
+        Assert.All(
+            db.Db.ColumnFamilyNames,
+            name => Assert.Equal(name, db.Db.GetColumnFamily(name).Name));
+    }
+
+    /// <summary>
+    /// The listing is not duplicated when the default family was named at open
+    /// time, which is the case where it is already in the dictionary.
+    /// </summary>
+    [Fact]
+    public void ColumnFamilyNames_DoesNotRepeatTheDefaultWhenItWasOpenedByName()
+    {
+        using var opts = new DbOptions
+        {
+            CreateIfMissing = true,
+            CreateMissingColumnFamilies = true,
+        };
+
+        using RocksDb db = TestDb.OpenInMemory(opts, [new("default"), new("cf1")]);
+
+        Assert.Equal(["default", "cf1"], db.ColumnFamilyNames);
+    }
 }

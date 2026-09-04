@@ -1419,10 +1419,20 @@ public sealed class RocksDb : RocksDbHandle
     }
 
     /// <summary>Names of the column families this database knows about.</summary>
+    /// <remarks>
+    /// The default family is always in here, whether or not it was named when the
+    /// database was opened. It used to drop out: the backing dictionary is empty
+    /// for a database opened without an explicit family list, so the default name
+    /// was reported only while the dictionary stayed empty, and creating a family
+    /// afterwards replaced it in the listing rather than adding to it. The family
+    /// still existed and <see cref="GetColumnFamily"/> still resolved it, so the
+    /// listing disagreed with the lookup — including in the "Known families"
+    /// message that lookup throws.
+    /// </remarks>
     public IReadOnlyCollection<string> ColumnFamilyNames
-        => _columnFamilyHandles.Count > 0
+        => _columnFamilyHandles.ContainsKey(DefaultColumnFamilyName)
             ? [.. _columnFamilyHandles.Keys]
-            : [DefaultColumnFamilyName];
+            : [DefaultColumnFamilyName, .. _columnFamilyHandles.Keys];
 
     /// <summary>
     /// Tracks a newly created column family so that
@@ -1840,6 +1850,60 @@ public sealed class RocksDb : RocksDbHandle
         ulong val;
         int rc = NativeMethods.rocksdb_property_int_cf(Handle, cf.Handle, propName, &val);
         return rc == 0 ? val : null;
+    }
+
+    /// <summary>
+    /// Returns an integer property summed over every column family, rather than
+    /// the default family's value alone.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="GetPropertyInt(string)"/> reads the default column family, so it
+    /// describes the whole database only when the database has one family. On a
+    /// database with several, asking for the estimated key count that way reports
+    /// the keys in <c>default</c> and silently omits the rest.
+    /// </para>
+    /// <para>
+    /// This is RocksDb's <c>GetAggregatedIntProperty</c>, which its header
+    /// describes as "same as GetIntProperty(), but this one returns the aggregated
+    /// int property from all column families". The C API does not export it, so
+    /// the sum is done here, over <see cref="ColumnFamilyNames"/> — which covers
+    /// families created since the database was opened as well as those opened
+    /// with it.
+    /// </para>
+    /// <para>
+    /// Null when any family has no value for the property, which is the answer
+    /// <see cref="GetPropertyInt(string)"/> gives for a property that is not an
+    /// integer property. A partial sum is not returned: a total missing one of its
+    /// terms is not a total, and returning one would be indistinguishable from a
+    /// database that genuinely held that much.
+    /// </para>
+    /// <para>
+    /// Only meaningful for a property that is itself a total. Summing
+    /// <c>rocksdb.estimate-num-keys</c> over the families gives the database's
+    /// estimated key count; summing <c>rocksdb.actual-delayed-write-rate</c> gives
+    /// a number that is not a rate anything has. RocksDb does not distinguish the
+    /// two either, so neither does this.
+    /// </para>
+    /// </remarks>
+    public ulong? GetAggregatedPropertyInt(string propName)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(propName);
+
+        ulong total = 0;
+
+        foreach (string name in ColumnFamilyNames)
+        {
+            ulong? value = GetPropertyInt(propName, GetColumnFamily(name));
+            if (value is null)
+            {
+                return null;
+            }
+
+            total += value.Value;
+        }
+
+        return total;
     }
 
     // ─────────────────────────────────────────────────────────────────────────

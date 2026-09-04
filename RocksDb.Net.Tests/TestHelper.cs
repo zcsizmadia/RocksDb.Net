@@ -175,6 +175,14 @@ public static class TestDb
         return InMemoryPath;
     }
 
+    /// <inheritdoc cref="OpenInMemory(DbOptions)"/>
+    public static RocksDb OpenInMemory(
+        DbOptions options, IReadOnlyList<ColumnFamilyDescriptor> columnFamilies)
+    {
+        string path = InMemory(options);
+        return RocksDb.Open(options, path, columnFamilies);
+    }
+
     /// <summary>
     /// Enables blob files with no size threshold, so every value goes to a blob
     /// file rather than into the SST.
