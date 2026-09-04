@@ -13,6 +13,15 @@ namespace RocksDbNet;
 /// <see cref="Rollback"/>.
 /// </para>
 /// <para>
+/// This is not repeatable read. A plain <see cref="Get(ReadOnlySpan{byte}, ReadOptions?)"/>
+/// takes no lock and is not tracked, so a key can change underneath a
+/// transaction between reading it and committing, and nothing reports that.
+/// Conflict detection happens when a key is locked, by
+/// <see cref="GetForUpdate(ReadOnlySpan{byte}, bool, ReadOptions?)"/> or by a
+/// write, and not at <see cref="Commit"/>. A transaction whose correctness
+/// depends on what it read has to read for update.
+/// </para>
+/// <para>
 /// Always dispose it. Neither <see cref="Commit"/> nor <see cref="Rollback"/>
 /// releases the transaction; they only decide what happens to its writes. A
 /// transaction that is never disposed keeps its locks.
@@ -291,9 +300,20 @@ public sealed class Transaction : RocksDbHandle
     /// <summary>Applies the transaction's writes to the database.</summary>
     /// <remarks>
     /// <para>
-    /// Throws when the commit conflicts, which for a transaction created with
-    /// <see cref="TransactionOptions.SetSnapshot"/> means a key it read has
-    /// changed since. That is an ordinary outcome to retry.
+    /// Conflicts are not detected here. A pessimistic transaction, which is
+    /// what <see cref="TransactionDb"/> gives you, takes a lock and checks for
+    /// a conflicting change when the key is written or read for update, so a
+    /// conflict has already thrown from <see cref="Put(ReadOnlySpan{byte}, ReadOnlySpan{byte})"/>
+    /// or <see cref="GetForUpdate(ReadOnlySpan{byte}, bool, ReadOptions?)"/>
+    /// long before this is called. That is the ordinary outcome to retry.
+    /// </para>
+    /// <para>
+    /// A key read with a plain <see cref="Get(ReadOnlySpan{byte}, ReadOptions?)"/>
+    /// is not tracked and never causes a conflict, whether or not
+    /// <see cref="TransactionOptions.SetSnapshot"/> was used. Measured: a
+    /// transaction that read a key, watched another transaction change and
+    /// commit it, and then committed its own unrelated write, committed
+    /// successfully. Use <c>GetForUpdate</c> for reads a decision depends on.
     /// </para>
     /// <para>
     /// This does not release the transaction. Dispose it as well.
