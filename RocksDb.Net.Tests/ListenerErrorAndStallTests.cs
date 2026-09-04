@@ -30,7 +30,7 @@ public class ListenerErrorAndStallTests
 
         var opts = new DbOptions { CreateIfMissing = true, WriteBufferSize = 16 * 1024 };
         opts.SstFileManager = manager;
-        opts.EventListener = listener;
+        opts.AddEventListener(listener);
 
         using var db = RocksDb.Open(opts, dir.Path);
 
@@ -99,7 +99,7 @@ public class ListenerErrorAndStallTests
             HardPendingCompactionBytesLimit = 0,
         };
 
-        opts.EventListener = listener;
+        opts.AddEventListener(listener);
 
         using var db = RocksDb.Open(opts, dir.Path);
 

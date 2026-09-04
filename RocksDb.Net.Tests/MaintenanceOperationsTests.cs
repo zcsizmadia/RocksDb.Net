@@ -210,7 +210,7 @@ public class MaintenanceOperationsTests
             // by itself, so a compaction here is attributable to the suggestion.
             Level0FileNumCompactionTrigger = 100,
         };
-        opts.EventListener = listener;
+        opts.AddEventListener(listener);
 
         using var db = RocksDb.Open(opts, dir.Path);
 
@@ -247,7 +247,7 @@ public class MaintenanceOperationsTests
             CreateMissingColumnFamilies = true,
             Level0FileNumCompactionTrigger = 100,
         };
-        opts.EventListener = listener;
+        opts.AddEventListener(listener);
 
         var cfDescs = new List<ColumnFamilyDescriptor> { new("default"), new("cf1") };
         using var db = RocksDb.Open(opts, dir.Path, cfDescs);
@@ -277,7 +277,7 @@ public class MaintenanceOperationsTests
         var listener = new RecordingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true, Level0FileNumCompactionTrigger = 100 };
-        opts.EventListener = listener;
+        opts.AddEventListener(listener);
 
         using var db = RocksDb.Open(opts, dir.Path);
 

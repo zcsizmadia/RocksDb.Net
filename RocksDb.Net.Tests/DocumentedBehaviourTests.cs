@@ -14,13 +14,15 @@ public class DocumentedBehaviourTests
 
     /// <summary>
     /// The no-argument flush covers the default column family only, and an
-    /// empty list falls through to it rather than flushing nothing or
-    /// everything.
+    /// empty list flushes nothing at all.
     /// </summary>
     /// <remarks>
-    /// Issue #60 asserted that an empty list flushes every family. It does
-    /// not, and neither does the no-argument overload whose doc claimed "all
-    /// column families". Both were corrected against this measurement.
+    /// Two corrections, in two passes. Issue #60 asserted that an empty list
+    /// flushes every family; measured, it flushed only the default, because the
+    /// wrapper fell through to the no-argument overload. That fall-through is
+    /// now gone, so an empty list flushes nothing, which is what RocksDb does
+    /// with an empty array of handles and what a caller who filtered a list down
+    /// to nothing means.
     /// </remarks>
     [Fact]
     public void Flush_CoversTheDefaultColumnFamilyOnly()
@@ -37,9 +39,15 @@ public class DocumentedBehaviourTests
         Assert.Equal("1", db.GetProperty("rocksdb.num-entries-active-mem-table"));
         Assert.Equal("1", db.GetProperty("rocksdb.num-entries-active-mem-table", other));
 
+        // Nothing named, nothing flushed. Both entries are still in memory.
         db.Flush([]);
 
-        // The default family was flushed; the other was left alone.
+        Assert.Equal("1", db.GetProperty("rocksdb.num-entries-active-mem-table"));
+        Assert.Equal("1", db.GetProperty("rocksdb.num-entries-active-mem-table", other));
+
+        // The no-argument overload is the one that means the default family.
+        db.Flush();
+
         Assert.Equal("0", db.GetProperty("rocksdb.num-entries-active-mem-table"));
         Assert.Equal("1", db.GetProperty("rocksdb.num-entries-active-mem-table", other));
 
@@ -51,7 +59,7 @@ public class DocumentedBehaviourTests
         Assert.Equal("2", db.GetString("b", other));
     }
 
-    // ── The event-listener setters append ───────────────────────────────────
+    // ── Adding event listeners accumulates ──────────────────────────────────
 
     private sealed class CountingListener : EventListener
     {
@@ -61,19 +69,26 @@ public class DocumentedBehaviourTests
     }
 
     /// <summary>
-    /// Assigning the property twice installs two listeners and both fire. A
-    /// property setter that appends is unusual, so the doc now warns about it.
+    /// Adding two listeners leaves both installed and both firing.
     /// </summary>
+    /// <remarks>
+    /// This was a property setter, and a property that accumulates reads like an
+    /// assignment that replaces: <c>options.EventListener = a;</c> then
+    /// <c>options.EventListener = b;</c> left both installed with no way to take
+    /// either off. The behaviour is unchanged and correct, since RocksDb cannot
+    /// remove a listener; only the spelling changed, to one that says what it
+    /// does.
+    /// </remarks>
     [Fact]
-    public void EventListener_SetterAppends_SoBothListenersFire()
+    public void AddEventListener_Accumulates_SoBothListenersFire()
     {
         var first = new CountingListener();
         var second = new CountingListener();
 
         using var dir = new TempDir();
         var opts = new DbOptions { CreateIfMissing = true };
-        opts.EventListener = first;
-        opts.EventListener = second;
+        opts.AddEventListener(first);
+        opts.AddEventListener(second);
 
         using (var db = RocksDb.Open(opts, dir.Path))
         {
@@ -165,41 +180,11 @@ public class DocumentedBehaviourTests
         Assert.Equal(ulong.MaxValue, opts.ValueSizeSoftLimit);
     }
 
-    // ── IgnoreSnapshots defaults to true, not false ─────────────────────────
-
-    private sealed class NoopFilter : CompactionFilter
-    {
-        public NoopFilter()
-            : base("noop")
-        {
-        }
-
-        protected override FilterDecision Filter(
-            int level, ReadOnlySpan<byte> key, ReadOnlySpan<byte> existingValue, out byte[]? newValue)
-        {
-            newValue = null;
-            return FilterDecision.Keep;
-        }
-    }
-
-    /// <summary>
-    /// The doc claimed it defaults to false and that true meant "skip
-    /// snapshotted entries". Both halves were wrong: RocksDb creates it true,
-    /// has deprecated the setting, and fails table file creation if a filter
-    /// reports false. So false is refused here instead of breaking compaction
-    /// later, and true is accepted as the no-op it is.
-    /// </summary>
-    [Fact]
-    [Obsolete("Exercises the obsolete IgnoreSnapshots setter deliberately.")]
-    public void IgnoreSnapshots_RefusesFalseAndAcceptsTrue()
-    {
-        using var filter = new NoopFilter();
-
-        Assert.Throws<NotSupportedException>(() => filter.IgnoreSnapshots = false);
-
-        // True is what RocksDb already does, so it is allowed.
-        filter.IgnoreSnapshots = true;
-    }
+    // IgnoreSnapshots is gone. It was documented as defaulting to false with
+    // true meaning "skip snapshotted entries", and both halves were wrong:
+    // RocksDb creates it true, has deprecated the setting, and fails table file
+    // creation if a filter reports false. A property whose only legal value is
+    // the one it already holds is better not offered.
 
     // ── A null block cache is ignored, not a way to disable caching ─────────
 

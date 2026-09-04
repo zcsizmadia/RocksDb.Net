@@ -306,7 +306,7 @@ public class DbOptionsSweepTests
         var listener = new RecordingListener();
 
         var opts = new DbOptions { CreateIfMissing = true };
-        opts.EventListener = listener;
+        opts.AddEventListener(listener);
 
         // Any window of 100 entries holding 50 deletions marks the file.
         opts.AddCompactOnDeletionCollector(windowSize: 100, deletionTrigger: 50);
@@ -348,7 +348,7 @@ public class DbOptionsSweepTests
         var listener = new RecordingListener();
 
         var opts = new DbOptions { CreateIfMissing = true };
-        opts.EventListener = listener;
+        opts.AddEventListener(listener);
 
         using var db = RocksDb.Open(opts, dir.Path);
 

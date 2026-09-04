@@ -93,7 +93,7 @@ public class EventListenerTests
         var listener = new SingleOverrideListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
-        opts.EventListener = listener;
+        opts.AddEventListener(listener);
 
         using var db = RocksDb.Open(opts, dir.Path);
 
@@ -115,7 +115,7 @@ public class EventListenerTests
         var listener = new RecordingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
-        opts.EventListener = listener;
+        opts.AddEventListener(listener);
 
         using var db = RocksDb.Open(opts, dir.Path);
 
@@ -146,7 +146,7 @@ public class EventListenerTests
             WriteBufferSize = 1024,
             Level0FileNumCompactionTrigger = 2,
         };
-        opts.EventListener = listener;
+        opts.AddEventListener(listener);
 
         using var db = RocksDb.Open(opts, dir.Path);
 
@@ -180,7 +180,7 @@ public class EventListenerTests
         var listener2 = new RecordingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
-        opts.EventListeners = [listener1, listener2];
+        opts.AddEventListeners([listener1, listener2]);
 
         using var db = RocksDb.Open(opts, dir.Path);
 
@@ -198,7 +198,7 @@ public class EventListenerTests
         var listener = new RecordingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
-        opts.EventListener = listener;
+        opts.AddEventListener(listener);
 
         using var db = RocksDb.Open(opts, dir.Path);
 
@@ -231,7 +231,7 @@ public class EventListenerTests
         var listener = new RecordingListener();
 
         using var dbOpts = new DbOptions { CreateIfMissing = true };
-        dbOpts.EventListener = listener;
+        dbOpts.AddEventListener(listener);
 
         // Create an SST file
         using (var writer = SstFileWriter.Create(dbOpts))
@@ -257,7 +257,7 @@ public class EventListenerTests
         var listener = new RecordingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
-        opts.EventListener = listener;
+        opts.AddEventListener(listener);
 
         using var db = RocksDb.Open(opts, dir.Path);
 
@@ -279,7 +279,7 @@ public class EventListenerTests
             WriteBufferSize = 1024,
             Level0FileNumCompactionTrigger = 2,
         };
-        opts.EventListener = listener;
+        opts.AddEventListener(listener);
 
         using var db = RocksDb.Open(opts, dir.Path);
 

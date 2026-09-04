@@ -125,7 +125,7 @@ public class NativeEnumValueTests
 
         using var dir = new TempDir();
         using var opts = new DbOptions { CreateIfMissing = true };
-        opts.EventListener = listener;
+        opts.AddEventListener(listener);
 
         using var db = RocksDb.Open(opts, dir.Path);
 
@@ -145,7 +145,7 @@ public class NativeEnumValueTests
 
         using var dir = new TempDir();
         using var opts = new DbOptions { CreateIfMissing = true };
-        opts.EventListener = listener;
+        opts.AddEventListener(listener);
 
         using var db = RocksDb.Open(opts, dir.Path);
 

@@ -346,7 +346,7 @@ public class TransactionOptionsTests
         using var db = TransactionDb.Open(dbOptions, txnDbOptions, dir.Path);
 
         db.Put("key", "value");
-        db.FlushWal();
+        db.FlushWal(sync: true);
         db.FlushWal(sync: false);
 
         Assert.Equal("value", db.GetString("key"));

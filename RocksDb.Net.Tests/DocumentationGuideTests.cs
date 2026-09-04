@@ -563,7 +563,7 @@ public class DocumentationGuideTests
         var watcher = new FlushWatcher();
 
         var options = new DbOptions { CreateIfMissing = true };
-        options.EventListener = watcher;
+        options.AddEventListener(watcher);
 
         using (var db = RocksDb.Open(options, dir.Path))
         {
@@ -578,7 +578,7 @@ public class DocumentationGuideTests
     /// The guide states the event listener setter appends rather than replaces.
     /// </summary>
     [Fact]
-    public void WritingCallbacks_EventListenerSetterAppends()
+    public void WritingCallbacks_AddEventListenerAccumulates()
     {
         using var dir = new TempDir();
 
@@ -586,8 +586,8 @@ public class DocumentationGuideTests
         var second = new FlushWatcher();
 
         var options = new DbOptions { CreateIfMissing = true };
-        options.EventListener = first;
-        options.EventListener = second;
+        options.AddEventListener(first);
+        options.AddEventListener(second);
 
         using (var db = RocksDb.Open(options, dir.Path))
         {

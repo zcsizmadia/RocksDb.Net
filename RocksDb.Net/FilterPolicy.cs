@@ -11,30 +11,18 @@ public sealed class FilterPolicy : RocksDbHandle
     {
     }
 
-    /// <summary>
-    /// Creates a Bloom filter policy. Identical to
-    /// <see cref="CreateBloomFull"/>.
-    /// </summary>
+    /// <summary>Creates a Bloom filter policy.</summary>
     /// <remarks>
-    /// The two are the same policy, not two formats. RocksDb stopped honouring
-    /// the parameter that once chose between them in version 7.0, and both now
-    /// build the current format. Measured over 500 keys, they produce the same
-    /// policy name and byte-identical files.
+    /// There was a <c>CreateBloom</c> beside this one, documented as the legacy
+    /// on-disk format against this one as the current format. That difference
+    /// was not real: RocksDb stopped honouring the parameter that chose between
+    /// them in version 7.0, and measured over 500 keys the two produced the same
+    /// policy name and byte-identical files. Keeping both would have been an
+    /// invitation to think about a choice that does not exist.
     /// <para>
-    /// Neither has anything to do with partitioning, which is
+    /// Nothing here relates to partitioning, which is
     /// <see cref="BlockBasedTableOptions.PartitionFilters"/>.
     /// </para>
-    /// </remarks>
-    public static FilterPolicy CreateBloom(double bitsPerKey)
-        => new(NativeMethods.rocksdb_filterpolicy_create_bloom(bitsPerKey));
-
-    /// <summary>
-    /// Creates a Bloom filter policy. Identical to <see cref="CreateBloom"/>,
-    /// and the clearer name of the two.
-    /// </summary>
-    /// <remarks>
-    /// Both build RocksDb's current filter format; see
-    /// <see cref="CreateBloom"/> for why the pair exists.
     /// </remarks>
     public static FilterPolicy CreateBloomFull(double bitsPerKey)
         => new(NativeMethods.rocksdb_filterpolicy_create_bloom_full(bitsPerKey));

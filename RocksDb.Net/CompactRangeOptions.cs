@@ -51,10 +51,17 @@ public sealed class CompactRangeOptions : RocksDbHandle
     }
 
     /// <summary>Maximum number of subcompactions for this compaction.</summary>
-    public int MaxSubcompactions
+    /// <remarks>
+    /// Unsigned, matching <see cref="CompactFilesOptions.MaxSubcompactions"/> and
+    /// the <c>uint32_t</c> RocksDb keeps it in. This was an <c>int</c>, so the
+    /// same setting had two types in two sibling classes and a negative value
+    /// reached RocksDb as an enormous one. The C header spells the parameter
+    /// <c>int</c>, which is why the call casts.
+    /// </remarks>
+    public uint MaxSubcompactions
     {
-        get => NativeMethods.rocksdb_compactoptions_get_max_subcompactions(Handle);
-        set => NativeMethods.rocksdb_compactoptions_set_max_subcompactions(Handle, value);
+        get => checked((uint)NativeMethods.rocksdb_compactoptions_get_max_subcompactions(Handle));
+        set => NativeMethods.rocksdb_compactoptions_set_max_subcompactions(Handle, checked((int)value));
     }
 
     /// <summary>
@@ -81,11 +88,15 @@ public sealed class CompactRangeOptions : RocksDbHandle
     /// Only meaningful when several paths are configured through
     /// <see cref="DbOptions.SetDbPaths(System.Collections.Generic.IReadOnlyList{DbPath})"/>.
     /// It is how a caller moves compacted output onto a chosen device.
+    /// <para>
+    /// An index into that list, so unsigned. It was an <c>int</c>, in which a
+    /// negative value meant nothing and reached RocksDb as an enormous index.
+    /// </para>
     /// </remarks>
-    public int TargetPathId
+    public uint TargetPathId
     {
-        get => NativeMethods.rocksdb_compactoptions_get_target_path_id(Handle);
-        set => NativeMethods.rocksdb_compactoptions_set_target_path_id(Handle, value);
+        get => checked((uint)NativeMethods.rocksdb_compactoptions_get_target_path_id(Handle));
+        set => NativeMethods.rocksdb_compactoptions_set_target_path_id(Handle, checked((int)value));
     }
 
     /// <summary>

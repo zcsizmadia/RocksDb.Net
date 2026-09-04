@@ -132,38 +132,10 @@ public sealed class WriteBatchWithIndex : RocksDbHandle
         return this;
     }
 
-    // ── DeleteRange ──────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Not supported by RocksDb on an indexed batch. Always throws.
-    /// </summary>
-    /// <exception cref="NotSupportedException">Always.</exception>
-    /// <remarks>
-    /// <para>
-    /// <c>WriteBatchWithIndex::DeleteRange</c> returns <c>NotSupported</c> for
-    /// every argument, and the C API discards that status, so this used to queue
-    /// nothing and report success. RocksDb's own header marks the three entry
-    /// points "DO NOT USE - not yet supported".
-    /// </para>
-    /// <para>
-    /// It throws rather than being removed so that the failure is visible.
-    /// Silently dropping a range delete loses data the caller believes is gone.
-    /// Use <see cref="WriteBatch.DeleteRange(ReadOnlySpan{byte}, ReadOnlySpan{byte})"/>
-    /// on a plain batch, which RocksDb does support.
-    /// </para>
-    /// </remarks>
-    [Obsolete("RocksDb does not support DeleteRange on an indexed batch. Use WriteBatch instead.", error: false)]
-    public WriteBatchWithIndex DeleteRange(ReadOnlySpan<byte> startKey, ReadOnlySpan<byte> endKey)
-        => throw new NotSupportedException(NoDeleteRange);
-
-    /// <inheritdoc cref="DeleteRange(ReadOnlySpan{byte}, ReadOnlySpan{byte})"/>
-    [Obsolete("RocksDb does not support DeleteRange on an indexed batch. Use WriteBatch instead.", error: false)]
-    public WriteBatchWithIndex DeleteRange(ReadOnlySpan<byte> startKey, ReadOnlySpan<byte> endKey, ColumnFamilyHandle cf)
-        => throw new NotSupportedException(NoDeleteRange);
-
-    private const string NoDeleteRange =
-        "RocksDb does not support DeleteRange on a WriteBatchWithIndex: the native call " +
-        "returns NotSupported and queues nothing. Use WriteBatch.DeleteRange instead.";
+    // DeleteRange is deliberately absent: WriteBatchWithIndex::DeleteRange
+    // returns NotSupported for every argument and the C API discards that
+    // status, so it queued nothing and reported success. Use WriteBatch, whose
+    // DeleteRange RocksDb does support.
 
     // ── Log data ─────────────────────────────────────────────────────────────
 

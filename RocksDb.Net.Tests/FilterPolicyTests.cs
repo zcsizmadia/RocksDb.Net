@@ -5,7 +5,7 @@ public class FilterPolicyTests
     [Fact]
     public void CreateBloom_Works()
     {
-        using var fp = FilterPolicy.CreateBloom(10);
+        using var fp = FilterPolicy.CreateBloomFull(10);
         Assert.False(fp.IsDisposed);
     }
 

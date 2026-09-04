@@ -24,7 +24,7 @@ public class DocumentedClaimTests
 
         var opts = new DbOptions { CreateIfMissing = true };
         opts.BlockBasedTableFactory = tableOptions;
-        opts.EventListener = listener;
+        opts.AddEventListener(listener);
 
         using var db = RocksDb.Open(opts, dir.Path);
 
@@ -48,29 +48,25 @@ public class DocumentedClaimTests
     }
 
     /// <summary>
-    /// <see cref="FilterPolicy.CreateBloom"/> and
-    /// <see cref="FilterPolicy.CreateBloomFull"/> are the same policy.
+    /// The one Bloom factory writes a Bloom filter, and a different policy
+    /// writes a different file.
     /// </summary>
     /// <remarks>
-    /// The documentation said they differed in on-disk record format, one legacy
-    /// and one current. They do not: RocksDb stopped honouring the parameter
-    /// that chose between them in version 7.0. Ribbon is measured alongside as
-    /// the control, since a comparison of two identical things proves nothing
-    /// unless something different comes out different.
+    /// There were two Bloom factories, documented as differing in on-disk record
+    /// format, one legacy and one current. They did not differ at all: RocksDb
+    /// stopped honouring the parameter that chose between them in version 7.0,
+    /// and this test used to assert the two produced byte-identical files. That
+    /// is why only one of them is left. Ribbon stays as the control, since
+    /// asserting a policy name proves little unless a different policy comes out
+    /// different.
     /// </remarks>
     [Fact]
-    public void TheTwoBloomPolicies_ProduceIdenticalFiles()
+    public void BloomAndRibbonPoliciesAreDistinguishable()
     {
-        Written bloom = WriteWith(FilterPolicy.CreateBloom(10));
-        Written bloomFull = WriteWith(FilterPolicy.CreateBloomFull(10));
+        Written bloom = WriteWith(FilterPolicy.CreateBloomFull(10));
         Written ribbon = WriteWith(FilterPolicy.CreateRibbon(10));
 
         Assert.Equal("bloomfilter", bloom.PolicyName);
-        Assert.Equal(bloom.PolicyName, bloomFull.PolicyName);
-        Assert.Equal(bloom.FileSize, bloomFull.FileSize);
-
-        // The control: a genuinely different policy comes out different, so the
-        // equality above is a result rather than an artefact of the measurement.
         Assert.Equal("ribbonfilter", ribbon.PolicyName);
         Assert.NotEqual(bloom.FileSize, ribbon.FileSize);
     }
@@ -184,7 +180,7 @@ public class DocumentedClaimTests
 
         var opts = new DbOptions { CreateIfMissing = true };
         opts.MergeOperator = merge;
-        opts.EventListener = listener;
+        opts.AddEventListener(listener);
 
         using var db = RocksDb.Open(opts, dir.Path);
 

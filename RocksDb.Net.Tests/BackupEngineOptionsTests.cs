@@ -68,7 +68,6 @@ public class BackupEngineOptionsTests
         opts.RestoreRateLimit = 2097152;
         opts.MaxBackgroundOperations = 2;
         opts.CallbackTriggerIntervalSize = 1024;
-        opts.MaxValidBackupsToOpen = 5;
         opts.IoBufferSize = 65536;
         opts.SchemaVersion = 2;
 
@@ -76,7 +75,6 @@ public class BackupEngineOptionsTests
         Assert.Equal(2097152UL, opts.RestoreRateLimit);
         Assert.Equal(2, opts.MaxBackgroundOperations);
         Assert.Equal(1024UL, opts.CallbackTriggerIntervalSize);
-        Assert.Equal(5, opts.MaxValidBackupsToOpen);
         Assert.Equal(65536UL, opts.IoBufferSize);
         Assert.Equal(2, opts.SchemaVersion);
     }

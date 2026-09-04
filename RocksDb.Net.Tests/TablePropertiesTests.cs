@@ -52,7 +52,7 @@ public class TablePropertiesTests
         var listener = new CapturingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
-        opts.EventListener = listener;
+        opts.AddEventListener(listener);
 
         using (var db = RocksDb.Open(opts, dir.Path))
         {
@@ -96,7 +96,7 @@ public class TablePropertiesTests
         var listener = new CapturingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
-        opts.EventListener = listener;
+        opts.AddEventListener(listener);
         opts.SetUInt64AddMergeOperator();
 
         using (var db = RocksDb.Open(opts, dir.Path))
@@ -122,7 +122,7 @@ public class TablePropertiesTests
         var listener = new CapturingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
-        opts.EventListener = listener;
+        opts.AddEventListener(listener);
 
         using (var db = RocksDb.Open(opts, dir.Path))
         {
@@ -162,7 +162,7 @@ public class TablePropertiesTests
         var listener = new CapturingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
-        opts.EventListener = listener;
+        opts.AddEventListener(listener);
         opts.EnableBlobs();
 
         using (var db = RocksDb.Open(opts, dir.Path))
@@ -188,7 +188,7 @@ public class TablePropertiesTests
         var listener = new CapturingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
-        opts.EventListener = listener;
+        opts.AddEventListener(listener);
 
         using (var db = RocksDb.Open(opts, dir.Path))
         {
@@ -208,7 +208,7 @@ public class TablePropertiesTests
         var listener = new CapturingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
-        opts.EventListener = listener;
+        opts.AddEventListener(listener);
         opts.EnableBlobs();
 
         using (var db = RocksDb.Open(opts, dir.Path))
@@ -250,7 +250,7 @@ public class TablePropertiesTests
         var listener = new CapturingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
-        opts.EventListener = listener;
+        opts.AddEventListener(listener);
 
         using (var db = RocksDb.Open(opts, dir.Path))
         {
