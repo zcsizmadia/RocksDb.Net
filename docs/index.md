@@ -17,7 +17,8 @@ Targets .NET 8.0, 9.0 and 10.0.
 ```csharp
 using RocksDbNet;
 
-using var options = new DbOptions { CreateIfMissing = true };
+// No `using` on the options: Open takes ownership of them.
+var options = new DbOptions { CreateIfMissing = true };
 using var db = RocksDb.Open(options, "mydb");
 
 db.Put("key", "value");

@@ -101,7 +101,8 @@ public abstract class MergeOperator : RocksDbHandle
             bool hasExistingValue = existingVal != null;
             var existingValueSpan = hasExistingValue ? new ReadOnlySpan<byte>(existingVal, checked((int)existingValLen)) : default;
 
-            if (!self.FullMerge(keySpan, hasExistingValue, existingValueSpan, operandsList, out byte[] newVal))
+            if (!self.FullMerge(keySpan, hasExistingValue, existingValueSpan, operandsList, out byte[]? newVal)
+                || newVal is null)
             {
                 // If no success, return a null pointer and set newValLen to 0
                 // This indicates to RocksDb that the merge operation failed, and in that case RocksDb will not use the returned value,
@@ -149,7 +150,7 @@ public abstract class MergeOperator : RocksDbHandle
             var keySpan = new ReadOnlySpan<byte>(key, checked((int)keyLen));
             var operandsList = CreateOperands(operands, operandsLen, numOperands);
 
-            if (!self.PartialMerge(keySpan, operandsList, out byte[] newVal))
+            if (!self.PartialMerge(keySpan, operandsList, out byte[]? newVal) || newVal is null)
             {
                 // If no success, return a null pointer and set newValLen to 0
                 // This indicates to RocksDb that the merge operation failed, and in that case RocksDb will not use the returned value,
@@ -287,7 +288,7 @@ public abstract class MergeOperator : RocksDbHandle
     /// </param>
     /// <param name="newValue">Output: the result of the merge.</param>
     /// <returns><c>true</c> if the merge succeeded; <c>false</c> to signal failure.</returns>
-    public abstract bool FullMerge(ReadOnlySpan<byte> key, bool hasExistingValue, ReadOnlySpan<byte> existingValue, IReadOnlyList<byte[]> operands, out byte[] newValue);
+    public abstract bool FullMerge(ReadOnlySpan<byte> key, bool hasExistingValue, ReadOnlySpan<byte> existingValue, IReadOnlyList<byte[]> operands, out byte[]? newValue);
 
     /// <summary>
     /// Optional partial merge: combines a subset of operands before a full
@@ -303,9 +304,13 @@ public abstract class MergeOperator : RocksDbHandle
     /// <see langword="true"/> if the operands were combined;
     /// <see langword="false"/> to leave it to <see cref="FullMerge"/>.
     /// </returns>
-    public virtual bool PartialMerge(ReadOnlySpan<byte> key, IReadOnlyList<byte[]> operands, out byte[] newValue)
+    public virtual bool PartialMerge(
+        ReadOnlySpan<byte> key, IReadOnlyList<byte[]> operands, out byte[]? newValue)
     {
-        newValue = [];
+        // null rather than an empty array. There is no value to give when the
+        // answer is "leave it to FullMerge", and the empty array was only ever
+        // there to satisfy a non-nullable out parameter.
+        newValue = null;
         return false;
     }
 

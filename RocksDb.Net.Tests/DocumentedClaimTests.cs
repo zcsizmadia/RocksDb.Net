@@ -138,7 +138,7 @@ public class DocumentedClaimTests
 
         public override bool FullMerge(
             ReadOnlySpan<byte> key, bool hasExistingValue, ReadOnlySpan<byte> existingValue,
-            IReadOnlyList<byte[]> operands, out byte[] newValue)
+            IReadOnlyList<byte[]> operands, out byte[]? newValue)
         {
             FullMergeThread = Environment.CurrentManagedThreadId;
             newValue = operands[^1];

@@ -69,7 +69,7 @@ class CounterMergeOperator : MergeOperator
         bool hasExistingValue,
         ReadOnlySpan<byte> existingValue,
         IReadOnlyList<byte[]> operands,
-        out byte[] newValue)
+        out byte[]? newValue)
     {
         long sum = 0;
         if (hasExistingValue && long.TryParse(Encoding.UTF8.GetString(existingValue), out long existing))
@@ -88,7 +88,7 @@ class CounterMergeOperator : MergeOperator
     public override bool PartialMerge(
         ReadOnlySpan<byte> key,
         IReadOnlyList<byte[]> operands,
-        out byte[] newValue)
+        out byte[]? newValue)
     {
         long sum = 0;
         foreach (var operand in operands)
@@ -112,7 +112,7 @@ class AppendListMergeOperator : MergeOperator
         bool hasExistingValue,
         ReadOnlySpan<byte> existingValue,
         IReadOnlyList<byte[]> operands,
-        out byte[] newValue)
+        out byte[]? newValue)
     {
         var sb = new StringBuilder();
         if (hasExistingValue)

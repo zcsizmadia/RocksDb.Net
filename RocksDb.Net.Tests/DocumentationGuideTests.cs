@@ -407,7 +407,7 @@ public class DocumentationGuideTests
             bool hasExistingValue,
             ReadOnlySpan<byte> existingValue,
             IReadOnlyList<byte[]> operands,
-            out byte[] newValue)
+            out byte[]? newValue)
         {
             long total = hasExistingValue && existingValue.Length == sizeof(long)
                 ? BinaryPrimitives.ReadInt64LittleEndian(existingValue)
@@ -427,7 +427,7 @@ public class DocumentationGuideTests
         }
 
         public override bool PartialMerge(
-            ReadOnlySpan<byte> key, IReadOnlyList<byte[]> operands, out byte[] newValue)
+            ReadOnlySpan<byte> key, IReadOnlyList<byte[]> operands, out byte[]? newValue)
         {
             long sum = 0;
 

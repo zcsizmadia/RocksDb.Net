@@ -50,6 +50,21 @@ public enum Compression
     /// <see cref="Zlib"/> with decompression closer to <see cref="Lz4"/>.
     /// </summary>
     Zstd = 7,
+
+    /// <summary>
+    /// Inherit the setting rather than choose an algorithm. The default of
+    /// <see cref="DbOptions.BottommostCompression"/>, where it means "use
+    /// <see cref="DbOptions.Compression"/>".
+    /// </summary>
+    /// <remarks>
+    /// <c>kDisableCompressionOption</c>. Distinct from <see cref="None"/>, which
+    /// selects no compression: this selects nothing at all. Without it the
+    /// default was not expressible, so reading
+    /// <see cref="DbOptions.BottommostCompression"/> on fresh options returned a
+    /// value no member matched, a <c>switch</c> over it fell through, and a
+    /// caller who had set an algorithm could not restore the default.
+    /// </remarks>
+    Inherit = 0xff,
 }
 
 // Whether a build actually supports a given algorithm depends on how the
@@ -822,15 +837,19 @@ public sealed class DbOptions : RocksDbHandle
     }
 
     /// <summary>Attaches a rate limiter.</summary>
-
+    /// <remarks>
+    /// RocksDb copies the shared pointer, so the limiter may be shared between
+    /// options objects and reused by a database opened later. Assigning
+    /// registers no hold, exactly as a cache does not: destroying the handle
+    /// only drops this library's reference, and RocksDb's own copy keeps the
+    /// limiter alive for as long as it needs it.
+    /// </remarks>
     public RateLimiter RateLimiter
     {
         set
         {
             ArgumentNullException.ThrowIfNull(value);
-            value.AddHolder();
             NativeMethods.rocksdb_options_set_ratelimiter(Handle, value.Handle);
-            _ownedHandles.Add(value);
         }
     }
 
@@ -1945,10 +1964,18 @@ public sealed class DbOptions : RocksDbHandle
     /// </para>
     /// </remarks>
     public DbOptions AddCompactOnDeletionCollector(
-        nuint windowSize, nuint deletionTrigger, double deletionRatio = 0, nuint minFileSize = 0)
+        ulong windowSize, ulong deletionTrigger, double deletionRatio = 0, ulong minFileSize = 0)
     {
+        // ulong rather than nuint, like every other size on this type. This was
+        // the last nuint left in the public API after the twenty that moved for
+        // the release, so it was the one place a caller still had to write a cast
+        // and the one whose meaning changed between win-x64 and win-x86.
         NativeMethods.rocksdb_options_add_compact_on_deletion_collector_factory_min_file_size(
-            Handle, windowSize, deletionTrigger, deletionRatio, minFileSize);
+            Handle,
+            checked((nuint)windowSize),
+            checked((nuint)deletionTrigger),
+            deletionRatio,
+            checked((nuint)minFileSize));
 
         return this;
     }
@@ -2620,10 +2647,21 @@ public sealed class DbOptions : RocksDbHandle
         // Release rather than dispose. These objects can be attached to more
         // than one options object, and to a database opened from one, so the
         // native release belongs to whichever holder lets go last.
-        foreach (var handle in _ownedHandles)
+        foreach (RocksDbHandle handle in _ownedHandles)
         {
             handle.ReleaseHolder();
         }
-        _ownedHandles.Clear();
+
+        // Not cleared. Clearing a ConcurrentBag reads a ThreadLocal, and a
+        // ThreadLocal is itself finalizable: on the finalizer path it may already
+        // be gone, and the ObjectDisposedException that comes back is unhandled
+        // and takes the process with it. This ran on every options object that
+        // was collected rather than disposed, which is the case the holds above
+        // exist to make safe, so the safety net was the thing crashing.
+        //
+        // Nothing needs the clear: Dispose(bool) compare-exchanges its way to
+        // running this once, and the bag is unreachable immediately after.
+        // Enumerating is fine, because that freezes the bag under its own lock
+        // without touching the thread-local.
     }
 }

@@ -140,6 +140,17 @@ public sealed class BackupEngine : RocksDbHandle
         nint err = default;
         NativeMethods.rocksdb_backup_engine_create_new_backup_with_options(
             Handle, db.Handle, options.Handle, &backupId, ref err);
+
+        // Only options.Handle was read, so nothing kept the options object
+        // reachable for the call. A caller who passed a temporary — the natural
+        // shape, since these options exist only to configure one backup — left it
+        // collectable from the moment the handle was read, and RocksDb binds a
+        // const reference straight to the native struct for the whole copy. A
+        // backup of any size takes long enough for a collection to happen inside
+        // it, and the finalizer would then destroy the struct RocksDb was reading
+        // and free the GCHandle behind the progress and exclude-files callbacks.
+        GC.KeepAlive(options);
+
         NativeMethods.ThrowOnError(err);
         return backupId;
     }
@@ -165,6 +176,11 @@ public sealed class BackupEngine : RocksDbHandle
         fixed (byte* metadata = appMetadata)
             NativeMethods.rocksdb_backup_engine_create_new_backup_with_metadata(
                 Handle, db.Handle, options.Handle, metadata, (nuint)appMetadata.Length, &backupId, ref err);
+
+        // As in the overload above: only the handle was read, so nothing kept a
+        // temporary options object reachable for the length of the backup.
+        GC.KeepAlive(options);
+
         NativeMethods.ThrowOnError(err);
         return backupId;
     }

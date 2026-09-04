@@ -49,6 +49,12 @@ public class ArgumentGuardTests
         Assert.Throws<ArgumentNullException>(() => db.Db.GetProperty(null!));
         Assert.Throws<ArgumentException>(() => db.Db.GetProperty(string.Empty));
 
+        // The integer overloads were the two property readers with no name
+        // guard, so a null name reached RocksDb as a null const char* and its
+        // std::string constructor.
+        Assert.Throws<ArgumentNullException>(() => db.Db.GetPropertyInt(null!));
+        Assert.Throws<ArgumentException>(() => db.Db.GetPropertyInt(string.Empty));
+
         Assert.Throws<ArgumentNullException>(() => Checkpoint.Create(null!));
 
         using Checkpoint checkpoint = Checkpoint.Create(db.Db);

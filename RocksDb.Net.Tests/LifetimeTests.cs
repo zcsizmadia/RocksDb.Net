@@ -195,11 +195,21 @@ public class LifetimeTests
     }
 
     /// <summary>
-    /// The default column family wrapper is handed out from a cache, because
-    /// each native call allocates a fresh non-owning wrapper that nothing frees.
+    /// The default column family wrapper is handed out from a cache, and owns
+    /// the wrapper struct the native call allocated for it.
     /// </summary>
+    /// <remarks>
+    /// The two halves are related. Every call to
+    /// <c>rocksdb_get_default_column_family_handle</c> allocates a fresh
+    /// <c>rocksdb_column_family_handle_t</c>, so handing one out per call leaked
+    /// one per call, and the cache brought that down to one per database.
+    /// Owning it removes the last one: the native call sets <c>immortal</c> on
+    /// the handle and <c>rocksdb_column_family_handle_destroy</c> honours that
+    /// by deleting only the wrapper struct, leaving the column family itself
+    /// alone — so destroying it is both safe and required.
+    /// </remarks>
     [Fact]
-    public void GetDefaultColumnFamily_ReturnsTheSameInstanceEachTime()
+    public void GetDefaultColumnFamily_ReturnsTheSameOwnedInstanceEachTime()
     {
         using var db = new TempDb();
 
@@ -207,6 +217,12 @@ public class LifetimeTests
         ColumnFamilyHandle second = db.Db.GetDefaultColumnFamily();
 
         Assert.Same(first, second);
-        Assert.False(first.Owned);
+        Assert.True(first.Owned);
+
+        // Still usable through the cached wrapper, which is the part the
+        // ownership change must not break: it is destroyed when the database
+        // closes, not before.
+        db.Db.Put("k", "v", first);
+        Assert.Equal("v", db.Db.GetString("k", first));
     }
 }

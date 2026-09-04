@@ -19,7 +19,17 @@ public sealed class Checkpoint : RocksDbHandle
         nint err = default;
         nint handle = NativeMethods.rocksdb_checkpoint_object_create(db.Handle, ref err);
         NativeMethods.ThrowOnError(err);
-        return new Checkpoint(handle);
+
+        // Parented to the database, like every other handle derived from one.
+        // rocksdb_checkpoint_object_create passes db->rep to Checkpoint::Create,
+        // which keeps that DB* for the checkpoint's whole life, so a checkpoint
+        // outliving its database was a use-after-free on the next call rather
+        // than the ObjectDisposedException every sibling type gives. The parent
+        // link also keeps the database reachable, which matters when the only
+        // reference to it is the one the checkpoint was created from.
+        var checkpoint = new Checkpoint(handle);
+        checkpoint.SetParent(db);
+        return checkpoint;
     }
 
     /// <summary>

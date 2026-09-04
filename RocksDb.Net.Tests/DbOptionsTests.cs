@@ -695,7 +695,7 @@ public class DbOptionsTests
     private sealed class TestAppendMerge : MergeOperator
     {
         public TestAppendMerge() : base("TestAppend") { }
-        public override bool FullMerge(ReadOnlySpan<byte> key, bool hasExistingValue, ReadOnlySpan<byte> existingValue, IReadOnlyList<byte[]> operands, out byte[] newValue)
+        public override bool FullMerge(ReadOnlySpan<byte> key, bool hasExistingValue, ReadOnlySpan<byte> existingValue, IReadOnlyList<byte[]> operands, out byte[]? newValue)
         {
             newValue = [];
             return true;

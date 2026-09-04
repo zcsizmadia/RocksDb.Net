@@ -221,6 +221,19 @@ public abstract class RocksDbHandle : IDisposable
     }
 
     /// <summary>
+    /// Whether <see cref="PinGarbageCollector"/> has run, and so whether
+    /// <see cref="UnpinGarbageCollector"/> can be called without throwing.
+    /// </summary>
+    /// <remarks>
+    /// For the finalizer path. A derived constructor that throws while
+    /// evaluating the arguments it passes to <c>base(...)</c> leaves an
+    /// allocated, finalizable object on which no constructor ever ran, so
+    /// nothing pinned it. Unpinning that throws, and an exception from a
+    /// finalizer is unhandled and takes the process with it.
+    /// </remarks>
+    protected bool IsPinned => _gcHandle.IsAllocated;
+
+    /// <summary>
     /// The pointer to pass to RocksDb as the callback state, which comes back
     /// to <see cref="GetSelfFromPinnedIntPtr{T}"/> on every callback.
     /// </summary>
