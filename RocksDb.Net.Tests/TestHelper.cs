@@ -290,3 +290,39 @@ public sealed class CallbackExceptionRecorder : IDisposable
     public void Dispose()
         => RocksDbCallbacks.UnhandledException -= OnUnhandled;
 }
+
+/// <summary>
+/// Polls for a condition RocksDb reaches on a background thread.
+/// </summary>
+/// <remarks>
+/// Flushes and compactions are asynchronous, so a test that checks immediately
+/// after asking for one is really testing how fast the machine is. Several test
+/// classes had grown their own copy of this.
+/// </remarks>
+public static class Wait
+{
+    /// <summary>
+    /// Polls until the condition holds, returning whether it ever did.
+    /// </summary>
+    /// <remarks>
+    /// Returns rather than throws, so the caller can assert on it and say in its
+    /// own words what was being waited for.
+    /// </remarks>
+    public static bool Until(Func<bool> condition, TimeSpan? timeout = null)
+    {
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        TimeSpan limit = timeout ?? TimeSpan.FromSeconds(30);
+
+        while (elapsed.Elapsed < limit)
+        {
+            if (condition())
+            {
+                return true;
+            }
+
+            Thread.Sleep(25);
+        }
+
+        return condition();
+    }
+}
