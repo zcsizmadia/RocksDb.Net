@@ -24,7 +24,7 @@ public class ListenerErrorAndStallTests
         using SstFileManager manager = SstFileManager.Create();
 
         // Small enough that a few flushes exceed it.
-        manager.SetMaxAllowedSpaceUsage(64 * 1024);
+        manager.MaxAllowedSpaceUsage = 64 * 1024;
 
         var listener = new RecordingListener();
 
