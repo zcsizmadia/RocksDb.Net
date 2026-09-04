@@ -1195,9 +1195,15 @@ public sealed class DbOptions : RocksDbHandle
         return result;
     }
 
-    /// <summary>Returns the current value of a ticker from the statistics subsystem.</summary>
-    public ulong GetTickerCount(uint tickerType)
-        => NativeMethods.rocksdb_options_statistics_get_ticker_count(Handle, tickerType);
+    /// <summary>Returns the current value of a counter from the statistics subsystem.</summary>
+    /// <param name="ticker">Which counter to read.</param>
+    /// <remarks>
+    /// Zero unless <see cref="EnableStatistics"/> was called before the database
+    /// was opened. This took a bare <see cref="uint"/>, so callers passed the
+    /// numeric value of a counter they had to look up in RocksDb's header.
+    /// </remarks>
+    public ulong GetTickerCount(Ticker ticker)
+        => NativeMethods.rocksdb_options_statistics_get_ticker_count(Handle, (uint)ticker);
 
     /// <summary>
     /// Returns histogram data for a statistics histogram type. Returns
@@ -1209,9 +1215,12 @@ public sealed class DbOptions : RocksDbHandle
     /// recorded" or "statistics were never enabled". Attach a statistics object
     /// with <see cref="EnableStatistics"/> before relying on the numbers.
     /// </remarks>
-    public HistogramData? GetHistogramData(uint histogramType)
+    /// <param name="histogram">Which distribution to read.</param>
+    public HistogramData? GetHistogramData(Histogram histogram)
     {
         nint dataHandle = NativeMethods.rocksdb_statistics_histogram_data_create();
+
+        // Kept as it was: the native accessor takes the id as a plain integer.
         if (dataHandle == nint.Zero)
         {
             return null;
@@ -1219,7 +1228,7 @@ public sealed class DbOptions : RocksDbHandle
 
         try
         {
-            NativeMethods.rocksdb_options_statistics_get_histogram_data(Handle, histogramType, dataHandle);
+            NativeMethods.rocksdb_options_statistics_get_histogram_data(Handle, (uint)histogram, dataHandle);
             return new HistogramData(
                 NativeMethods.rocksdb_statistics_histogram_data_get_median(dataHandle),
                 NativeMethods.rocksdb_statistics_histogram_data_get_p95(dataHandle),

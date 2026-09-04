@@ -38,28 +38,41 @@ jobs:
       with:
         dotnet-version: 10.0.x
 
-    - name: Check NativeMethods.g.cs is up to date
+    - name: Check the generated files are up to date
       # Regenerate from the pinned RocksDb version and fail if the result
       # differs from what is committed. This catches three things a build cannot:
-      # a hand edit to the generated file, a generator change that was never
-      # regenerated, and a RocksDbVersion bump where the bindings were left
-      # behind. The last one matters most, since the P/Invoke signatures would
-      # then describe a different native library than the one being loaded.
+      # a hand edit to a generated file, a generator change that was never
+      # regenerated, and a RocksDbVersion bump where the output was left behind.
+      # The last one matters most, since the P/Invoke signatures would then
+      # describe a different native library than the one being loaded, and the
+      # statistics enums would name counters by the wrong number.
       shell: bash
       run: |
         version="$(dotnet msbuild RocksDb.Net/ -getProperty:RocksDbVersion -nologo -v:q | tr -d '\r' | xargs)"
-        echo "Regenerating bindings for RocksDb $version"
+        echo "Regenerating for RocksDb $version"
 
-        dotnet run --project NativeMethodsGenerator -c Release -- \
-          --version "$version" \
-          --output RocksDb.Net/Native/NativeMethods.g.cs
+        # No --version, so this runs the command the README documents and the
+        # generator resolves the version itself. Its first line reports what it
+        # resolved, which is checked against msbuild's own evaluation of the
+        # property: if the generator ever read that file differently from
+        # msbuild, every binding would be generated for the wrong library and
+        # nothing else here would notice.
+        dotnet run --project NativeMethodsGenerator -c Release | tee generator.log
 
-        if ! git diff --exit-code -- RocksDb.Net/Native/NativeMethods.g.cs; then
-          echo "::error::NativeMethods.g.cs does not match a fresh generation for RocksDb $version. Re-run the generator and commit the result."
+        if ! grep -qE "^RocksDb version : ${version}([[:space:]]|\$)" generator.log; then
+          echo "::error::The generator did not resolve RocksDb $version. It reported:"
+          head -1 generator.log
           exit 1
         fi
 
-        echo "Bindings match the generator output."
+        rm -f generator.log
+
+        if ! git diff --exit-code -- RocksDb.Net/Native/NativeMethods.g.cs RocksDb.Net/StatisticsEnums.g.cs; then
+          echo "::error::The generated files do not match a fresh generation for RocksDb $version. Re-run the generator and commit the result."
+          exit 1
+        fi
+
+        echo "Generated files match the generator output."
 
     - name: Check the docs match the pinned version and function count
       # The RocksDb version and the binding count appear in prose in several
@@ -91,9 +104,10 @@ jobs:
           fi
         }
 
-        # The version badge and the build instructions in the README.
+        # The version badge in the README. The generator command below it does
+        # not repeat the version any more, since the generator reads it from
+        # Directory.Build.props, so there is nothing there to go stale.
         check README.md "RocksDb-${version}-blue" "the current version in the RocksDb badge"
-        check README.md "--version ${version}" "the current version in the generator instructions"
 
         # The binding count, where each file happens to format it.
         check README.md "(${grouped} functions)" "the current binding count"
