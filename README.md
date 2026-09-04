@@ -59,6 +59,8 @@ about the native ABI, and nothing would catch it at build or load time.
 
 ## Quick Start
 
+Every snippet below is compiled and run as part of this repository's test suite, so they are known to work rather than merely to look right.
+
 ### Install
 
 ```shell
@@ -70,7 +72,8 @@ dotnet add package RocksDb.Net
 ```csharp
 using RocksDbNet;
 
-using var options = new DbOptions { CreateIfMissing = true };
+// No `using` on the options: Open takes ownership of them.
+var options = new DbOptions { CreateIfMissing = true };
 using var db = RocksDb.Open(options, "mydb");
 
 // Write
@@ -100,14 +103,15 @@ iterator.SeekToFirst();
 
 foreach (var entry in iterator)
 {
-    Console.WriteLine($"{entry.CurrentKey} = {entry.CurrentValue}");
+    // Spans into the iterator's own buffers, valid until it moves.
+    Console.WriteLine($"{Encoding.UTF8.GetString(entry.Key)} = {Encoding.UTF8.GetString(entry.Value)}");
 }
 ```
 
 ### Column Families
 
 ```csharp
-using var options = new DbOptions
+var options = new DbOptions
 {
     CreateIfMissing = true,
     CreateMissingColumnFamilies = true
@@ -145,21 +149,21 @@ using var readOpts = new ReadOptions();
 readOpts.SetSnapshot(snapshot);
 
 // Reads see the database state at snapshot time
-string? val = db.GetString("key", readOptions: readOpts);
+string? val = db.GetString("key", options: readOpts);
 ```
 
 ### Merge Operators
 
 ```csharp
 // Built-in UInt64 addition
-using var options = new DbOptions { CreateIfMissing = true };
+var options = new DbOptions { CreateIfMissing = true };
 options.SetUInt64AddMergeOperator();
 using var db = RocksDb.Open(options, "counters");
 
-db.Merge("visits", BitConverter.GetBytes(1UL));
-db.Merge("visits", BitConverter.GetBytes(5UL));
+db.Merge("visits"u8, BitConverter.GetBytes(1UL));
+db.Merge("visits"u8, BitConverter.GetBytes(5UL));
 
-ulong total = BitConverter.ToUInt64(db.Get("visits"));
+ulong total = BitConverter.ToUInt64(db.Get("visits"u8));
 // total == 6
 ```
 
@@ -175,13 +179,19 @@ See [Ownership and lifetime](https://github.com/zcsizmadia/RocksDb.Net/blob/main
 ### Metadata and statistics
 
 ```csharp
-using var db = RocksDb.Open(new DbOptions { CreateIfMissing = true }, "stats_db");
+// Statistics live on the options, so keep a reference to read them back.
+// These are the options the database owns; do not dispose them yourself.
+var options = new DbOptions { CreateIfMissing = true };
+options.EnableStatistics();
+
+using var db = RocksDb.Open(options, "stats_db");
+
+db.Put("a", "1");
+db.Flush();
 
 var metadata = db.GetColumnFamilyMetadata();
-Console.WriteLine(metadata?.Name);
+Console.WriteLine(metadata?.Name); // "default"
 
-using var options = new DbOptions { CreateIfMissing = true };
-options.EnableStatistics();
 var histogram = options.GetHistogramData(0);
 Console.WriteLine(histogram?.Count);
 ```
@@ -195,8 +205,9 @@ db.Put("a", "1");
 db.Put("z", "2");
 db.Flush();
 
-using var liveFiles = db.GetLiveFiles();
-Console.WriteLine(liveFiles?.Files.Count);
+// Read in full and copied out, so there is nothing to dispose.
+IReadOnlyList<LiveFileMetadata> liveFiles = db.GetLiveFiles();
+Console.WriteLine(liveFiles.Count);
 
 ulong[] sizes = db.ApproximateSizes(new[] { ("a", "z") });
 Console.WriteLine(sizes[0]);
@@ -213,18 +224,25 @@ using var db = RocksDb.Open(new DbOptions { CreateIfMissing = true }, "maintenan
 using var compactOpts = new WaitForCompactOptions { Flush = true, TimeoutMicros = 5_000_000 };
 db.SuggestCompactRange(Encoding.UTF8.GetBytes("a"), Encoding.UTF8.GetBytes("z"));
 db.DeleteFilesInRange("a", "z");
-db.CancelAllBackgroundWork(wait: false);
 db.WaitForCompact(compactOpts);
+
+// Last, and not before WaitForCompact: cancelling puts the database into
+// shutdown, and waiting after that fails with "Shutdown in progress".
+db.CancelAllBackgroundWork(wait: false);
 ```
 
 ### Backup & Restore
 
 ```csharp
-using var engine = BackupEngine.Open("backups");
+// The options say how to reach the database being backed up; the path is
+// where the backups go.
+using var backupOptions = new DbOptions();
+using var engine = BackupEngine.Open(backupOptions, "backups");
+
 engine.CreateNewBackup(db);
 
-// Later: restore
-engine.RestoreDbFromLatestBackup("restored_db");
+// Later: restore, into a database directory and a WAL directory.
+engine.RestoreDbFromLatestBackup("restored_db", "restored_db");
 ```
 
 ### SST File Ingestion
@@ -235,20 +253,23 @@ using var dbOpts = new DbOptions();
 using var writer = SstFileWriter.Create(envOpts, dbOpts);
 
 writer.Open("data.sst");
-writer.Put("key1", "val1"); // Keys must be in sorted order
-writer.Put("key2", "val2");
+
+// Keys and values are bytes here, and must be in sorted order.
+writer.Put("key1"u8, "val1"u8);
+writer.Put("key2"u8, "val2"u8);
 writer.Finish();
 
-db.IngestExternalFile(new[] { "data.sst" });
+using var ingestOptions = new IngestExternalFileOptions();
+db.IngestExternalFile(new[] { "data.sst" }, ingestOptions);
 ```
 
 ### Bloom Filters
 
 ```csharp
 using var tableOptions = new BlockBasedTableOptions();
-tableOptions.SetFilterPolicy(FilterPolicy.CreateBloom(10));
+tableOptions.SetFilterPolicy(FilterPolicy.CreateBloomFull(10));
 
-using var options = new DbOptions { CreateIfMissing = true };
+var options = new DbOptions { CreateIfMissing = true };
 options.BlockBasedTableFactory = tableOptions;
 
 using var db = RocksDb.Open(options, "filtered_db");
