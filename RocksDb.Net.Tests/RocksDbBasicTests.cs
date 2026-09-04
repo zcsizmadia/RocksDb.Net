@@ -242,7 +242,7 @@ public class RocksDbBasicTests
         Assert.Equal(1, cfMetadata.FileCount);
         Assert.True(cfMetadata.Size > 0);
         Assert.NotEmpty(cfMetadata.Levels);
-        Assert.Equal(1, cfMetadata.Levels.Single(l => l.Level == 0).Files.Count);
+        Assert.Single(cfMetadata.Levels.Single(l => l.Level == 0).Files);
 
         Assert.Equal(0, defaultMetadata.FileCount);
     }
