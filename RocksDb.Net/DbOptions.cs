@@ -681,7 +681,15 @@ public sealed class DbOptions : RocksDbHandle
         set => NativeMethods.rocksdb_options_set_atomic_flush(Handle, value ? (byte)1 : (byte)0);
     }
 
-    /// <summary>Time-to-live for data in seconds. Expired entries are removed during compaction.</summary>
+    /// <summary>Time-to-live for data in seconds.</summary>
+    /// <remarks>
+    /// What expiry means depends on the compaction style, and only one of them
+    /// deletes anything. Under FIFO compaction, files older than this are
+    /// dropped. Under level and universal compaction, reaching this age only
+    /// schedules the file to be rewritten, which refreshes it rather than
+    /// removing its entries. Use a <see cref="CompactionFilter"/> if you need
+    /// entries themselves to expire.
+    /// </remarks>
     public ulong Ttl
     {
         get => NativeMethods.rocksdb_options_get_ttl(Handle);
@@ -1181,7 +1189,7 @@ public sealed class DbOptions : RocksDbHandle
 
     /// <summary>
     /// Whether to hint the operating system that reads will be random when the
-    /// database opens. Default is <see langword="false"/>.
+    /// database opens. Default is <see langword="true"/>.
     /// </summary>
     public bool AdviseRandomOnOpen
     {
@@ -1381,7 +1389,7 @@ public sealed class DbOptions : RocksDbHandle
 
     /// <summary>
     /// Whether writer threads spin briefly before yielding. Default is
-    /// <see langword="false"/>.
+    /// <see langword="true"/>.
     /// </summary>
     public bool EnableWriteThreadAdaptiveYield
     {
@@ -1666,9 +1674,13 @@ public sealed class DbOptions : RocksDbHandle
     }
 
     /// <summary>
-    /// How often statistics are written to the info log, in seconds. Zero
-    /// disables it.
+    /// How often statistics are persisted to the in-memory history buffer, in
+    /// seconds. Zero disables it. Defaults to 600.
     /// </summary>
+    /// <remarks>
+    /// Not the info-log dump, which is <see cref="StatsDumpPeriodSec"/>. This
+    /// one feeds the statistics history RocksDb keeps in memory.
+    /// </remarks>
     public uint StatsPersistPeriodSec
     {
         get => NativeMethods.rocksdb_options_get_stats_persist_period_sec(Handle);
@@ -2231,7 +2243,16 @@ public sealed class DbOptions : RocksDbHandle
         set => NativeMethods.rocksdb_options_set_read_io_executor_threads(Handle, value);
     }
 
-    /// <summary>Fraction of a file that must be read before reads alone trigger its compaction.</summary>
+    /// <summary>
+    /// How much of a file has to be read, relative to its size, before reads
+    /// alone mark it for compaction.
+    /// </summary>
+    /// <remarks>
+    /// The numerator is the bytes read through collapsible reads rather than
+    /// bytes read once: repeatedly reading the same part of a file counts each
+    /// time. So this is not a fraction of the file bounded by one, and a value
+    /// above one is meaningful.
+    /// </remarks>
     public double ReadTriggeredCompactionThreshold
     {
         get => NativeMethods.rocksdb_options_get_read_triggered_compaction_threshold(Handle);

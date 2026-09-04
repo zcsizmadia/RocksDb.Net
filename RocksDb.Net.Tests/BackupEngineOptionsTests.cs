@@ -502,4 +502,67 @@ public class BackupEngineOptionsTests
         Assert.Throws<ArgumentNullException>(
             () => engine.RestoreDbFromLatestBackup(backupDir.Path, backupDir.Path, null!));
     }
+
+    // ── The environment the engine keeps ────────────────────────────────────
+
+    /// <summary>
+    /// An environment handed to <c>Open</c> is held for the life of the engine,
+    /// so disposing it early defers rather than freeing it.
+    /// </summary>
+    /// <remarks>
+    /// RocksDb hands the environment straight to <c>BackupEngine::Open</c>, which
+    /// keeps the raw pointer. The documentation used to say the opposite, and
+    /// with an in-memory environment, whose destroy really does delete the
+    /// underlying object, following that advice left the engine pointing at freed
+    /// memory. The default environment hid it, because destroying that one only
+    /// frees the wrapper and leaves the process-wide instance alone.
+    /// </remarks>
+    [Fact]
+    public void Open_HoldsTheEnvironmentItWasGiven()
+    {
+        using var backupDir = new TempDir();
+
+        var env = new Env();
+
+        using var options = new BackupEngineOptions(backupDir.Path);
+        using BackupEngine engine = BackupEngine.Open(options, env);
+
+        // The caller lets go while the engine is still open.
+        env.Dispose();
+
+        Assert.False(env.IsDisposed);
+
+        // And the engine still works, which reading through a freed environment
+        // would not.
+        using var db = new TempDb();
+
+        db.Db.Put("a", "1");
+        engine.CreateNewBackup(db.Db);
+
+        BackupInfo info = Assert.Single(engine.AsEnumerable());
+        Assert.True(info.BackupId > 0);
+    }
+
+    /// <summary>
+    /// The engine lets go when it is disposed, so the caller's deferred disposal
+    /// then completes.
+    /// </summary>
+    [Fact]
+    public void DisposingTheEngine_ReleasesTheEnvironment()
+    {
+        using var backupDir = new TempDir();
+
+        var env = new Env();
+
+        using var options = new BackupEngineOptions(backupDir.Path);
+
+        BackupEngine engine = BackupEngine.Open(options, env);
+
+        env.Dispose();
+        Assert.False(env.IsDisposed);
+
+        engine.Dispose();
+
+        Assert.True(env.IsDisposed);
+    }
 }

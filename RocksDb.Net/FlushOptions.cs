@@ -16,9 +16,13 @@ public sealed class FlushOptions : RocksDbHandle
     }
 
     /// <summary>
-    /// If true, the flush proceeds even when doing so would stall writes. If
-    /// false, RocksDb returns an error rather than blocking the writer.
+    /// If true, the flush proceeds even when doing so would stall writes.
     /// </summary>
+    /// <remarks>
+    /// If false, the default, the flush waits until it can run without causing
+    /// a stall. It does not fail: the cost of saying no to a stall is that the
+    /// call blocks for longer, not that it returns an error.
+    /// </remarks>
     public bool AllowWriteStall
     {
         get => NativeMethods.rocksdb_flushoptions_get_allow_write_stall(Handle) != 0;
