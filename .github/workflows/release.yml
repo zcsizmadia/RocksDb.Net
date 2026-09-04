@@ -4,24 +4,42 @@ on:
   release:
     types: [published]
 
+  # Rehearsal. A release event is the only way this workflow used to run, and a
+  # release event publishes to NuGet.org, which cannot be undone: a version can
+  # be unlisted but never deleted or reused. So there was no way to exercise the
+  # pipeline without spending a version number on it, and the first real release
+  # was also the first test of the thing releasing it.
+  #
+  # Note the workflow definition for a release event is read from the default
+  # branch, not from the tagged commit, so a rehearsal cannot be arranged by
+  # putting a modified copy of this file on a branch. It has to live here.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to rehearse against, for example v11.8.1.1."
+        required: true
+        type: string
+      publish:
+        description: "Publish for real. Leave unchecked to rehearse."
+        required: false
+        type: boolean
+        default: false
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false  # Don't cancel releases in progress
 
 jobs:
-  release:
+  # Everything that can be checked without publishing. Safe to run at any time
+  # against any tag, and a rehearsal stops after this job.
+  validate:
     runs-on: ubuntu-latest
-    # No `if:` guard here on purpose. This job used to be skipped unless
-    # `github.event.release.target_commitish` was exactly 'main', which failed
-    # by doing nothing: a release created against a SHA or another branch
-    # produced a green, empty run and never published. The equivalent check now
-    # runs as a step below, where it can fail loudly instead. The old condition
-    # also carried `|| github.ref == 'refs/heads/main'`, which is dead on a
-    # release event because github.ref is the tag ref.
     permissions:
       actions: read     # To download from build.yml
       contents: write   # To upload assets to the Release
-      packages: write   # To push to GitHub Packages
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      nupkg: ${{ steps.resolve.outputs.nupkg }}
 
     steps:
       - uses: actions/checkout@v7
@@ -29,6 +47,12 @@ jobs:
           # Needed for the ancestry check below, which compares the tagged
           # commit against main.
           fetch-depth: 0
+          # The tag under test either way. On a release event github.ref is the
+          # tag ref, so this is the same commit the event carried; on a
+          # rehearsal it is the tag asked for rather than whatever main happens
+          # to be, which matters because the version comes out of the checked
+          # out Directory.Build.props.
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Install .NET SDKs
         uses: actions/setup-dotnet@v6
@@ -46,12 +70,17 @@ jobs:
           # name, or a SHA depending on how the release was made, so comparing
           # it to the string 'main' both missed valid releases and would have
           # accepted a tag that had been force-moved off main.
+          #
+          # HEAD rather than GITHUB_SHA, because a rehearsal checks out the tag
+          # it was given while GITHUB_SHA is the ref the run started from.
+          SHA="$(git rev-parse HEAD)"
           git fetch --no-tags origin main
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
-            echo "::error::The tagged commit $GITHUB_SHA is not an ancestor of main, so it is not published."
+          if ! git merge-base --is-ancestor "$SHA" origin/main; then
+            echo "::error::The tagged commit $SHA is not an ancestor of main, so it is not published."
             exit 1
           fi
-          echo "Tagged commit $GITHUB_SHA is on main."
+          echo "Tagged commit $SHA is on main."
+          echo "SHA=$SHA" >> "$GITHUB_ENV"
 
       - name: Download nupkg built from the tagged commit
         uses: dawidd6/action-download-artifact@v24
@@ -64,17 +93,18 @@ jobs:
           # version string still matched and the check below still passed.
           # Pinning also keeps the guarantee that what is published is exactly
           # what CI tested, rather than a fresh build made here.
-          commit: ${{ github.sha }}
+          commit: ${{ env.SHA }}
           name: nuget-package
           path: ./nupkgs
           check_artifacts: true    # Ensures the workflow actually has the named artifact
           search_artifacts: true   # Finds the latest run that actually contains this artifact
 
       - name: Check nupkg version
+        id: resolve
         shell: bash
         run: |
           # Get version from the tag (stripping 'v' prefix if present)
-          TAG_VERSION="${{ github.event.release.tag_name }}"
+          TAG_VERSION="${{ inputs.tag || github.event.release.tag_name }}"
           TAG_VERSION="${TAG_VERSION#v}"
 
           echo "Validating version: $TAG_VERSION"
@@ -94,29 +124,100 @@ jobs:
           # Verify the file exists with that version
           if [[ ! -f "$TARGET_NUPKG" ]]; then
             echo "::error::Could not find nupkg for version $TAG_VERSION in downloaded artifacts"
+            ls -la ./nupkgs || true
             exit 1
           fi
+
+          echo "version=$TAG_VERSION" >> "$GITHUB_OUTPUT"
+          echo "nupkg=RocksDb.Net.$TAG_VERSION.nupkg" >> "$GITHUB_OUTPUT"
 
           # Export variables for later steps
           echo "TARGET_NUPKG=$TARGET_NUPKG" >> "$GITHUB_ENV"
 
+      - name: Hand the validated package to the publish job
+        # Rather than downloading from build.yml again over there. What gets
+        # published is then byte-for-byte what the checks above passed, and the
+        # publish job needs no read access to another workflow's artifacts.
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-nupkg
+          path: ${{ env.TARGET_NUPKG }}
+          if-no-files-found: error
+
       - name: Attach Assets to GitHub Release
+        # Only for a real release. A rehearsal has no release to attach to, and
+        # --clobber against one that did exist would overwrite its asset.
+        if: github.event_name == 'release'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload --clobber ${{ github.event.release.tag_name }} "$TARGET_NUPKG"
 
+      - name: Say what a rehearsal did not do
+        if: github.event_name == 'workflow_dispatch' && !inputs.publish
+        run: |
+          echo "### Rehearsal complete: nothing was published" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Validated \`${{ steps.resolve.outputs.nupkg }}\` from a build of the tagged commit." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Not done, because this was a rehearsal:" >> "$GITHUB_STEP_SUMMARY"
+          echo "- push to NuGet.org" >> "$GITHUB_STEP_SUMMARY"
+          echo "- push to GitHub Packages" >> "$GITHUB_STEP_SUMMARY"
+          echo "- attach the package to a GitHub Release" >> "$GITHUB_STEP_SUMMARY"
+
+  # The only job that publishes anything. Separate from the checks above so it
+  # can sit behind an environment: the `nuget-release` environment carries
+  # required reviewers, so GitHub holds this job until someone approves it. That
+  # is enforced by GitHub rather than by the `if:` below, which is what makes it
+  # worth having — a mistake in an expression cannot leak a publish past a
+  # reviewer, and a rehearsal that somehow reached here would still have to be
+  # approved by a human who can see it is a rehearsal.
+  publish:
+    needs: validate
+    if: github.event_name == 'release' || inputs.publish
+    runs-on: ubuntu-latest
+    environment: nuget-release
+    permissions:
+      contents: read
+      packages: write   # To push to GitHub Packages
+
+    steps:
+      - name: Install .NET SDKs
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            10.0.x
+
+      - uses: actions/download-artifact@v6
+        with:
+          name: release-nupkg
+          path: ./nupkgs
+
+      - name: Refuse to publish a rehearsal
+        # Belt and braces. The job-level `if:` already excludes a rehearsal and
+        # the environment holds for a reviewer, but publishing to NuGet.org
+        # cannot be undone, so the last thing before the push restates the
+        # condition rather than trusting it to have been evaluated correctly
+        # three steps and one approval ago.
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.publish }}" != "true" ]]; then
+            echo "::error::A rehearsal reached the publish job. Refusing to push."
+            exit 1
+          fi
+          echo "Publishing ${{ needs.validate.outputs.nupkg }} for ${{ github.event_name }}."
+
       - name: Publish to NuGet.org
         shell: bash
         run: |
-          dotnet nuget push "$TARGET_NUPKG" \
+          dotnet nuget push "./nupkgs/${{ needs.validate.outputs.nupkg }}" \
             --api-key ${{ secrets.NUGET_API_KEY }} \
             --source https://api.nuget.org/v3/index.json \
             --skip-duplicate
 
       - name: Publish to GitHub Packages
         run: |
-          dotnet nuget push "$TARGET_NUPKG" \
+          dotnet nuget push "./nupkgs/${{ needs.validate.outputs.nupkg }}" \
             --api-key ${{ secrets.GITHUB_TOKEN }} \
             --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" \
             --skip-duplicate
