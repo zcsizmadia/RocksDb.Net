@@ -156,14 +156,18 @@ jobs:
       - name: Say what a rehearsal did not do
         if: github.event_name == 'workflow_dispatch' && !inputs.publish
         run: |
-          echo "### Rehearsal complete: nothing was published" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Validated \`${{ steps.resolve.outputs.nupkg }}\` from a build of the tagged commit." >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Not done, because this was a rehearsal:" >> "$GITHUB_STEP_SUMMARY"
-          echo "- push to NuGet.org" >> "$GITHUB_STEP_SUMMARY"
-          echo "- push to GitHub Packages" >> "$GITHUB_STEP_SUMMARY"
-          echo "- attach the package to a GitHub Release" >> "$GITHUB_STEP_SUMMARY"
+          # One redirect rather than eight, which is also what shellcheck asks
+          # for (SC2129). Quoted delimiter, so the backticks below are literal.
+          cat >> "$GITHUB_STEP_SUMMARY" <<'SUMMARY'
+          ### Rehearsal complete: nothing was published
+
+          Validated `${{ steps.resolve.outputs.nupkg }}` from a build of the tagged commit.
+
+          Not done, because this was a rehearsal:
+          - push to NuGet.org
+          - push to GitHub Packages
+          - attach the package to a GitHub Release
+          SUMMARY
 
   # The only job that publishes anything. Separate from the checks above so it
   # can sit behind an environment: the `nuget-release` environment carries
