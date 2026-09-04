@@ -412,8 +412,18 @@ public static class Wait
     /// Polls until the condition holds, returning whether it ever did.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Returns rather than throws, so the caller can assert on it and say in its
     /// own words what was being waited for.
+    /// </para>
+    /// <para>
+    /// Every assertion on an event listener callback needs this. RocksDb delivers
+    /// them on its own background threads, so a flush or a compaction returning
+    /// does not mean the callback for it has been made. A real file system hid
+    /// that by being slow: in memory a flush finishes in microseconds and the
+    /// assertion beats the callback, which is how a macOS job failed on
+    /// <c>EventListener_FlushJobInfo_Properties</c> while every other job passed.
+    /// </para>
     /// </remarks>
     public static bool Until(Func<bool> condition, TimeSpan? timeout = null)
     {

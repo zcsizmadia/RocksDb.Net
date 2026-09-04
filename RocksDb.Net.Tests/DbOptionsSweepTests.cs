@@ -330,9 +330,10 @@ public class DbOptionsSweepTests
         db.Flush();
         db.WaitForCompact();
 
-        Assert.Contains(
-            listener.CompactionCompleted,
-            c => c.CompactionReason == CompactionReason.FilesMarkedForCompaction);
+        Assert.True(
+            Wait.Until(() => listener.CompactionCompleted.Any(
+                c => c.CompactionReason == CompactionReason.FilesMarkedForCompaction)),
+            "no compaction was reported as being of marked files");
     }
 
     /// <summary>

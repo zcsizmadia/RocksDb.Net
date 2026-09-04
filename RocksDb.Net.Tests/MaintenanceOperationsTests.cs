@@ -216,6 +216,14 @@ public class MaintenanceOperationsTests
         // suggestion has nothing to mark and is silently a no-op.
         WriteAndFlush(db, 'v');
         db.CompactRange();
+
+        // The manual compaction reports on a background thread, so its own
+        // callback has to be in before the baseline is taken. In memory it
+        // otherwise arrives after the suggestion and is mistaken for its effect.
+        Assert.True(
+            WaitUntil(() => listener.CompactionCompleted.Count > 0),
+            "the manual compaction reported nothing");
+
         WriteAndFlush(db, 'w');
 
         int before = listener.CompactionCompleted.Count;

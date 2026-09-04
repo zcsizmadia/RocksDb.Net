@@ -121,6 +121,11 @@ public class EventListenerTests
         db.Put("key2", "value2");
         db.Flush();
 
+        Assert.True(
+            Wait.Until(() =>
+                listener.FlushBegin.Count > 0 && listener.FlushCompleted.Count > 0),
+            "no flush callback arrived");
+
         Assert.NotEmpty(listener.FlushBegin);
         var beginInfo = listener.FlushBegin[0];
         Assert.NotNull(beginInfo.ColumnFamilyName);
@@ -162,6 +167,10 @@ public class EventListenerTests
 
         db.CompactRange();
 
+        Assert.True(
+            Wait.Until(() => listener.CompactionCompleted.Count > 0),
+            "no compaction-completed callback arrived");
+
         Assert.NotEmpty(listener.CompactionCompleted);
 
         var info = listener.CompactionCompleted[0];
@@ -183,6 +192,11 @@ public class EventListenerTests
         db.Put("key1", "value1");
         db.Flush();
 
+        Assert.True(
+            Wait.Until(() =>
+                listener1.FlushCompleted.Count > 0 && listener2.FlushCompleted.Count > 0),
+            "one of the two listeners saw no flush");
+
         Assert.NotEmpty(listener1.FlushCompleted);
         Assert.NotEmpty(listener2.FlushCompleted);
     }
@@ -199,6 +213,10 @@ public class EventListenerTests
 
         db.Put("a", "1");
         db.Flush();
+
+        Assert.True(
+            Wait.Until(() => listener.FlushCompleted.Count > 0),
+            "no flush-completed callback arrived");
 
         FlushJobInfo info = Assert.Single(listener.FlushCompleted);
 
@@ -258,7 +276,9 @@ public class EventListenerTests
         db.Put("key", "value");
         db.Flush();
 
-        Assert.NotEmpty(listener.FlushBegin);
+        Assert.True(
+            Wait.Until(() => listener.FlushBegin.Count > 0),
+            "no flush-begin callback arrived");
     }
 
     [Fact]

@@ -150,8 +150,9 @@ public class NativeEnumValueTests
         db.WriteOverlappingSstFiles();
         db.CompactRange();
 
-        Assert.Contains(
-            listener.CompactionCompleted,
-            c => c.CompactionReason == CompactionReason.ManualCompaction);
+        Assert.True(
+            Wait.Until(() => listener.CompactionCompleted.Any(
+                c => c.CompactionReason == CompactionReason.ManualCompaction)),
+            "no compaction was reported as manual");
     }
 }

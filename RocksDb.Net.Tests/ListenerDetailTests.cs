@@ -24,6 +24,10 @@ public class ListenerDetailTests
             db.Flush();
         }
 
+        Assert.True(
+            Wait.Until(() => listener.FlushCompleted.Count > 0),
+            "no flush-completed callback arrived");
+
         FlushJobInfo flush = Assert.Single(listener.FlushCompleted);
 
         Assert.True(flush.JobId > 0);
@@ -47,6 +51,10 @@ public class ListenerDetailTests
             db.Put("a", "a-value-large-enough-for-a-blob");
             db.Flush();
         }
+
+        Assert.True(
+            Wait.Until(() => listener.FlushCompleted.Count > 0),
+            "no flush-completed callback arrived");
 
         FlushJobInfo flush = Assert.Single(listener.FlushCompleted);
 
@@ -77,6 +85,10 @@ public class ListenerDetailTests
 
             db.CompactRange();
         }
+
+        Assert.True(
+            Wait.Until(() => listener.CompactionCompleted.Count > 0),
+            "no compaction-completed callback arrived");
 
         Assert.NotEmpty(listener.CompactionCompleted);
         CompactionJobInfo compaction = listener.CompactionCompleted[0];
@@ -118,6 +130,10 @@ public class ListenerDetailTests
 
             db.CompactRange();
         }
+
+        Assert.True(
+            Wait.Until(() => listener.CompactionCompleted.Count > 0),
+            "no compaction-completed callback arrived");
 
         CompactionJobInfo compaction = listener.CompactionCompleted[0];
 
@@ -187,7 +203,10 @@ public class ListenerDetailTests
 
         // Sealing happens on flush. The column family has no user-defined
         // timestamps, so RocksDb reports none.
-        Assert.NotEmpty(listener.MemTablesSealed);
+        Assert.True(
+            Wait.Until(() => listener.MemTablesSealed.Count > 0),
+            "no memtable-sealed callback arrived");
+
         Assert.All(listener.MemTablesSealed, m => Assert.Empty(m.NewestUdt));
     }
 
