@@ -70,7 +70,7 @@ public class ResourceGovernanceTests
         using SstFileManager manager = SstFileManager.Create();
 
         // Small enough that a few flushes exceed it.
-        manager.SetMaxAllowedSpaceUsage(64 * 1024);
+        manager.MaxAllowedSpaceUsage = 64 * 1024;
 
         var opts = new DbOptions { CreateIfMissing = true, WriteBufferSize = 16 * 1024 };
         opts.SstFileManager = manager;
@@ -98,8 +98,8 @@ public class ResourceGovernanceTests
         using var dir = new TempDir();
         using SstFileManager manager = SstFileManager.Create();
 
-        manager.SetMaxAllowedSpaceUsage(64 * 1024 * 1024);
-        manager.SetCompactionBufferSize(8 * 1024 * 1024);
+        manager.MaxAllowedSpaceUsage = 64 * 1024 * 1024;
+        manager.CompactionBufferSize = 8 * 1024 * 1024;
 
         var opts = new DbOptions { CreateIfMissing = true };
         opts.SstFileManager = manager;

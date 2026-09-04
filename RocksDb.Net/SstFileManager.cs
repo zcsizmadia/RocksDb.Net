@@ -83,9 +83,16 @@ public sealed class SstFileManager : RocksDbHandle
     /// <remarks>
     /// Once reached, writes fail rather than consuming more space. Zero removes
     /// the cap.
+    /// <para>
+    /// Set-only: RocksDb offers no accessor to read the cap back.
+    /// <see cref="IsMaxAllowedSpaceReached"/> answers the question the cap
+    /// exists for.
+    /// </para>
     /// </remarks>
-    public void SetMaxAllowedSpaceUsage(ulong bytes)
-        => NativeMethods.rocksdb_sst_file_manager_set_max_allowed_space_usage(Handle, bytes);
+    public ulong MaxAllowedSpaceUsage
+    {
+        set => NativeMethods.rocksdb_sst_file_manager_set_max_allowed_space_usage(Handle, value);
+    }
 
     /// <summary>
     /// Space reserved above the cap for compaction output, in bytes.
@@ -94,9 +101,14 @@ public sealed class SstFileManager : RocksDbHandle
     /// A compaction writes its output before deleting its inputs, so it
     /// temporarily needs more room than the data occupies. Without this reserve
     /// a database at its limit could not compact, and so could never shrink.
+    /// <para>
+    /// Set-only, for the same reason as <see cref="MaxAllowedSpaceUsage"/>.
+    /// </para>
     /// </remarks>
-    public void SetCompactionBufferSize(ulong bytes)
-        => NativeMethods.rocksdb_sst_file_manager_set_compaction_buffer_size(Handle, bytes);
+    public ulong CompactionBufferSize
+    {
+        set => NativeMethods.rocksdb_sst_file_manager_set_compaction_buffer_size(Handle, value);
+    }
 
     /// <summary>Whether the space cap has been reached.</summary>
     /// <param name="includingCompactions">
