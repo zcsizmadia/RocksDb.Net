@@ -179,7 +179,23 @@ instruction to remove `(nuint)` casts when the previous release had no public
 `nuint` members at all. Also look for the opposite mistake: a member whose
 signature changed with **no** row at all.
 
-## Step 7 - verify
+## Step 7 - measure
+
+A native bump that halved read throughput would otherwise ship, and the first
+person to notice would be a user. The benchmarks are deliberately not a CI gate
+(see their README for why), so this is where they get run.
+
+```bash
+dotnet run --project RocksDb.Net.Benchmarks -c Release
+```
+
+Compare against the committed results for the previous version, and commit the
+new ones next to the machine and the pinned version they came from — a number
+without those two facts cannot be compared with anything. Read throughput and
+iterator allocations are the two that matter most; a large unexplained move in
+either is worth understanding before releasing rather than after.
+
+## Step 8 - verify
 
 ```bash
 dotnet build -c Release --no-incremental -warnaserror
