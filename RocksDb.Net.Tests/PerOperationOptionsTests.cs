@@ -96,13 +96,12 @@ public class PerOperationOptionsTests
     [Fact]
     public void FlushOptions_ListenerWait_ObservesCallbackBeforeReturning()
     {
-        using var dir = new TempDir();
         var listener = new CountingFlushListener();
 
         using var dbOpts = new DbOptions { CreateIfMissing = true };
         dbOpts.AddEventListener(listener);
 
-        using var db = RocksDb.Open(dbOpts, dir.Path);
+        using var db = TestDb.OpenInMemory(dbOpts);
         db.Put("a", "1");
 
         using var flushOpts = new FlushOptions { Wait = true, ListenerWait = true };

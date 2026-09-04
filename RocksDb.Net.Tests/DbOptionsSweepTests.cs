@@ -246,7 +246,6 @@ public class DbOptionsSweepTests
     [Fact]
     public void ADatabaseOpensAndWorksWithAllOfThemSet()
     {
-        using var dir = new TempDir();
         var opts = new DbOptions
         {
             CreateIfMissing = true,
@@ -277,7 +276,7 @@ public class DbOptionsSweepTests
 
         opts.EnableStatistics();
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         db.Put("key", "value");
         db.Flush();
@@ -302,7 +301,6 @@ public class DbOptionsSweepTests
     [Fact]
     public void AddCompactOnDeletionCollector_MarksATombstoneHeavyFile()
     {
-        using var dir = new TempDir();
         var listener = new RecordingListener();
 
         var opts = new DbOptions { CreateIfMissing = true };
@@ -311,7 +309,7 @@ public class DbOptionsSweepTests
         // Any window of 100 entries holding 50 deletions marks the file.
         opts.AddCompactOnDeletionCollector(windowSize: 100, deletionTrigger: 50);
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         for (int i = 0; i < 400; i++)
         {
@@ -344,13 +342,12 @@ public class DbOptionsSweepTests
     [Fact]
     public void WithoutTheCollector_NoFileIsMarked()
     {
-        using var dir = new TempDir();
         var listener = new RecordingListener();
 
         var opts = new DbOptions { CreateIfMissing = true };
         opts.AddEventListener(listener);
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         for (int i = 0; i < 400; i++)
         {
@@ -378,14 +375,13 @@ public class DbOptionsSweepTests
     [Fact]
     public void AddCompactOnDeletionCollector_AcceptsTheRatioAndMinimumSize()
     {
-        using var dir = new TempDir();
         var opts = new DbOptions { CreateIfMissing = true };
 
         // Repeated calls append collectors rather than replacing.
         opts.AddCompactOnDeletionCollector(100, 50, deletionRatio: 0.5, minFileSize: 1024);
         opts.AddCompactOnDeletionCollector(200, 100);
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         db.Put("key", "value");
         db.Flush();

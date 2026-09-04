@@ -36,13 +36,12 @@ public class ApiShapeTests
     [Fact]
     public void ChangeValue_WithAnEmptyArray_ReplacesTheValue()
     {
-        using var dir = new TempDir();
         using var filter = new BlankingFilter();
 
         var opts = new DbOptions { CreateIfMissing = true };
         opts.CompactionFilter = filter;
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         db.Put("blank_one", "original");
         db.Put("keep_one", "original");
@@ -81,13 +80,12 @@ public class ApiShapeTests
     [Fact]
     public void ChangeValue_WithANonEmptyArray_StillReplacesTheValue()
     {
-        using var dir = new TempDir();
         using var filter = new ReplacingFilter();
 
         var opts = new DbOptions { CreateIfMissing = true };
         opts.CompactionFilter = filter;
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         db.Put("key", "original");
         db.Flush();
@@ -116,13 +114,12 @@ public class ApiShapeTests
     [Fact]
     public void ChangeValue_WithNull_LeavesTheValueAlone()
     {
-        using var dir = new TempDir();
         using var filter = new NullReturningFilter();
 
         var opts = new DbOptions { CreateIfMissing = true };
         opts.CompactionFilter = filter;
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         db.Put("key", "original");
         db.Flush();

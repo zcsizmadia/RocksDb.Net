@@ -56,7 +56,6 @@ public class SmallGapsCachesAndBatchTests
     [Fact]
     public void HyperClockCache_ServesADatabase()
     {
-        using var dir = new TempDir();
         using Cache cache = Cache.CreateHyperClock(16 * 1024 * 1024, estimatedEntryChargeBytes: 0);
         var tableOptions = new BlockBasedTableOptions();
         tableOptions.SetBlockCache(cache);
@@ -64,7 +63,7 @@ public class SmallGapsCachesAndBatchTests
         var opts = new DbOptions { CreateIfMissing = true };
         opts.BlockBasedTableFactory = tableOptions;
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         for (int i = 0; i < 500; i++)
         {
@@ -90,7 +89,6 @@ public class SmallGapsCachesAndBatchTests
     [Fact]
     public void Cache_ReportsOccupancyAndTableSize()
     {
-        using var dir = new TempDir();
         using Cache cache = Cache.CreateLru(16 * 1024 * 1024);
         var tableOptions = new BlockBasedTableOptions();
         tableOptions.SetBlockCache(cache);
@@ -98,7 +96,7 @@ public class SmallGapsCachesAndBatchTests
         var opts = new DbOptions { CreateIfMissing = true };
         opts.BlockBasedTableFactory = tableOptions;
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         for (int i = 0; i < 500; i++)
         {

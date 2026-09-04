@@ -687,8 +687,6 @@ public class DbOptionsPropertyTests
     [Fact]
     public void VerifyOutputFlags_AreAcceptedByAnOpenDatabase()
     {
-        using var dir = new TempDir();
-
         var options = new DbOptions
         {
             CreateIfMissing = true,
@@ -699,7 +697,7 @@ public class DbOptionsPropertyTests
                 | VerifyOutputFlags.EnableForLocalCompaction,
         };
 
-        using RocksDb db = RocksDb.Open(options, dir.Path);
+        using RocksDb db = TestDb.OpenInMemory(options);
 
         for (int i = 0; i < 200; i++)
         {

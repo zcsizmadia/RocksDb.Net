@@ -89,13 +89,12 @@ public class EventListenerTests
     [Fact]
     public void EventListener_PartialOverride_DoesNotCrash()
     {
-        using var dir = new TempDir();
         var listener = new SingleOverrideListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.AddEventListener(listener);
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         // Drive flush, compaction and memtable-sealed events, none of which this
         // listener overrides except OnFlushCompleted.
@@ -111,13 +110,12 @@ public class EventListenerTests
     [Fact]
     public void EventListener_ReceivesFlushEvents()
     {
-        using var dir = new TempDir();
         var listener = new RecordingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.AddEventListener(listener);
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         db.Put("key1", "value1");
         db.Put("key2", "value2");
@@ -137,7 +135,6 @@ public class EventListenerTests
     [Fact]
     public void EventListener_ReceivesCompactionEvents()
     {
-        using var dir = new TempDir();
         var listener = new RecordingListener();
 
         using var opts = new DbOptions
@@ -148,7 +145,7 @@ public class EventListenerTests
         };
         opts.AddEventListener(listener);
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         // Write enough data to trigger compaction
         for (int i = 0; i < 200; i++)
@@ -175,14 +172,13 @@ public class EventListenerTests
     [Fact]
     public void EventListener_AddMultiple()
     {
-        using var dir = new TempDir();
         var listener1 = new RecordingListener();
         var listener2 = new RecordingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.AddEventListeners([listener1, listener2]);
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         db.Put("key1", "value1");
         db.Flush();
@@ -194,13 +190,12 @@ public class EventListenerTests
     [Fact]
     public void EventListener_FlushJobInfo_Properties()
     {
-        using var dir = new TempDir();
         var listener = new RecordingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.AddEventListener(listener);
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         db.Put("a", "1");
         db.Flush();
@@ -253,13 +248,12 @@ public class EventListenerTests
     [Fact]
     public void EventListener_ReceivesFlushBeginEvent()
     {
-        using var dir = new TempDir();
         var listener = new RecordingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.AddEventListener(listener);
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         db.Put("key", "value");
         db.Flush();
@@ -270,7 +264,6 @@ public class EventListenerTests
     [Fact]
     public void EventListener_CompactionJobInfo_HasInputAndOutputFiles()
     {
-        using var dir = new TempDir();
         var listener = new RecordingListener();
 
         using var opts = new DbOptions
@@ -281,7 +274,7 @@ public class EventListenerTests
         };
         opts.AddEventListener(listener);
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         for (int i = 0; i < 200; i++)
             db.Put($"key_{i:D5}", new string('x', 100));

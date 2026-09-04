@@ -13,13 +13,12 @@ public class ListenerDetailTests
     [Fact]
     public void FlushJobInfo_IdentifiesTheJobAndFile()
     {
-        using var dir = new TempDir();
         var listener = new RecordingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.AddEventListener(listener);
 
-        using (var db = RocksDb.Open(opts, dir.Path))
+        using (var db = TestDb.OpenInMemory(opts))
         {
             db.Put("a", "1");
             db.Flush();
@@ -37,14 +36,13 @@ public class ListenerDetailTests
     [Fact]
     public void FlushJobInfo_ReportsOldestBlobFileNumberWhenBlobsAreUsed()
     {
-        using var dir = new TempDir();
         var listener = new RecordingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.AddEventListener(listener);
         opts.EnableBlobs();
 
-        using (var db = RocksDb.Open(opts, dir.Path))
+        using (var db = TestDb.OpenInMemory(opts))
         {
             db.Put("a", "a-value-large-enough-for-a-blob");
             db.Flush();
@@ -61,13 +59,12 @@ public class ListenerDetailTests
     [Fact]
     public void CompactionJobInfo_IdentifiesTheJobAndItsFiles()
     {
-        using var dir = new TempDir();
         var listener = new RecordingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true, Compression = Compression.None };
         opts.AddEventListener(listener);
 
-        using (var db = RocksDb.Open(opts, dir.Path))
+        using (var db = TestDb.OpenInMemory(opts))
         {
             // Overlapping keys in both files force a real merge rather than a
             // trivial move, which would leave most of this unpopulated.
@@ -105,13 +102,12 @@ public class ListenerDetailTests
     [Fact]
     public void CompactionJobInfo_TablePropertiesByFile_CoversInputsAndOutputs()
     {
-        using var dir = new TempDir();
         var listener = new RecordingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.AddEventListener(listener);
 
-        using (var db = RocksDb.Open(opts, dir.Path))
+        using (var db = TestDb.OpenInMemory(opts))
         {
             db.Put("a", "1");
             db.Put("b", "2");
@@ -178,13 +174,12 @@ public class ListenerDetailTests
     [Fact]
     public void MemTableInfo_NewestUdt_IsEmptyWithoutUserDefinedTimestamps()
     {
-        using var dir = new TempDir();
         var listener = new RecordingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.AddEventListener(listener);
 
-        using (var db = RocksDb.Open(opts, dir.Path))
+        using (var db = TestDb.OpenInMemory(opts))
         {
             db.Put("a", "1");
             db.Flush();

@@ -15,12 +15,11 @@ public class BorrowedViewTests
     [Fact]
     public void ColumnFamilyMetadata_SurvivesTheDatabaseBeingClosed()
     {
-        using var dir = new TempDir();
         using var opts = new DbOptions { CreateIfMissing = true };
 
         ColumnFamilyMetadata? metadata;
 
-        using (var db = RocksDb.Open(opts, dir.Path))
+        using (var db = TestDb.OpenInMemory(opts))
         {
             for (int i = 0; i < 50; i++)
             {
@@ -91,12 +90,11 @@ public class BorrowedViewTests
     [Fact]
     public void LiveFileMetadata_SurvivesTheDatabaseBeingClosed()
     {
-        using var dir = new TempDir();
         using var opts = new DbOptions { CreateIfMissing = true };
 
         IReadOnlyList<LiveFileMetadata> files;
 
-        using (var db = RocksDb.Open(opts, dir.Path))
+        using (var db = TestDb.OpenInMemory(opts))
         {
             db.Put("key", "value");
             db.Flush();
@@ -170,13 +168,12 @@ public class BorrowedViewTests
     [Fact]
     public void MergeOperands_CanBeReadAfterTheCallbackReturns()
     {
-        using var dir = new TempDir();
         var op = new HoardingMergeOperator();
 
         var opts = new DbOptions { CreateIfMissing = true };
         opts.MergeOperator = op;
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         db.Merge("key", "a");
         db.Merge("key", "b");
@@ -228,13 +225,12 @@ public class BorrowedViewTests
     [Fact]
     public void MergeOperands_ExposeCountAndIndexer()
     {
-        using var dir = new TempDir();
         var op = new LastWriteWinsMergeOperator();
 
         var opts = new DbOptions { CreateIfMissing = true };
         opts.MergeOperator = op;
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         db.Merge("key", "first");
         db.Merge("key", "second");

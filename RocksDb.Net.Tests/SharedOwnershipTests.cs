@@ -106,7 +106,6 @@ public class SharedOwnershipTests
     [Fact]
     public void Comparator_AttachedToTwoOptions_SurvivesTheFirstDisposal()
     {
-        using var dir = new TempDir();
         var cmp = new ReverseComparator();
 
         var first = new DbOptions { CreateIfMissing = true };
@@ -120,7 +119,7 @@ public class SharedOwnershipTests
         // through freed memory.
         first.Dispose();
 
-        using var db = RocksDb.Open(second, dir.Path);
+        using var db = TestDb.OpenInMemory(second);
         db.Put("a", "1");
         db.Put("b", "2");
 
@@ -138,7 +137,6 @@ public class SharedOwnershipTests
     [Fact]
     public void Comparator_DisposedWhileAttached_IsDeferred()
     {
-        using var dir = new TempDir();
         var cmp = new ReverseComparator();
 
         var opts = new DbOptions { CreateIfMissing = true };
@@ -147,7 +145,7 @@ public class SharedOwnershipTests
         cmp.Dispose();
         Assert.False(cmp.IsDisposed);
 
-        using (var db = RocksDb.Open(opts, dir.Path))
+        using (var db = TestDb.OpenInMemory(opts))
         {
             db.Put("a", "1");
             Assert.Equal("1", db.GetString("a"));
@@ -208,7 +206,6 @@ public class SharedOwnershipTests
     [Fact]
     public void Logger_StaysUsableWhileTheDatabaseIsOpen()
     {
-        using var dir = new TempDir();
         var logger = new CountingLogger();
 
         var opts = new DbOptions { CreateIfMissing = true };
@@ -218,7 +215,7 @@ public class SharedOwnershipTests
         logger.Dispose();
         Assert.False(logger.IsDisposed);
 
-        using (var db = RocksDb.Open(opts, dir.Path))
+        using (var db = TestDb.OpenInMemory(opts))
         {
             for (int i = 0; i < 50; i++)
             {
@@ -239,7 +236,6 @@ public class SharedOwnershipTests
     [Fact]
     public void Logger_SharedByTwoOptions_SurvivesTheFirstDisposal()
     {
-        using var dir = new TempDir();
         var logger = new CountingLogger();
 
         var first = new DbOptions { CreateIfMissing = true };
@@ -251,7 +247,7 @@ public class SharedOwnershipTests
         first.Dispose();
         Assert.False(logger.IsDisposed);
 
-        using (var db = RocksDb.Open(second, dir.Path))
+        using (var db = TestDb.OpenInMemory(second))
         {
             db.Put("key", "value");
             db.Flush();
@@ -308,11 +304,10 @@ public class SharedOwnershipTests
     [Fact]
     public void Open_WithDisposedOptions_Throws()
     {
-        using var dir = new TempDir();
         var opts = new DbOptions { CreateIfMissing = true };
         opts.Dispose();
 
-        Assert.Throws<ObjectDisposedException>(() => RocksDb.Open(opts, dir.Path));
+        Assert.Throws<ObjectDisposedException>(() => TestDb.OpenInMemory(opts));
     }
 
     /// <summary>

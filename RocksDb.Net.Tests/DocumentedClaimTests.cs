@@ -173,8 +173,6 @@ public class DocumentedClaimTests
     [Fact]
     public void SomeCallbacksRunOnTheCallersThread()
     {
-        using var dir = new TempDir();
-
         var merge = new ThreadRecordingMerge();
         var listener = new ThreadRecordingListener();
 
@@ -182,7 +180,8 @@ public class DocumentedClaimTests
         opts.MergeOperator = merge;
         opts.AddEventListener(listener);
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        string path = TestDb.InMemory(opts);
+        using var db = RocksDb.Open(opts, path);
 
         int caller = Environment.CurrentManagedThreadId;
 

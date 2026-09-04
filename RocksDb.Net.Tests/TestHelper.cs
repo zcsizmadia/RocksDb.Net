@@ -121,6 +121,61 @@ public sealed class TempDb : IDisposable
 public static class TestDb
 {
     /// <summary>
+    /// Where an in-memory database lives.
+    /// </summary>
+    /// <remarks>
+    /// A plain absolute path rather than the real temporary directory the test
+    /// may also have. RocksDb's in-memory environment does not implement
+    /// <c>GetAbsolutePath</c>, so handing it a Windows path such as
+    /// <c>C:\Users\...</c> fails the open with "Not implemented:
+    /// GetAbsolutePath". Each database gets its own environment, so one fixed
+    /// path cannot collide with another.
+    /// </remarks>
+    public const string InMemoryPath = "/db";
+
+    /// <summary>
+    /// Opens a database in memory, for a test that builds its own options
+    /// rather than using <see cref="TempDb"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The environment is attached to <paramref name="options"/>, so the
+    /// database owns it: closing the database disposes the options it took
+    /// ownership of, that lets go of the hold, and the environment goes with
+    /// it. Nothing for the caller to dispose.
+    /// </para>
+    /// <para>
+    /// One environment per database, not one shared by the suite. A shared
+    /// handle is freed when the last holder lets go, so an environment reused
+    /// after the first database closed is already disposed. See the ownership
+    /// guide.
+    /// </para>
+    /// </remarks>
+    public static RocksDb OpenInMemory(DbOptions options)
+    {
+        string path = InMemory(options);
+        return RocksDb.Open(options, path);
+    }
+
+    /// <summary>
+    /// Attaches an in-memory environment to <paramref name="options"/> and
+    /// returns the path to open, for a test that has to keep its own
+    /// <c>RocksDb.Open</c> call rather than calling
+    /// <see cref="OpenInMemory(DbOptions)"/>.
+    /// </summary>
+    /// <remarks>
+    /// The documentation tests are the reason this exists. They keep the code
+    /// identical to what the README and the guides show, apart from the path, so
+    /// the open itself has to stay as a reader sees it. The environment is owned
+    /// exactly as in <see cref="OpenInMemory(DbOptions)"/>.
+    /// </remarks>
+    public static string InMemory(DbOptions options)
+    {
+        options.Env = Env.CreateInMemory();
+        return InMemoryPath;
+    }
+
+    /// <summary>
     /// Enables blob files with no size threshold, so every value goes to a blob
     /// file rather than into the SST.
     /// </summary>

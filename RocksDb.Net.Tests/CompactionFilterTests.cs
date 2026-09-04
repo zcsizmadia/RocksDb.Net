@@ -82,12 +82,11 @@ public class CompactionFilterTests
     [Fact]
     public void CompactionFilter_RemovesKeys()
     {
-        using var dir = new TempDir();
         var filter = new PrefixFilter();
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.CompactionFilter = filter;
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         db.Put("tmp_1", "v1");
         db.Put("tmp_2", "v2");
@@ -105,12 +104,11 @@ public class CompactionFilterTests
     [Fact]
     public void CompactionFilter_ChangesValue()
     {
-        using var dir = new TempDir();
         var filter = new ChangeValueFilter();
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.CompactionFilter = filter;
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         db.Put("transform", "original");
         db.Put("normal", "value");
@@ -143,13 +141,12 @@ public class CompactionFilterTests
     [Fact]
     public void CompactionFilter_ByDefault_TheFilterApplies()
     {
-        using var dir = new TempDir();
         var filter = new PrefixFilter();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.CompactionFilter = filter;
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         db.Put("tmp_1", "v1");
         db.Flush();
@@ -161,12 +158,11 @@ public class CompactionFilterTests
     [Fact]
     public void CompactionFilter_ChangeValue_RepeatedKeys_WorksStably()
     {
-        using var dir = new TempDir();
         var filter = new AlwaysChangeValueFilter();
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.CompactionFilter = filter;
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         for (int i = 0; i < 40; i++)
         {

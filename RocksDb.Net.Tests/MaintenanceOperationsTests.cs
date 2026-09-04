@@ -82,9 +82,8 @@ public class MaintenanceOperationsTests
     [Fact]
     public void DeleteFilesInRange_RemovesTheFilesCoveringThatRangeAndTheirKeys()
     {
-        using var dir = new TempDir();
         using DbOptions opts = SplitFileOptions();
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         WriteCompactedFilesInThreeRanges(db);
         int before = LiveFileCount(db);
@@ -111,9 +110,8 @@ public class MaintenanceOperationsTests
     [Fact]
     public void DeleteFilesInRange_LeavesLevel0Alone()
     {
-        using var dir = new TempDir();
         using DbOptions opts = SplitFileOptions();
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         db.Put("a0000", "1");
         db.Flush();
@@ -200,7 +198,6 @@ public class MaintenanceOperationsTests
     [Fact]
     public void SuggestCompactRange_CausesABackgroundCompaction()
     {
-        using var dir = new TempDir();
         var listener = new RecordingListener();
 
         using var opts = new DbOptions
@@ -212,7 +209,7 @@ public class MaintenanceOperationsTests
         };
         opts.AddEventListener(listener);
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         // Populate a level above 0, then leave a file in level 0. Only levels
         // below the highest non-empty one get marked, so without this the
@@ -273,13 +270,12 @@ public class MaintenanceOperationsTests
     [Fact]
     public void SuggestCompactRange_WithAllDataInLevel0_IsANoOp()
     {
-        using var dir = new TempDir();
         var listener = new RecordingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true, Level0FileNumCompactionTrigger = 100 };
         opts.AddEventListener(listener);
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         WriteAndFlush(db, 'v');
         Assert.Empty(listener.CompactionCompleted);

@@ -19,7 +19,6 @@ public class SliceTransformTests
     [Fact]
     public void FixedPrefix_WithDatabase()
     {
-        using var dir = new TempDir();
         using var st = SliceTransform.CreateFixedPrefix(3);
         using var bbto = new BlockBasedTableOptions();
         bbto.WholeKeyFiltering = false;
@@ -28,7 +27,7 @@ public class SliceTransformTests
         opts.PrefixExtractor = st;
         opts.BlockBasedTableFactory = bbto;
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         db.Put("abc_1", "v1");
         db.Put("abc_2", "v2");

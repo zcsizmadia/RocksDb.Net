@@ -277,13 +277,12 @@ public class CompactFilesTests
     [Fact]
     public void GetLiveFilesStorageInfo_WithChecksums_ReportsThem()
     {
-        using var dir = new TempDir();
         using var factory = FileChecksumGenFactory.CreateCrc32c();
 
         using var dbOpts = new DbOptions { CreateIfMissing = true };
         dbOpts.SetFileChecksumGenFactory(factory);
 
-        using var db = RocksDb.Open(dbOpts, dir.Path);
+        using var db = TestDb.OpenInMemory(dbOpts);
         db.Put("a", "1");
         db.Flush();
 
@@ -348,17 +347,15 @@ public class CompactFilesTests
 
         for (int i = 0; i < 250; i++)
         {
-            // In memory, because 250 real directories made this the slowest
-            // test in the suite by a wide margin and none of it is the point:
-            // the checksum comes from RocksDb, not from the file system.
-            using Env env = Env.CreateInMemory();
             using var factory = FileChecksumGenFactory.CreateCrc32c();
 
             var dbOpts = new DbOptions { CreateIfMissing = true };
             dbOpts.SetFileChecksumGenFactory(factory);
-            dbOpts.Env = env;
 
-            using var db = RocksDb.Open(dbOpts, "/checksums");
+            // In memory, because 250 real directories made this the slowest
+            // test in the suite by a wide margin and none of it is the point:
+            // the checksum comes from RocksDb, not from the file system.
+            using var db = TestDb.OpenInMemory(dbOpts);
 
             // Vary the contents so the checksums differ, which is what makes a
             // zero byte turn up at all.

@@ -72,7 +72,6 @@ public class PerfContextTests
     {
         using var scope = new LevelScope(PerfLevel.EnableCount);
 
-        using var dir = new TempDir();
         using var cache = Cache.CreateLru(1024);
         using var tableOptions = new BlockBasedTableOptions();
         tableOptions.SetBlockCache(cache);
@@ -80,7 +79,7 @@ public class PerfContextTests
         var opts = new DbOptions { CreateIfMissing = true };
         opts.BlockBasedTableFactory = tableOptions;
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         for (int i = 0; i < 500; i++)
         {

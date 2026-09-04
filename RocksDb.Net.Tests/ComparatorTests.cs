@@ -17,13 +17,12 @@ public class ComparatorTests
     [Fact]
     public void Comparator_ReversesKeyOrder()
     {
-        using var dir = new TempDir();
         var comparator = new ReverseBytewiseComparator();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.Comparator = comparator;
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         db.Put("a", "1");
         db.Put("b", "2");
@@ -51,13 +50,12 @@ public class ComparatorTests
     [Fact]
     public void Comparator_GetAndPut_Works()
     {
-        using var dir = new TempDir();
         var comparator = new ReverseBytewiseComparator();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.Comparator = comparator;
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
 
         db.Put("key1", "value1");
         db.Put("key2", "value2");

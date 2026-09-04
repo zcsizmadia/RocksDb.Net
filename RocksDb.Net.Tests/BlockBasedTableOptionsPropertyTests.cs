@@ -150,12 +150,10 @@ public class BlockBasedTableOptionsPropertyTests
 
         foreach (string name in names)
         {
-            using var dir = new TempDir();
-
             var options = new DbOptions { CreateIfMissing = true };
             options.WithOptionsFromString($"block_based_table_factory={{checksum={name};}}");
 
-            using RocksDb db = RocksDb.Open(options, dir.Path);
+            using RocksDb db = TestDb.OpenInMemory(options);
 
             db.Put("a", "1");
             db.Flush();
@@ -350,7 +348,6 @@ public class BlockBasedTableOptionsPropertyTests
     [Fact]
     public void ConfiguredOptions_OpenAndReadBack()
     {
-        using var dir = new TempDir();
         using var dbOpts = new DbOptions { CreateIfMissing = true };
 
         var tableOpts = new BlockBasedTableOptions
@@ -366,7 +363,7 @@ public class BlockBasedTableOptionsPropertyTests
 
         dbOpts.BlockBasedTableFactory = tableOpts;
 
-        using var db = RocksDb.Open(dbOpts, dir.Path);
+        using var db = TestDb.OpenInMemory(dbOpts);
         db.Put("a", "1");
         db.Flush();
 

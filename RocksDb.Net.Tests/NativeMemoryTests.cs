@@ -127,12 +127,10 @@ public class NativeMemoryTests
     [Fact]
     public void FactoryCreatedFilters_SurviveManyCompactions()
     {
-        using var dir = new TempDir();
-
         var options = new DbOptions { CreateIfMissing = true };
         options.CompactionFilterFactory = new RewritingFilterFactory();
 
-        using var db = RocksDb.Open(options, dir.Path);
+        using var db = TestDb.OpenInMemory(options);
 
         for (int round = 0; round < 25; round++)
         {

@@ -57,7 +57,6 @@ public class CacheTests
     [Fact]
     public void Cache_UsedWithBlockBasedTable()
     {
-        using var dir = new TempDir();
         using var cache = Cache.CreateLru(64 * 1024 * 1024);
         using var bbto = new BlockBasedTableOptions();
         bbto.SetBlockCache(cache);
@@ -65,7 +64,7 @@ public class CacheTests
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.BlockBasedTableFactory = bbto;
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
         db.Put("key", "value");
         db.Flush();
 

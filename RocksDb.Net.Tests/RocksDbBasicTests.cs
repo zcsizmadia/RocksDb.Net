@@ -7,9 +7,8 @@ public class RocksDbBasicTests
     [Fact]
     public void Open_CreateIfMissing_CreatesDatabase()
     {
-        using var dir = new TempDir();
         using var options = new DbOptions { CreateIfMissing = true };
-        using var db = RocksDb.Open(options, dir.Path);
+        using var db = TestDb.OpenInMemory(options);
 
         Assert.NotNull(db);
         Assert.False(db.IsDisposed);
@@ -18,10 +17,9 @@ public class RocksDbBasicTests
     [Fact]
     public void Open_WithoutCreateIfMissing_Throws()
     {
-        using var dir = new TempDir();
         using var options = new DbOptions { CreateIfMissing = false };
 
-        Assert.Throws<RocksDbException>(() => RocksDb.Open(options, dir.Path));
+        Assert.Throws<RocksDbException>(() => TestDb.OpenInMemory(options));
     }
 
     [Fact]
@@ -247,6 +245,12 @@ public class RocksDbBasicTests
         Assert.Equal(0, defaultMetadata.FileCount);
     }
 
+    /// <remarks>
+    /// On disk rather than in memory, because the write histogram measures
+    /// microseconds and an in-memory write takes less than one, so the sum of the
+    /// samples rounds to zero and stops telling the timings apart from an
+    /// unattached statistics object.
+    /// </remarks>
     [Fact]
     public void DbOptions_GetTickerCountAndHistogramData_ReturnsValues()
     {
@@ -1084,11 +1088,10 @@ public class RocksDbBasicTests
     [Fact]
     public void GetStatisticsString_WithStatisticsEnabled()
     {
-        using var dir = new TempDir();
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.EnableStatistics();
 
-        using var db = RocksDb.Open(opts, dir.Path);
+        using var db = TestDb.OpenInMemory(opts);
         db.Put("key", "value");
 
         string? stats = opts.GetStatisticsString();
