@@ -108,10 +108,10 @@ public sealed class TransactionDbOptions : RocksDbHandle
     /// How many stripes the lock table is divided into. More stripes reduce
     /// contention between transactions touching unrelated keys.
     /// </summary>
-    public nuint NumStripes
+    public ulong NumStripes
     {
-        get => NativeMethods.rocksdb_transactiondb_options_get_num_stripes(Handle);
-        set => NativeMethods.rocksdb_transactiondb_options_set_num_stripes(Handle, value);
+        get => (ulong)NativeMethods.rocksdb_transactiondb_options_get_num_stripes(Handle);
+        set => NativeMethods.rocksdb_transactiondb_options_set_num_stripes(Handle, checked((nuint)value));
     }
 
     /// <summary>

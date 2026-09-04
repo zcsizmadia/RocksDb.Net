@@ -152,10 +152,10 @@ public class ResourceGovernanceTests
 
         Assert.True(manager.IsEnabled);
         Assert.False(manager.CostsToCache);
-        Assert.Equal((nuint)(8 * 1024 * 1024), manager.BufferSize);
+        Assert.Equal((ulong)(8 * 1024 * 1024), manager.BufferSize);
 
         manager.BufferSize = 16 * 1024 * 1024;
-        Assert.Equal((nuint)(16 * 1024 * 1024), manager.BufferSize);
+        Assert.Equal((ulong)(16 * 1024 * 1024), manager.BufferSize);
 
         // Write-only natively, so only the assignment can be exercised.
         manager.AllowStall = true;
@@ -205,7 +205,7 @@ public class ResourceGovernanceTests
         // Not zero at rest: each memtable takes an arena block as soon as the
         // column family exists, so the baseline has to be measured rather than
         // assumed.
-        nuint baseline = manager.MemoryUsage;
+        ulong baseline = manager.MemoryUsage;
 
         for (int i = 0; i < 500; i++)
         {
@@ -268,7 +268,7 @@ public class ResourceGovernanceTests
             first.Put($"key{i:D4}", new string('v', 1024));
         }
 
-        nuint afterFirst = manager.MemoryUsage;
+        ulong afterFirst = manager.MemoryUsage;
         Assert.True(afterFirst > 0);
 
 

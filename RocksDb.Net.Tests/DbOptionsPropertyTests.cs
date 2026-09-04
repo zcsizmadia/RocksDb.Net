@@ -627,13 +627,89 @@ public class DbOptionsPropertyTests
         Assert.False(opts.VerifyManifestContentOnClose);
     }
 
+    /// <summary>
+    /// Every flag, and combinations across the two groups, round-trip.
+    /// </summary>
     [Fact]
     public void VerifyOutputFlags_GetSet()
     {
         using var opts = new DbOptions();
 
-        opts.VerifyOutputFlags = 1;
-        Assert.Equal(1, opts.VerifyOutputFlags);
+        Assert.Equal(VerifyOutputFlags.None, opts.VerifyOutputFlags);
+
+        foreach (VerifyOutputFlags flag in Enum.GetValues<VerifyOutputFlags>())
+        {
+            opts.VerifyOutputFlags = flag;
+            Assert.Equal(flag, opts.VerifyOutputFlags);
+        }
+
+        // What to verify, and when to verify it: a usable value needs one from
+        // each group, so the combination has to survive the round trip.
+        VerifyOutputFlags combined =
+            VerifyOutputFlags.BlockChecksum
+            | VerifyOutputFlags.FileChecksum
+            | VerifyOutputFlags.EnableForLocalCompaction;
+
+        opts.VerifyOutputFlags = combined;
+
+        Assert.Equal(combined, opts.VerifyOutputFlags);
+        Assert.True(opts.VerifyOutputFlags.HasFlag(VerifyOutputFlags.EnableForLocalCompaction));
+        Assert.False(opts.VerifyOutputFlags.HasFlag(VerifyOutputFlags.Iteration));
+    }
+
+    /// <summary>
+    /// The flag values are the bit positions RocksDb defines, not an invented
+    /// sequence.
+    /// </summary>
+    /// <remarks>
+    /// Taken from <c>VerifyOutputFlags</c> in
+    /// <c>include/rocksdb/advanced_options.h</c> at the pinned version. Pinned
+    /// here because a wrong bit position would silently ask for a different
+    /// verification than the caller named, and nothing else would notice: the C
+    /// API validates none of this.
+    /// </remarks>
+    [Fact]
+    public void VerifyOutputFlags_MatchTheBitPositionsRocksDbDefines()
+    {
+        Assert.Equal(0U, (uint)VerifyOutputFlags.None);
+        Assert.Equal(1U << 0, (uint)VerifyOutputFlags.BlockChecksum);
+        Assert.Equal(1U << 1, (uint)VerifyOutputFlags.Iteration);
+        Assert.Equal(1U << 2, (uint)VerifyOutputFlags.FileChecksum);
+        Assert.Equal(1U << 10, (uint)VerifyOutputFlags.EnableForLocalCompaction);
+        Assert.Equal(1U << 11, (uint)VerifyOutputFlags.EnableForRemoteCompaction);
+        Assert.Equal(uint.MaxValue, (uint)VerifyOutputFlags.All);
+    }
+
+    /// <summary>
+    /// A database opens and compacts with verification asked for, so the flags
+    /// reach RocksDb rather than merely round-tripping on the options.
+    /// </summary>
+    [Fact]
+    public void VerifyOutputFlags_AreAcceptedByAnOpenDatabase()
+    {
+        using var dir = new TempDir();
+
+        var options = new DbOptions
+        {
+            CreateIfMissing = true,
+            VerifyOutputFlags =
+                VerifyOutputFlags.BlockChecksum
+                | VerifyOutputFlags.Iteration
+                | VerifyOutputFlags.FileChecksum
+                | VerifyOutputFlags.EnableForLocalCompaction,
+        };
+
+        using RocksDb db = RocksDb.Open(options, dir.Path);
+
+        for (int i = 0; i < 200; i++)
+        {
+            db.Put($"key{i:D4}", $"value{i:D4}");
+        }
+
+        db.Flush();
+        db.CompactRange();
+
+        Assert.Equal("value0100", db.GetString("key0100"));
     }
 
     [Fact]

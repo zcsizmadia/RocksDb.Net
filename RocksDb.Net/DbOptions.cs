@@ -82,6 +82,62 @@ public enum CompactionStyle
     Fifo = 2,
 }
 
+/// <summary>
+/// Which verifications RocksDb runs over the files a compaction produces, and
+/// when.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Mirrors <c>VerifyOutputFlags</c> in
+/// <c>include/rocksdb/advanced_options.h</c> at the pinned version.
+/// </para>
+/// <para>
+/// The bits come in two groups, and a value needs at least one from each to
+/// do anything: the first three say <em>what</em> to verify, and the two
+/// <c>EnableFor</c> bits say <em>which</em> compactions to verify it on. That
+/// is why <see cref="BlockChecksum"/> on its own has no observable effect.
+/// </para>
+/// <para>
+/// This was a plain <c>int</c>, described as flags RocksDb does not expose.
+/// The C API takes and returns <c>int</c> while RocksDb keeps a
+/// <c>uint32_t</c>, which is why <see cref="All"/> arrives there as -1 and why
+/// setting -1 through the old <c>int</c> property was, unintentionally, asking
+/// for everything.
+/// </para>
+/// </remarks>
+[Flags]
+public enum VerifyOutputFlags : uint
+{
+    /// <summary>Verify nothing. The default.</summary>
+    None = 0,
+
+    /// <summary>Verify the block checksums of each output file.</summary>
+    BlockChecksum = 1 << 0,
+
+    /// <summary>
+    /// Read each output file back and compare a hash of every key and value
+    /// against what was written into it.
+    /// </summary>
+    /// <remarks>The most thorough and the most expensive of the three.</remarks>
+    Iteration = 1 << 1,
+
+    /// <summary>Verify the file-level checksum of each output file.</summary>
+    FileChecksum = 1 << 2,
+
+    /// <summary>Run the selected verifications on compactions this process performs.</summary>
+    EnableForLocalCompaction = 1 << 10,
+
+    /// <summary>Run the selected verifications on compactions performed remotely.</summary>
+    EnableForRemoteCompaction = 1 << 11,
+
+    /// <summary>Every verification, on every kind of compaction.</summary>
+    /// <remarks>
+    /// Every bit, including ones RocksDb has not defined yet, so a later
+    /// version may make this mean more than it does today.
+    /// </remarks>
+    All = 0xFFFFFFFF,
+}
+
 /// <summary>WAL recovery mode.</summary>
 public enum WalRecoveryMode
 {
@@ -1208,10 +1264,19 @@ public sealed class DbOptions : RocksDbHandle
     /// Block size the memtable allocates in, in bytes. Zero, the default, lets
     /// RocksDb derive it from <see cref="WriteBufferSize"/>.
     /// </summary>
-    public nuint ArenaBlockSize
+    /// <remarks>
+    /// RocksDb keeps this in a <c>size_t</c>. Every size option on this library
+    /// is <see cref="ulong"/> regardless, so the same concept has one type
+    /// everywhere rather than <see cref="ulong"/> on some members and
+    /// <see cref="nuint"/> on others. On a 32-bit process a value above
+    /// <see cref="uint.MaxValue"/> cannot be represented and the setter throws
+    /// <see cref="OverflowException"/> rather than truncating to something
+    /// smaller than asked for.
+    /// </remarks>
+    public ulong ArenaBlockSize
     {
-        get => NativeMethods.rocksdb_options_get_arena_block_size(Handle);
-        set => NativeMethods.rocksdb_options_set_arena_block_size(Handle, value);
+        get => (ulong)NativeMethods.rocksdb_options_get_arena_block_size(Handle);
+        set => NativeMethods.rocksdb_options_set_arena_block_size(Handle, checked((nuint)value));
     }
 
     /// <summary>
@@ -1428,20 +1493,20 @@ public sealed class DbOptions : RocksDbHandle
     /// compaction has fallen far enough behind that RocksDb would rather block
     /// writers than let the backlog grow.
     /// </remarks>
-    public nuint HardPendingCompactionBytesLimit
+    public ulong HardPendingCompactionBytesLimit
     {
-        get => NativeMethods.rocksdb_options_get_hard_pending_compaction_bytes_limit(Handle);
-        set => NativeMethods.rocksdb_options_set_hard_pending_compaction_bytes_limit(Handle, value);
+        get => (ulong)NativeMethods.rocksdb_options_get_hard_pending_compaction_bytes_limit(Handle);
+        set => NativeMethods.rocksdb_options_set_hard_pending_compaction_bytes_limit(Handle, checked((nuint)value));
     }
 
     /// <summary>
     /// How many locks guard in-place memtable updates. Only used when
     /// <see cref="InplaceUpdateSupport"/> is enabled.
     /// </summary>
-    public nuint InplaceUpdateNumLocks
+    public ulong InplaceUpdateNumLocks
     {
-        get => NativeMethods.rocksdb_options_get_inplace_update_num_locks(Handle);
-        set => NativeMethods.rocksdb_options_set_inplace_update_num_locks(Handle, value);
+        get => (ulong)NativeMethods.rocksdb_options_get_inplace_update_num_locks(Handle);
+        set => NativeMethods.rocksdb_options_set_inplace_update_num_locks(Handle, checked((nuint)value));
     }
 
     /// <summary>
@@ -1473,17 +1538,17 @@ public sealed class DbOptions : RocksDbHandle
     /// How often the info log is rolled, in seconds. Zero disables time-based
     /// rolling, leaving only the size limit.
     /// </summary>
-    public nuint LogFileTimeToRoll
+    public ulong LogFileTimeToRoll
     {
-        get => NativeMethods.rocksdb_options_get_log_file_time_to_roll(Handle);
-        set => NativeMethods.rocksdb_options_set_log_file_time_to_roll(Handle, value);
+        get => (ulong)NativeMethods.rocksdb_options_get_log_file_time_to_roll(Handle);
+        set => NativeMethods.rocksdb_options_set_log_file_time_to_roll(Handle, checked((nuint)value));
     }
 
     /// <summary>Bytes preallocated for the manifest file.</summary>
-    public nuint ManifestPreallocationSize
+    public ulong ManifestPreallocationSize
     {
-        get => NativeMethods.rocksdb_options_get_manifest_preallocation_size(Handle);
-        set => NativeMethods.rocksdb_options_set_manifest_preallocation_size(Handle, value);
+        get => (ulong)NativeMethods.rocksdb_options_get_manifest_preallocation_size(Handle);
+        set => NativeMethods.rocksdb_options_set_manifest_preallocation_size(Handle, checked((nuint)value));
     }
 
     /// <summary>Threads used to open files when the database starts.</summary>
@@ -1501,10 +1566,10 @@ public sealed class DbOptions : RocksDbHandle
     /// activity rather than with data. Left unbounded it can become the largest
     /// thing in the directory.
     /// </remarks>
-    public nuint MaxManifestFileSize
+    public ulong MaxManifestFileSize
     {
-        get => NativeMethods.rocksdb_options_get_max_manifest_file_size(Handle);
-        set => NativeMethods.rocksdb_options_set_max_manifest_file_size(Handle, value);
+        get => (ulong)NativeMethods.rocksdb_options_get_max_manifest_file_size(Handle);
+        set => NativeMethods.rocksdb_options_set_max_manifest_file_size(Handle, checked((nuint)value));
     }
 
     /// <summary>
@@ -1525,10 +1590,10 @@ public sealed class DbOptions : RocksDbHandle
     /// Bounds the cost of reading a key that has been merged many times, at the
     /// price of doing merge work on the write path.
     /// </remarks>
-    public nuint MaxSuccessiveMerges
+    public ulong MaxSuccessiveMerges
     {
-        get => NativeMethods.rocksdb_options_get_max_successive_merges(Handle);
-        set => NativeMethods.rocksdb_options_set_max_successive_merges(Handle, value);
+        get => (ulong)NativeMethods.rocksdb_options_get_max_successive_merges(Handle);
+        set => NativeMethods.rocksdb_options_set_max_successive_merges(Handle, checked((nuint)value));
     }
 
     /// <summary>
@@ -1545,10 +1610,10 @@ public sealed class DbOptions : RocksDbHandle
     /// Huge page size to allocate the memtable with, in bytes. Zero, the
     /// default, uses ordinary pages.
     /// </summary>
-    public nuint MemtableHugePageSize
+    public ulong MemtableHugePageSize
     {
-        get => NativeMethods.rocksdb_options_get_memtable_huge_page_size(Handle);
-        set => NativeMethods.rocksdb_options_set_memtable_huge_page_size(Handle, value);
+        get => (ulong)NativeMethods.rocksdb_options_get_memtable_huge_page_size(Handle);
+        set => NativeMethods.rocksdb_options_set_memtable_huge_page_size(Handle, checked((nuint)value));
     }
 
     /// <summary>
@@ -1610,10 +1675,10 @@ public sealed class DbOptions : RocksDbHandle
     /// Reusing a file avoids the filesystem metadata work of creating one, which
     /// shows up on write-heavy workloads with frequent log rolls.
     /// </remarks>
-    public nuint RecycleLogFileNum
+    public ulong RecycleLogFileNum
     {
-        get => NativeMethods.rocksdb_options_get_recycle_log_file_num(Handle);
-        set => NativeMethods.rocksdb_options_set_recycle_log_file_num(Handle, value);
+        get => (ulong)NativeMethods.rocksdb_options_get_recycle_log_file_num(Handle);
+        set => NativeMethods.rocksdb_options_set_recycle_log_file_num(Handle, checked((nuint)value));
     }
 
     /// <summary>
@@ -1653,10 +1718,10 @@ public sealed class DbOptions : RocksDbHandle
     /// <see cref="HardPendingCompactionBytesLimit"/>: writers are throttled so
     /// that compaction can catch up, rather than stopped.
     /// </remarks>
-    public nuint SoftPendingCompactionBytesLimit
+    public ulong SoftPendingCompactionBytesLimit
     {
-        get => NativeMethods.rocksdb_options_get_soft_pending_compaction_bytes_limit(Handle);
-        set => NativeMethods.rocksdb_options_set_soft_pending_compaction_bytes_limit(Handle, value);
+        get => (ulong)NativeMethods.rocksdb_options_get_soft_pending_compaction_bytes_limit(Handle);
+        set => NativeMethods.rocksdb_options_set_soft_pending_compaction_bytes_limit(Handle, checked((nuint)value));
     }
 
     /// <summary>
@@ -2353,11 +2418,19 @@ public sealed class DbOptions : RocksDbHandle
         set => NativeMethods.rocksdb_options_set_verify_manifest_content_on_close(Handle, value ? (byte)1 : (byte)0);
     }
 
-    /// <summary>Bit flags selecting which compaction output verifications to run. The individual flag values are defined by RocksDb and are not exposed as an enum.</summary>
-    public int VerifyOutputFlags
+    /// <summary>
+    /// Which verifications RocksDb runs over the files a compaction produces.
+    /// </summary>
+    /// <remarks>
+    /// Needs a bit from each of the two groups in
+    /// <see cref="RocksDbNet.VerifyOutputFlags"/> to have any effect. Unchecked
+    /// on the way out because <see cref="RocksDbNet.VerifyOutputFlags.All"/> is
+    /// every bit set, which the C API takes as -1.
+    /// </remarks>
+    public VerifyOutputFlags VerifyOutputFlags
     {
-        get => NativeMethods.rocksdb_options_get_verify_output_flags(Handle);
-        set => NativeMethods.rocksdb_options_set_verify_output_flags(Handle, value);
+        get => (VerifyOutputFlags)unchecked((uint)NativeMethods.rocksdb_options_get_verify_output_flags(Handle));
+        set => NativeMethods.rocksdb_options_set_verify_output_flags(Handle, unchecked((int)value));
     }
 
     /// <summary>If true, each SST file unique identifier is checked against the manifest at open, detecting a file that has been swapped or truncated.</summary>

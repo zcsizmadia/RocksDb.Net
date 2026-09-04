@@ -18,9 +18,9 @@ public sealed class LruCacheOptions : RocksDbHandle
     }
 
     /// <summary>Total cache capacity in bytes. Write-only.</summary>
-    public nuint Capacity
+    public ulong Capacity
     {
-        set => NativeMethods.rocksdb_lru_cache_options_set_capacity(Handle, value);
+        set => NativeMethods.rocksdb_lru_cache_options_set_capacity(Handle, checked((nuint)value));
     }
 
     /// <summary>
@@ -67,9 +67,9 @@ public sealed class HyperClockCacheOptions : RocksDbHandle
     }
 
     /// <summary>Total cache capacity in bytes. Write-only.</summary>
-    public nuint Capacity
+    public ulong Capacity
     {
-        set => NativeMethods.rocksdb_hyper_clock_cache_options_set_capacity(Handle, value);
+        set => NativeMethods.rocksdb_hyper_clock_cache_options_set_capacity(Handle, checked((nuint)value));
     }
 
     /// <summary>
@@ -82,9 +82,9 @@ public sealed class HyperClockCacheOptions : RocksDbHandle
     /// wrong estimate wastes capacity or causes premature eviction, so zero,
     /// which lets RocksDb work it out, is the safer default.
     /// </remarks>
-    public nuint EstimatedEntryCharge
+    public ulong EstimatedEntryCharge
     {
-        set => NativeMethods.rocksdb_hyper_clock_cache_options_set_estimated_entry_charge(Handle, value);
+        set => NativeMethods.rocksdb_hyper_clock_cache_options_set_estimated_entry_charge(Handle, checked((nuint)value));
     }
 
     /// <summary>

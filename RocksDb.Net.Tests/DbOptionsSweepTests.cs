@@ -58,7 +58,7 @@ public class DbOptionsSweepTests
         using var opts = new DbOptions
         {
             ArenaBlockSize = 64 * 1024,
-            HardPendingCompactionBytesLimit = (nuint)(1UL << 30),
+            HardPendingCompactionBytesLimit = (ulong)(1UL << 30),
             InplaceUpdateNumLocks = 500,
             LogFileTimeToRoll = 3600,
             ManifestPreallocationSize = 8 * 1024 * 1024,
@@ -66,19 +66,19 @@ public class DbOptionsSweepTests
             MaxSuccessiveMerges = 12,
             MemtableHugePageSize = 2 * 1024 * 1024,
             RecycleLogFileNum = 4,
-            SoftPendingCompactionBytesLimit = (nuint)(1UL << 28),
+            SoftPendingCompactionBytesLimit = (ulong)(1UL << 28),
         };
 
-        Assert.Equal((nuint)(64 * 1024), opts.ArenaBlockSize);
-        Assert.Equal((nuint)(1UL << 30), opts.HardPendingCompactionBytesLimit);
-        Assert.Equal((nuint)500, opts.InplaceUpdateNumLocks);
-        Assert.Equal((nuint)3600, opts.LogFileTimeToRoll);
-        Assert.Equal((nuint)(8 * 1024 * 1024), opts.ManifestPreallocationSize);
-        Assert.Equal((nuint)(32 * 1024 * 1024), opts.MaxManifestFileSize);
-        Assert.Equal((nuint)12, opts.MaxSuccessiveMerges);
-        Assert.Equal((nuint)(2 * 1024 * 1024), opts.MemtableHugePageSize);
-        Assert.Equal((nuint)4, opts.RecycleLogFileNum);
-        Assert.Equal((nuint)(1UL << 28), opts.SoftPendingCompactionBytesLimit);
+        Assert.Equal((ulong)(64 * 1024), opts.ArenaBlockSize);
+        Assert.Equal((ulong)(1UL << 30), opts.HardPendingCompactionBytesLimit);
+        Assert.Equal((ulong)500, opts.InplaceUpdateNumLocks);
+        Assert.Equal((ulong)3600, opts.LogFileTimeToRoll);
+        Assert.Equal((ulong)(8 * 1024 * 1024), opts.ManifestPreallocationSize);
+        Assert.Equal((ulong)(32 * 1024 * 1024), opts.MaxManifestFileSize);
+        Assert.Equal((ulong)12, opts.MaxSuccessiveMerges);
+        Assert.Equal((ulong)(2 * 1024 * 1024), opts.MemtableHugePageSize);
+        Assert.Equal((ulong)4, opts.RecycleLogFileNum);
+        Assert.Equal((ulong)(1UL << 28), opts.SoftPendingCompactionBytesLimit);
     }
 
     [Fact]
@@ -257,7 +257,7 @@ public class DbOptionsSweepTests
             CompactionPri = CompactionPri.RoundRobin,
             DeleteObsoleteFilesPeriodMicros = 6_000_000,
             EnablePipelinedWrite = true,
-            HardPendingCompactionBytesLimit = (nuint)(1UL << 30),
+            HardPendingCompactionBytesLimit = (ulong)(1UL << 30),
             IsFdCloseOnExec = true,
             MaxFileOpeningThreads = 4,
             MaxManifestFileSize = 16 * 1024 * 1024,
@@ -265,7 +265,7 @@ public class DbOptionsSweepTests
             OptimizeFiltersForHits = true,
             RecycleLogFileNum = 2,
             ReportBgIoStats = true,
-            SoftPendingCompactionBytesLimit = (nuint)(1UL << 28),
+            SoftPendingCompactionBytesLimit = (ulong)(1UL << 28),
             StatisticsLevel = StatsLevel.ExceptDetailedTimers,
             StatsPersistPeriodSec = 60,
             TableCacheNumShardBits = 4,

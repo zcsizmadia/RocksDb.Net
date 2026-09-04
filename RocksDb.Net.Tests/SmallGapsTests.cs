@@ -129,7 +129,7 @@ public class SmallGapsTests
         using DbOptions parsed = baseOptions.WithOptionsFromString(
             "write_buffer_size=131072;max_write_buffer_number=5");
 
-        Assert.Equal((nuint)131072, parsed.WriteBufferSize);
+        Assert.Equal((ulong)131072, parsed.WriteBufferSize);
         Assert.Equal(5, parsed.MaxWriteBufferNumber);
     }
 
@@ -144,8 +144,8 @@ public class SmallGapsTests
 
         using DbOptions parsed = baseOptions.WithOptionsFromString("write_buffer_size=262144");
 
-        Assert.Equal((nuint)(64 * 1024), baseOptions.WriteBufferSize);
-        Assert.Equal((nuint)262144, parsed.WriteBufferSize);
+        Assert.Equal((ulong)(64 * 1024), baseOptions.WriteBufferSize);
+        Assert.Equal((ulong)262144, parsed.WriteBufferSize);
     }
 
     /// <summary>
