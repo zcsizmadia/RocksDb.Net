@@ -822,15 +822,19 @@ public sealed class DbOptions : RocksDbHandle
     }
 
     /// <summary>Attaches a rate limiter.</summary>
-
+    /// <remarks>
+    /// RocksDb copies the shared pointer, so the limiter may be shared between
+    /// options objects and reused by a database opened later. Assigning
+    /// registers no hold, exactly as a cache does not: destroying the handle
+    /// only drops this library's reference, and RocksDb's own copy keeps the
+    /// limiter alive for as long as it needs it.
+    /// </remarks>
     public RateLimiter RateLimiter
     {
         set
         {
             ArgumentNullException.ThrowIfNull(value);
-            value.AddHolder();
             NativeMethods.rocksdb_options_set_ratelimiter(Handle, value.Handle);
-            _ownedHandles.Add(value);
         }
     }
 
@@ -2620,10 +2624,21 @@ public sealed class DbOptions : RocksDbHandle
         // Release rather than dispose. These objects can be attached to more
         // than one options object, and to a database opened from one, so the
         // native release belongs to whichever holder lets go last.
-        foreach (var handle in _ownedHandles)
+        foreach (RocksDbHandle handle in _ownedHandles)
         {
             handle.ReleaseHolder();
         }
-        _ownedHandles.Clear();
+
+        // Not cleared. Clearing a ConcurrentBag reads a ThreadLocal, and a
+        // ThreadLocal is itself finalizable: on the finalizer path it may already
+        // be gone, and the ObjectDisposedException that comes back is unhandled
+        // and takes the process with it. This ran on every options object that
+        // was collected rather than disposed, which is the case the holds above
+        // exist to make safe, so the safety net was the thing crashing.
+        //
+        // Nothing needs the clear: Dispose(bool) compare-exchanges its way to
+        // running this once, and the bag is unreachable immediately after.
+        // Enumerating is fine, because that freezes the bag under its own lock
+        // without touching the thread-local.
     }
 }

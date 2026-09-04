@@ -131,7 +131,20 @@ public abstract class Logger : RocksDbHandle
     {
         base.DisposeUnmanagedResources();
 
-        // Logger has no destructor callback, so we must unpin here. 
-        UnpinGarbageCollector();
+        // Logger has no destructor callback, so we must unpin here.
+        //
+        // Only if the pin was taken, because this runs on the finalizer path and
+        // UnpinGarbageCollector throws when it was not. A derived constructor
+        // that throws while evaluating the arguments it passes to base(...)
+        // leaves an allocated, finalizable object whose base fields are all at
+        // their defaults, so this constructor never ran and never pinned. The
+        // finalizer still runs, and an exception from a finalizer is unhandled:
+        // it terminated the process, arbitrarily later than the catch block that
+        // appeared to have handled the failed construction. DisposeChildren
+        // guards the same case for its own field.
+        if (IsPinned)
+        {
+            UnpinGarbageCollector();
+        }
     }
 }

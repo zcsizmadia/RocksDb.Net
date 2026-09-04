@@ -83,9 +83,19 @@ public abstract class CompactionFilterFactory : RocksDbHandle
 
             CompactionFilter filter = self.CreateFilter(ctx);
 
-            // Return the native handle. C++ now owns this handle; its destructor
-            // callback will free the filter's GCHandle when compaction finishes.
-            // The caller MUST NOT dispose `filter` — C++ manages its lifetime.
+            // Exclusive, because c.cc wraps what this returns in a fresh
+            // std::unique_ptr<CompactionFilter> on every call. Returning the same
+            // instance twice therefore gave two unique_ptrs over one pointer and
+            // deleted it twice — heap corruption at job teardown, or a vtable read
+            // through freed memory on a compaction thread, a long way from the
+            // factory that caused it. Attaching exclusively turns the natural
+            // mistake of caching one filter into a named InvalidOperationException,
+            // which is what every other exclusive attachment in the library does.
+            //
+            // This also transfers ownership, so the wrapper will not free a filter
+            // RocksDb is going to free itself. The caller must not dispose it.
+            filter.AttachExclusively(nameof(CreateFilter));
+
             return filter.Handle;
         }
         catch (Exception ex)

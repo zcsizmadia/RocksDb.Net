@@ -44,12 +44,36 @@ public sealed class TransactionDb : RocksDbHandle
         : base(handle)
     {
         _ownedOptions = options;
+
+        // A hold, not just a reference. The options are disposed after the
+        // close below, because their sub-objects have to outlive the database
+        // that calls them — but a plain reference only stops collection, not
+        // finalization, and .NET orders finalizers arbitrarily. A DbOptions is
+        // necessarily allocated before the database it opens, so on an
+        // abandoned database the options could be finalized first: that
+        // destroyed the options and released their comparator, env and
+        // compaction filter, and then rocksdb_close dereferenced them while
+        // flushing the memtable and deleting files. The hold makes the release
+        // wait for whoever lets go last, which is what it is for.
+        options.AddHolder();
     }
 
     private TransactionDb(nint handle, nint[] cfHandles, IReadOnlyList<ColumnFamilyDescriptor> descriptors, DbOptions options)
         : base(handle)
     {
         _ownedOptions = options;
+
+        // A hold, not just a reference. The options are disposed after the
+        // close below, because their sub-objects have to outlive the database
+        // that calls them — but a plain reference only stops collection, not
+        // finalization, and .NET orders finalizers arbitrarily. A DbOptions is
+        // necessarily allocated before the database it opens, so on an
+        // abandoned database the options could be finalized first: that
+        // destroyed the options and released their comparator, env and
+        // compaction filter, and then rocksdb_close dereferenced them while
+        // flushing the memtable and deleting files. The hold makes the release
+        // wait for whoever lets go last, which is what it is for.
+        options.AddHolder();
 
         for (int i = 0; i < cfHandles.Length; i++)
         {
@@ -515,7 +539,10 @@ public sealed class TransactionDb : RocksDbHandle
         base.DisposeUnmanagedResources();
 
         // After the close, so that callbacks the options own outlive the
-        // database that calls them.
-        _ownedOptions.Dispose();
+        // database that calls them. Releasing the hold taken at Open rather
+        // than disposing outright, so a caller who disposed the options early
+        // defers to this instead of destroying a comparator under a live
+        // database.
+        _ownedOptions.ReleaseHolder();
     }
 }

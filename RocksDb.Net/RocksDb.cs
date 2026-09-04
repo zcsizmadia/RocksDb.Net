@@ -58,6 +58,18 @@ public sealed class RocksDb : RocksDbHandle
         : base(handle)
     {
         _ownedOptions = options;
+
+        // A hold, not just a reference. The options are disposed after the
+        // close below, because their sub-objects have to outlive the database
+        // that calls them — but a plain reference only stops collection, not
+        // finalization, and .NET orders finalizers arbitrarily. A DbOptions is
+        // necessarily allocated before the database it opens, so on an
+        // abandoned database the options could be finalized first: that
+        // destroyed the options and released their comparator, env and
+        // compaction filter, and then rocksdb_close dereferenced them while
+        // flushing the memtable and deleting files. The hold makes the release
+        // wait for whoever lets go last, which is what it is for.
+        options.AddHolder();
     }
 
     /// <summary>Name RocksDb gives the column family that always exists.</summary>
@@ -68,6 +80,18 @@ public sealed class RocksDb : RocksDbHandle
         : base(handle)
     {
         _ownedOptions = options;
+
+        // A hold, not just a reference. The options are disposed after the
+        // close below, because their sub-objects have to outlive the database
+        // that calls them — but a plain reference only stops collection, not
+        // finalization, and .NET orders finalizers arbitrarily. A DbOptions is
+        // necessarily allocated before the database it opens, so on an
+        // abandoned database the options could be finalized first: that
+        // destroyed the options and released their comparator, env and
+        // compaction filter, and then rocksdb_close dereferenced them while
+        // flushing the memtable and deleting files. The hold makes the release
+        // wait for whoever lets go last, which is what it is for.
+        options.AddHolder();
 
         if (descriptors is not null)
         {
@@ -1360,7 +1384,14 @@ public sealed class RocksDb : RocksDbHandle
 
         nint h = NativeMethods.rocksdb_get_default_column_family_handle(Handle);
         var cf = new ColumnFamilyHandle(h);
-        cf.TransferOwnership(); // The database owns this handle.
+
+        // Destroyed like any other handle, rather than transferred away. The
+        // native call allocates a fresh rocksdb_column_family_handle_t and sets
+        // immortal on it, and rocksdb_column_family_handle_destroy honours that
+        // by deleting only the wrapper struct and leaving the column family
+        // itself alone. So destroying is both safe and required; suppressing it
+        // leaked one struct per database, which the caching below bounded to one
+        // rather than removed.
         cf.SetParent(this);
 
         _defaultColumnFamily = cf;
@@ -1824,6 +1855,12 @@ public sealed class RocksDb : RocksDbHandle
     /// <summary>Returns an integer property value, or <c>null</c> if unavailable.</summary>
     public unsafe ulong? GetPropertyInt(string propName)
     {
+        // Guarded like the string overload beside it. Without this a null name
+        // reached RocksDb as a null const char*, which it hands to a std::string
+        // constructor: undefined behaviour, and in practice a crash rather than
+        // the ArgumentNullException every other property reader throws.
+        ArgumentException.ThrowIfNullOrEmpty(propName);
+
         ulong val;
         int rc = NativeMethods.rocksdb_property_int(Handle, propName, &val);
         return rc == 0 ? val : null;
@@ -1847,6 +1884,8 @@ public sealed class RocksDb : RocksDbHandle
     public unsafe ulong? GetPropertyInt(string propName, ColumnFamilyHandle cf)
     {
         ArgumentNullException.ThrowIfNull(cf);
+        ArgumentException.ThrowIfNullOrEmpty(propName);
+
         ulong val;
         int rc = NativeMethods.rocksdb_property_int_cf(Handle, cf.Handle, propName, &val);
         return rc == 0 ? val : null;
@@ -2820,8 +2859,12 @@ public sealed class RocksDb : RocksDbHandle
         // and snapshots to their own finalizers.
         base.DisposeUnmanagedResources();
 
-        // Dispose the options after rocksdb_close — sub-objects (CompactionFilter,
+        // Release the options after rocksdb_close — sub-objects (CompactionFilter,
         // Comparator, MergeOperator, etc.) must outlive the DB handle.
-        _ownedOptions.Dispose();
+        //
+        // Releasing the hold taken at Open rather than disposing outright, so
+        // that a caller who disposed the options early defers to this rather
+        // than destroying a comparator under a live database.
+        _ownedOptions.ReleaseHolder();
     }
 }
