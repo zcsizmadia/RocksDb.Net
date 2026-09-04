@@ -277,11 +277,15 @@ public class ReadOptionsPropertyTests
         db.Db.Flush();
 
         TablePropertiesView? escaped = null;
+        bool? validInsideTheCallback = null;
 
         using var opts = new ReadOptions();
         opts.SetTableFilter(props =>
         {
-            Assert.True(props.IsValid);
+            // Recorded, not asserted. The callback catches everything and
+            // returns its fallback, and an xunit failure is only an exception,
+            // so asserting here would pass whatever props said.
+            validInsideTheCallback = props.IsValid;
             escaped = props;
             return true;
         });
@@ -290,6 +294,8 @@ public class ReadOptionsPropertyTests
         {
             iter.SeekToFirst();
         }
+
+        Assert.True(validInsideTheCallback, "the view was not valid while the callback held it");
 
         // RocksDb owns the properties and frees them when the callback returns,
         // so holding on to the view must fail loudly rather than read freed

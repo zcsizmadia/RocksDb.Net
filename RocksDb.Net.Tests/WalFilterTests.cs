@@ -16,6 +16,8 @@ public class WalFilterTests
     private sealed class RecordingFilter(WalProcessingOption decision) : WalFilter("recording-filter")
     {
         private readonly List<string> _logFileNames = [];
+        private readonly List<ulong> _logNumbers = [];
+        private readonly List<int> _batchCounts = [];
 
         public int RecordCount { get; private set; }
 
@@ -26,6 +28,28 @@ public class WalFilterTests
             = new Dictionary<string, uint>();
 
         public IReadOnlyList<string> LogFileNames => _logFileNames;
+
+        /// <summary>The log number RocksDb passed for each record.</summary>
+        public IReadOnlyList<ulong> LogNumbers => _logNumbers;
+
+        /// <summary>How many operations each record's batch held.</summary>
+        public IReadOnlyList<int> BatchCounts => _batchCounts;
+
+        /// <summary>
+        /// Checks what the callback saw, from the test thread.
+        /// </summary>
+        /// <remarks>
+        /// These assertions used to live inside LogRecordFound. The callback
+        /// catches every exception and returns its documented fallback, and an
+        /// xunit assertion failure is only an exception, so a broken log number
+        /// or an empty batch was swallowed and the test passed regardless.
+        /// </remarks>
+        public void AssertRecordsWereWellFormed()
+        {
+            Assert.NotEmpty(_logNumbers);
+            Assert.All(_logNumbers, n => Assert.True(n > 0, $"log number was {n}"));
+            Assert.All(_batchCounts, c => Assert.True(c > 0, $"batch held {c} operations"));
+        }
 
         protected override void OnColumnFamilyLogNumberMap(
             IReadOnlyDictionary<uint, ulong> logNumbersByColumnFamilyId,
@@ -45,8 +69,9 @@ public class WalFilterTests
             RecordCount++;
             _logFileNames.Add(logFileName);
 
-            Assert.True(logNumber > 0);
-            Assert.True(batch.Count > 0);
+            // Recorded rather than asserted: see AssertRecordsWereWellFormed.
+            _logNumbers.Add(logNumber);
+            _batchCounts.Add(batch.Count);
 
             return decision;
         }
@@ -65,6 +90,7 @@ public class WalFilterTests
         using var db = RocksDb.Open(opts, dir.Path);
 
         Assert.Equal(2, filter.RecordCount);
+        filter.AssertRecordsWereWellFormed();
         Assert.Equal("1", db.GetString("a"));
         Assert.Equal("2", db.GetString("b"));
     }
@@ -83,6 +109,7 @@ public class WalFilterTests
 
         // The filter saw both records and skipped both, so nothing was recovered.
         Assert.Equal(2, filter.RecordCount);
+        filter.AssertRecordsWereWellFormed();
         Assert.Null(db.GetString("a"));
         Assert.Null(db.GetString("b"));
     }
@@ -189,6 +216,7 @@ public class WalFilterTests
 
         // The open succeeds, and the record is simply not recovered.
         Assert.Equal(1, filter.RecordCount);
+        filter.AssertRecordsWereWellFormed();
         Assert.Null(db.GetString("a"));
     }
 
