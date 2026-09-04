@@ -194,9 +194,15 @@ public sealed record TableProperties
         = new Dictionary<string, byte[]>();
 
     /// <summary>
-    /// The same properties as <see cref="UserCollectedProperties"/>, rendered by
-    /// RocksDb into human-readable strings.
+    /// Always empty.
     /// </summary>
+    /// <remarks>
+    /// RocksDb fills this from table-properties collectors registered by the
+    /// application, and the C API offers no way to create a collector factory,
+    /// so nothing ever registers one. It is kept because it is part of the
+    /// native structure this mirrors. The entries RocksDb contributes itself
+    /// arrive in <see cref="UserCollectedProperties"/>, which is populated.
+    /// </remarks>
     public IReadOnlyDictionary<string, string> ReadableProperties { get; init; }
         = new Dictionary<string, string>();
 

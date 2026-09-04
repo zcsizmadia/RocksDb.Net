@@ -962,9 +962,10 @@ public sealed class DbOptions : RocksDbHandle
     /// pair during table-file creation (compaction and flush).
     /// </summary>
     /// <remarks>
-    /// The <paramref name="value"/> instance must remain alive (not disposed)
-    /// for the entire lifetime of the database. Dispose it only after the
-    /// database has been closed.
+    /// Disposing the filter is safe at any point. Attaching it registers a
+    /// hold, so a <c>using</c> block that ends while the database is still open
+    /// defers the release rather than performing it, and the native object goes
+    /// when the last holder lets go. See the ownership guide.
     /// </remarks>
 
     public CompactionFilter CompactionFilter
