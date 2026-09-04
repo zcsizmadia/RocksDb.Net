@@ -283,4 +283,37 @@ public class ReadmeSnippetTests
         db.Put("key", "value");
         Assert.Equal("value", db.GetString("key"));
     }
+
+    [Fact]
+    public void LargeValuesBlobDb()
+    {
+        using var dir = new TempDir();
+
+        var options = new DbOptions
+        {
+            CreateIfMissing = true,
+            EnableBlobFiles = true,
+            MinBlobSize = 1024,          // values at or above this go to a blob file
+
+            // Reclaim space from blob files whose values have been overwritten.
+            EnableBlobGarbageCollection = true,
+        };
+
+        // Blobs live outside the SST files, so the block cache never holds them.
+        // Without a blob cache, every blob read goes to the file system.
+        using var blobCache = Cache.CreateLru(256 * 1024 * 1024);
+        options.BlobCache = blobCache;
+        options.PrepopulateBlobCache = PrepopulateBlobCache.FlushOnly;
+
+        using var db = RocksDb.Open(options, dir.Path);
+
+        db.Put("large", new string('v', 4096));   // stored as a blob
+        db.Put("small", "v");                     // stays in the SST
+
+        db.Flush();
+
+        Assert.NotEmpty(Directory.GetFiles(dir.Path, "*.blob"));
+        Assert.Equal(new string('v', 4096), db.GetString("large"));
+        Assert.Equal("v", db.GetString("small"));
+    }
 }

@@ -25,6 +25,7 @@ A modern C# wrapper for [RocksDb](https://rocksdb.org/), the high-performance em
 - **Backups & checkpoints** — `BackupEngine` and `Checkpoint` for point-in-time snapshots
 - **SST file ingestion** — bulk-load data with `SstFileWriter`
 - **Bloom/Ribbon filters** — configurable filter policies for point lookups
+- **Large values** — integrated BlobDB stores values above a threshold outside the SST files, with their own cache and garbage collection
 - **Event listeners** — observe flush, compaction, ingestion and background error events, with table properties and compaction statistics
 - **Write-ahead log** — list log files, and stream changes with `GetUpdatesSince` for replication
 - **WAL filter** — inspect, rewrite or skip records during recovery
@@ -273,6 +274,33 @@ var options = new DbOptions { CreateIfMissing = true };
 options.BlockBasedTableFactory = tableOptions;
 
 using var db = RocksDb.Open(options, "filtered_db");
+```
+
+### Large Values (BlobDB)
+
+Values above `MinBlobSize` are written to separate blob files instead of into the SST files, so compaction moves keys around without rewriting the values attached to them. Worth turning on when values are large; not worth it when they are small, because every read of a blob costs an extra file access.
+
+```csharp
+var options = new DbOptions
+{
+    CreateIfMissing = true,
+    EnableBlobFiles = true,
+    MinBlobSize = 1024,          // values at or above this go to a blob file
+
+    // Reclaim space from blob files whose values have been overwritten.
+    EnableBlobGarbageCollection = true,
+};
+
+// Blobs live outside the SST files, so the block cache never holds them.
+// Without a blob cache, every blob read goes to the file system.
+using var blobCache = Cache.CreateLru(256 * 1024 * 1024);
+options.BlobCache = blobCache;
+options.PrepopulateBlobCache = PrepopulateBlobCache.FlushOnly;
+
+using var db = RocksDb.Open(options, "blob_db");
+
+db.Put("large", new string('v', 4096));   // stored as a blob
+db.Put("small", "v");                     // stays in the SST
 ```
 
 ## Samples

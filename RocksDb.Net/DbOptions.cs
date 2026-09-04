@@ -790,7 +790,7 @@ public sealed class DbOptions : RocksDbHandle
     }
 
     /// <summary>Enable garbage collection for blob files during compaction.</summary>
-    public bool EnableBlobGc
+    public bool EnableBlobGarbageCollection
     {
         get => NativeMethods.rocksdb_options_get_enable_blob_gc(Handle) != 0;
         set => NativeMethods.rocksdb_options_set_enable_blob_gc(Handle, value ? (byte)1 : (byte)0);
@@ -830,6 +830,48 @@ public sealed class DbOptions : RocksDbHandle
             ArgumentNullException.ThrowIfNull(value);
             value.AddHolder();
             NativeMethods.rocksdb_options_set_ratelimiter(Handle, value.Handle);
+            _ownedHandles.Add(value);
+        }
+    }
+
+    /// <summary>
+    /// A cache for blob values, separate from the block cache.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Only meaningful with <see cref="EnableBlobFiles"/>. Blobs live outside
+    /// the SST files, so the block cache never holds them and a blob read goes
+    /// to the file system every time until one of these exists. Giving blobs
+    /// their own cache also keeps them from evicting index and filter blocks,
+    /// which is the reason it is a separate cache rather than a share of the
+    /// block cache.
+    /// </para>
+    /// <para>
+    /// <see cref="PrepopulateBlobCache"/> does nothing without this. There is
+    /// no cache to prepopulate, so a flush has nowhere to put the blobs it
+    /// just wrote.
+    /// </para>
+    /// <para>
+    /// RocksDb copies the shared pointer, so the cache may be shared with
+    /// other options objects and with the block cache. Assigning registers a
+    /// hold, so disposing it while a database is still open defers the release
+    /// rather than performing it.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentNullException">
+    /// The value is <see langword="null"/>. Unlike
+    /// <see cref="BlockBasedTableOptions.SetBlockCache"/>, which the C API lets
+    /// through as a no-op, the blob-cache setter dereferences what it is given
+    /// without checking, so a null would be an access violation rather than
+    /// nothing happening.
+    /// </exception>
+    public Cache BlobCache
+    {
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            value.AddHolder();
+            NativeMethods.rocksdb_options_set_blob_cache(Handle, value.Handle);
             _ownedHandles.Add(value);
         }
     }
@@ -1335,7 +1377,7 @@ public sealed class DbOptions : RocksDbHandle
     /// The fraction of the oldest blob files that garbage collection considers,
     /// between 0 and 1.
     /// </summary>
-    public double BlobGcAgeCutoff
+    public double BlobGarbageCollectionAgeCutoff
     {
         get => NativeMethods.rocksdb_options_get_blob_gc_age_cutoff(Handle);
         set => NativeMethods.rocksdb_options_set_blob_gc_age_cutoff(Handle, value);
@@ -1345,7 +1387,7 @@ public sealed class DbOptions : RocksDbHandle
     /// The garbage fraction at which a blob file is collected regardless of its
     /// age, between 0 and 1.
     /// </summary>
-    public double BlobGcForceThreshold
+    public double BlobGarbageCollectionForceThreshold
     {
         get => NativeMethods.rocksdb_options_get_blob_gc_force_threshold(Handle);
         set => NativeMethods.rocksdb_options_set_blob_gc_force_threshold(Handle, value);

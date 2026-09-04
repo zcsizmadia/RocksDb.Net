@@ -598,4 +598,28 @@ public class DocumentationGuideTests
         Assert.True(first.Flushes > 0, "the first listener should still receive events");
         Assert.True(second.Flushes > 0, "the second listener should also receive events");
     }
+
+    [Fact]
+    public void GettingStarted_StoringLargeValues()
+    {
+        using var dir = new TempDir();
+        string path = dir.Path;
+
+        var options = new DbOptions
+        {
+            CreateIfMissing = true,
+            EnableBlobFiles = true,
+            MinBlobSize = 1024,
+            EnableBlobGarbageCollection = true,
+        };
+
+        using var db = RocksDb.Open(options, path);
+
+        db.Put("large", new string('v', 4096));
+
+        db.Flush();
+
+        Assert.NotEmpty(Directory.GetFiles(path, "*.blob"));
+        Assert.Equal(new string('v', 4096), db.GetString("large"));
+    }
 }

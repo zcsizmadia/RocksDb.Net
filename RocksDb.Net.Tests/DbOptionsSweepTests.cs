@@ -134,13 +134,13 @@ public class DbOptionsSweepTests
     {
         using var opts = new DbOptions
         {
-            BlobGcAgeCutoff = 0.4,
-            BlobGcForceThreshold = 0.8,
+            BlobGarbageCollectionAgeCutoff = 0.4,
+            BlobGarbageCollectionForceThreshold = 0.8,
             ExperimentalMempurgeThreshold = 1.5,
         };
 
-        Assert.Equal(0.4, opts.BlobGcAgeCutoff, 6);
-        Assert.Equal(0.8, opts.BlobGcForceThreshold, 6);
+        Assert.Equal(0.4, opts.BlobGarbageCollectionAgeCutoff, 6);
+        Assert.Equal(0.8, opts.BlobGarbageCollectionForceThreshold, 6);
         Assert.Equal(1.5, opts.ExperimentalMempurgeThreshold, 6);
     }
 
