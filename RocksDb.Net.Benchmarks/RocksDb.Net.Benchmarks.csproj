@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>$(DefaultTargetFramework)</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <!--
+      Release only, and never Debug: BenchmarkDotNet refuses to run a Debug
+      build because the numbers would be meaningless, so making that the
+      default here removes a step that is easy to forget.
+    -->
+    <Configuration Condition="'$(Configuration)' == ''">Release</Configuration>
+
+    <!--
+      Not part of the normal cycle. `dotnet build` and `dotnet test` at the
+      repository root do not touch this project, because a benchmark harness
+      pulls in BenchmarkDotNet and its own toolchain and would slow every
+      ordinary build for something run on demand.
+    -->
+    <IsPackable>false</IsPackable>
+    <IsTestProject>false</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../RocksDb.Net/RocksDb.Net.csproj" />
+  </ItemGroup>
+
+</Project>
