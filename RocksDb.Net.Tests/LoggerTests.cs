@@ -2,13 +2,33 @@ namespace RocksDbNet.Tests;
 
 public class LoggerTests
 {
+    /// <summary>Records what RocksDb logged, from whichever thread logged it.</summary>
+    /// <remarks>
+    /// Both sides lock. Flush and compaction log from background threads, and
+    /// this used to append to a plain List with no synchronisation at all.
+    /// </remarks>
     private sealed class TestLogger(InfoLogLevel logLevel) : Logger(logLevel)
     {
-        public List<(InfoLogLevel Level, string Message)> Logs { get; } = [];
+        private readonly object _gate = new();
+        private readonly List<(InfoLogLevel Level, string Message)> _logs = [];
+
+        public IReadOnlyList<(InfoLogLevel Level, string Message)> Logs
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return [.. _logs];
+                }
+            }
+        }
 
         public override void Log(InfoLogLevel logLevel, string message)
         {
-            Logs.Add((logLevel, message));
+            lock (_gate)
+            {
+                _logs.Add((logLevel, message));
+            }
         }
     }
 
@@ -56,35 +76,111 @@ public class LoggerTests
         Assert.NotEmpty(logger.Logs);
     }
 
+    /// <summary>Opens a database, writes and flushes, and reports what was logged.</summary>
+    private static TestLogger LogsFrom(string path, InfoLogLevel loggerLevel, InfoLogLevel? optionsLevel = null)
+    {
+        var logger = new TestLogger(loggerLevel);
+
+        using var opts = new DbOptions { CreateIfMissing = true };
+        opts.InfoLog = logger;
+
+        if (optionsLevel is not null)
+        {
+            opts.InfoLogLevel = optionsLevel.Value;
+        }
+
+        using (RocksDb db = RocksDb.Open(opts, path))
+        {
+            db.Put("key", "value");
+            db.Flush();
+        }
+
+        return logger;
+    }
+
+    /// <summary>
+    /// A logger constructed at a higher level receives strictly fewer messages,
+    /// and none below its level that RocksDb tags with one.
+    /// </summary>
+    /// <remarks>
+    /// This used to assert only that the debug count was greater than or equal
+    /// to the warn count, which equal counts satisfy, so it held even if the
+    /// level were ignored entirely. Measured here: 383 messages at Debug against
+    /// 355 at Warn.
+    /// </remarks>
     [Fact]
-    public void Logger_SetViaInfoLogLevel()
+    public void Logger_LevelFiltersOutTheLevelsBelowIt()
     {
         using var dir = new TempDir();
-        var debugLogger = new TestLogger(InfoLogLevel.Debug);
-        var warnLogger = new TestLogger(InfoLogLevel.Warn);
 
-        int debugCount;
-        using (var opts = new DbOptions { CreateIfMissing = true })
-        {
-            opts.InfoLog = debugLogger;
-            using var db1 = RocksDb.Open(opts, Path.Combine(dir.Path, "db1"));
-            db1.Put("key", "value");
-            db1.Flush();
-            debugCount = debugLogger.Logs.Count;
-        }
+        TestLogger debug = LogsFrom(Path.Combine(dir.Path, "debug"), InfoLogLevel.Debug);
+        TestLogger warn = LogsFrom(Path.Combine(dir.Path, "warn"), InfoLogLevel.Warn);
 
-        int warnCount;
-        using (var opts = new DbOptions { CreateIfMissing = true })
-        {
-            opts.InfoLog = warnLogger;
-            opts.InfoLogLevel = InfoLogLevel.Warn;
-            using var db2 = RocksDb.Open(opts, Path.Combine(dir.Path, "db2"));
-            db2.Put("key", "value");
-            db2.Flush();
-            warnCount = warnLogger.Logs.Count;
-        }
+        Assert.NotEmpty(debug.Logs);
+        Assert.NotEmpty(warn.Logs);
 
-        // A debug-level logger should receive at least as many messages as warn-level
-        Assert.True(debugCount >= warnCount, $"Debug({debugCount}) should be >= Warn({warnCount})");
+        Assert.True(
+            debug.Logs.Count > warn.Logs.Count,
+            $"a debug logger saw {debug.Logs.Count} messages and a warn logger {warn.Logs.Count}");
+
+        // The debug logger sees debug messages and the warn logger sees none,
+        // which is the difference between them.
+        Assert.Contains(debug.Logs, l => l.Level == InfoLogLevel.Debug);
+        Assert.DoesNotContain(warn.Logs, l => l.Level == InfoLogLevel.Debug);
+    }
+
+    /// <summary>
+    /// Messages below the level a logger was constructed with still reach it, so
+    /// a logger that cares has to filter for itself.
+    /// </summary>
+    /// <remarks>
+    /// Measured: a logger constructed at Warn received 354 messages tagged Info
+    /// and one tagged Error. RocksDb logs a great deal through a call that
+    /// carries no level, and those arrive tagged Info whatever the logger asked
+    /// for. Only the calls that do carry a level are filtered, which is why the
+    /// test above still sees a difference.
+    /// </remarks>
+    [Fact]
+    public void Logger_StillReceivesMessagesBelowItsLevel()
+    {
+        using var dir = new TempDir();
+
+        TestLogger warn = LogsFrom(Path.Combine(dir.Path, "warn"), InfoLogLevel.Warn);
+
+        Assert.Contains(warn.Logs, l => l.Level < InfoLogLevel.Warn);
+    }
+
+    /// <summary>
+    /// <see cref="DbOptions.InfoLogLevel"/> does not filter a custom logger at
+    /// all. The level a logger is constructed with is the only one that counts.
+    /// </summary>
+    /// <remarks>
+    /// Measured: identical message counts with the option left alone and with it
+    /// set to Warn, at 383 each, against 355 for a logger constructed at Warn.
+    /// Worth a test of its own because the option looks like the way to control
+    /// this and quietly is not. See issue #129.
+    /// </remarks>
+    [Fact]
+    public void InfoLogLevel_DoesNotFilterACustomLogger()
+    {
+        using var dir = new TempDir();
+
+        TestLogger warnLogger = LogsFrom(Path.Combine(dir.Path, "warn-logger"), InfoLogLevel.Warn);
+
+        TestLogger optionSet = LogsFrom(
+            Path.Combine(dir.Path, "option-set"), InfoLogLevel.Debug, InfoLogLevel.Warn);
+
+        // Debug messages arrive at a logger constructed at Debug even with the
+        // option set to Warn, which is the whole finding.
+        Assert.Contains(optionSet.Logs, l => l.Level == InfoLogLevel.Debug);
+
+        // And the option-set logger sees more than one constructed at Warn does,
+        // so the filtering that happens is the constructor level doing it. The
+        // counts are compared loosely rather than exactly: background work
+        // varies a little between runs, and an exact match was measured on a
+        // quiet machine and failed under a loaded one.
+        Assert.True(
+            optionSet.Logs.Count > warnLogger.Logs.Count,
+            $"option-set logger saw {optionSet.Logs.Count}, warn-constructed logger {warnLogger.Logs.Count}");
     }
 }

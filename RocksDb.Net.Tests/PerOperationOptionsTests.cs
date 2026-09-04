@@ -206,40 +206,30 @@ public class PerOperationOptionsTests
 
     // ── IngestExternalFileOptions ────────────────────────────────────────────
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void IngestExternalFileOptions_BoolProperties_RoundTrip(bool value)
+    /// <summary>
+    /// Each of these round-trips both ways on its own, without moving any of
+    /// the others.
+    /// </summary>
+    [Fact]
+    public void IngestExternalFileOptions_BoolProperties_RoundTrip()
     {
         using var opts = new IngestExternalFileOptions();
 
-        opts.MoveFiles = value;
-        opts.FailedMoveFallBackToCopy = value;
-        opts.LinkFiles = value;
-        opts.SnapshotConsistency = value;
-        opts.AllowGlobalSeqno = value;
-        opts.WriteGlobalSeqno = value;
-        opts.AllowBlockingFlush = value;
-        opts.FailIfNotBottommostLevel = value;
-        opts.VerifyChecksumsBeforeIngest = value;
-        opts.VerifyFileChecksum = value;
-        opts.FillCache = value;
-        opts.PrefetchLmaxIndexAndFilterBlocks = value;
-        opts.AllowDbGeneratedFiles = value;
-
-        Assert.Equal(value, opts.MoveFiles);
-        Assert.Equal(value, opts.FailedMoveFallBackToCopy);
-        Assert.Equal(value, opts.LinkFiles);
-        Assert.Equal(value, opts.SnapshotConsistency);
-        Assert.Equal(value, opts.AllowGlobalSeqno);
-        Assert.Equal(value, opts.WriteGlobalSeqno);
-        Assert.Equal(value, opts.AllowBlockingFlush);
-        Assert.Equal(value, opts.FailIfNotBottommostLevel);
-        Assert.Equal(value, opts.VerifyChecksumsBeforeIngest);
-        Assert.Equal(value, opts.VerifyFileChecksum);
-        Assert.Equal(value, opts.FillCache);
-        Assert.Equal(value, opts.PrefetchLmaxIndexAndFilterBlocks);
-        Assert.Equal(value, opts.AllowDbGeneratedFiles);
+        BoolProperty.AssertRoundTripsIndependently(
+            opts,
+            (nameof(opts.MoveFiles), (o, v) => o.MoveFiles = v, o => o.MoveFiles),
+            (nameof(opts.FailedMoveFallBackToCopy), (o, v) => o.FailedMoveFallBackToCopy = v, o => o.FailedMoveFallBackToCopy),
+            (nameof(opts.LinkFiles), (o, v) => o.LinkFiles = v, o => o.LinkFiles),
+            (nameof(opts.SnapshotConsistency), (o, v) => o.SnapshotConsistency = v, o => o.SnapshotConsistency),
+            (nameof(opts.AllowGlobalSeqno), (o, v) => o.AllowGlobalSeqno = v, o => o.AllowGlobalSeqno),
+            (nameof(opts.WriteGlobalSeqno), (o, v) => o.WriteGlobalSeqno = v, o => o.WriteGlobalSeqno),
+            (nameof(opts.AllowBlockingFlush), (o, v) => o.AllowBlockingFlush = v, o => o.AllowBlockingFlush),
+            (nameof(opts.FailIfNotBottommostLevel), (o, v) => o.FailIfNotBottommostLevel = v, o => o.FailIfNotBottommostLevel),
+            (nameof(opts.VerifyChecksumsBeforeIngest), (o, v) => o.VerifyChecksumsBeforeIngest = v, o => o.VerifyChecksumsBeforeIngest),
+            (nameof(opts.VerifyFileChecksum), (o, v) => o.VerifyFileChecksum = v, o => o.VerifyFileChecksum),
+            (nameof(opts.FillCache), (o, v) => o.FillCache = v, o => o.FillCache),
+            (nameof(opts.PrefetchLmaxIndexAndFilterBlocks), (o, v) => o.PrefetchLmaxIndexAndFilterBlocks = v, o => o.PrefetchLmaxIndexAndFilterBlocks),
+            (nameof(opts.AllowDbGeneratedFiles), (o, v) => o.AllowDbGeneratedFiles = v, o => o.AllowDbGeneratedFiles));
     }
 
     [Fact]

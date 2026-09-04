@@ -193,11 +193,18 @@ public class SmallGapsTests
     }
 
     /// <summary>
-    /// A database opens across two directories and its data lands in them,
-    /// which is the whole point.
+    /// A database opens across two directories and its SST files land in them
+    /// rather than in the database directory, which is the whole point.
     /// </summary>
+    /// <remarks>
+    /// This was named for spreading data across both directories, which RocksDb
+    /// does not promise: level-zero files go to the first path and compaction
+    /// output to whichever path has room, so on a loaded machine everything can
+    /// legitimately end up in the first one. Measured over full-suite runs, it
+    /// did. What is guaranteed is that the database directory holds none of it.
+    /// </remarks>
     [Fact]
-    public void SetDbPaths_SpreadsDataAcrossDirectories()
+    public void SetDbPaths_KeepsDataOutOfTheDatabaseDirectory()
     {
         using var root = new TempDir();
         string first = Path.Combine(root.Path, "fast");
@@ -232,10 +239,17 @@ public class SmallGapsTests
 
         int firstCount = Directory.GetFiles(first, "*.sst").Length;
         int secondCount = Directory.GetFiles(second, "*.sst").Length;
+        int rootCount = Directory.GetFiles(root.Path, "*.sst").Length;
+
+        // The assertion that matters, and the one the old test was missing: no
+        // SST file is left in the database directory. Without it the test
+        // passed on a sum over the two configured paths and never established
+        // that setting them had changed anything.
+        Assert.Equal(0, rootCount);
 
         Assert.True(
             firstCount + secondCount > 0,
-            $"data should live in the configured paths, saw {firstCount} and {secondCount}");
+            $"no data in the configured paths, saw {firstCount} and {secondCount}");
 
         Assert.NotNull(db.Get(Encoding.UTF8.GetBytes("key0200")));
     }

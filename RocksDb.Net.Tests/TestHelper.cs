@@ -290,3 +290,88 @@ public sealed class CallbackExceptionRecorder : IDisposable
     public void Dispose()
         => RocksDbCallbacks.UnhandledException -= OnUnhandled;
 }
+
+/// <summary>
+/// Polls for a condition RocksDb reaches on a background thread.
+/// </summary>
+/// <remarks>
+/// Flushes and compactions are asynchronous, so a test that checks immediately
+/// after asking for one is really testing how fast the machine is. Several test
+/// classes had grown their own copy of this.
+/// </remarks>
+public static class Wait
+{
+    /// <summary>
+    /// Polls until the condition holds, returning whether it ever did.
+    /// </summary>
+    /// <remarks>
+    /// Returns rather than throws, so the caller can assert on it and say in its
+    /// own words what was being waited for.
+    /// </remarks>
+    public static bool Until(Func<bool> condition, TimeSpan? timeout = null)
+    {
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        TimeSpan limit = timeout ?? TimeSpan.FromSeconds(30);
+
+        while (elapsed.Elapsed < limit)
+        {
+            if (condition())
+            {
+                return true;
+            }
+
+            Thread.Sleep(25);
+        }
+
+        return condition();
+    }
+}
+
+/// <summary>
+/// Round-trips boolean options one at a time, so a setter that writes the wrong
+/// field is visible.
+/// </summary>
+/// <remarks>
+/// The tests that use this used to set every property to the same value and
+/// then assert every property held it. If a setter wrote a neighbouring field
+/// instead of its own, all the assertions still passed, because everything had
+/// been set to the same value anyway. Setting one property at a time and
+/// checking that the others did not move is what catches that.
+/// </remarks>
+public static class BoolProperty
+{
+    /// <summary>
+    /// Asserts each property round-trips both ways and moves nothing else.
+    /// </summary>
+    public static void AssertRoundTripsIndependently<T>(
+        T target, params (string Name, Action<T, bool> Set, Func<T, bool> Get)[] properties)
+    {
+        Assert.NotEmpty(properties);
+
+        foreach ((string name, Action<T, bool> set, Func<T, bool> get) in properties)
+        {
+            foreach ((_, Action<T, bool> reset, _) in properties)
+            {
+                reset(target, false);
+            }
+
+            set(target, true);
+
+            Assert.True(get(target), $"{name} did not read back as true");
+
+            foreach ((string otherName, _, Func<T, bool> otherGet) in properties)
+            {
+                if (otherName == name)
+                {
+                    continue;
+                }
+
+                Assert.False(otherGet(target), $"setting {name} also set {otherName}");
+            }
+
+            set(target, false);
+
+            Assert.False(get(target), $"{name} did not read back as false");
+        }
+    }
+}

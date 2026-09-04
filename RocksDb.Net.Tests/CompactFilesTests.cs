@@ -218,18 +218,19 @@ public class CompactFilesTests
 
     // ── GetLiveFilesStorageInfo ──────────────────────────────────────────────
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void LiveFilesStorageInfoOptions_BoolProperties_RoundTrip(bool value)
+    /// <summary>
+    /// Each of these round-trips both ways on its own, without moving any of
+    /// the others.
+    /// </summary>
+    [Fact]
+    public void LiveFilesStorageInfoOptions_BoolProperties_RoundTrip()
     {
         using var opts = new LiveFilesStorageInfoOptions();
 
-        opts.IncludeChecksumInfo = value;
-        opts.AtomicFlush = value;
-
-        Assert.Equal(value, opts.IncludeChecksumInfo);
-        Assert.Equal(value, opts.AtomicFlush);
+        BoolProperty.AssertRoundTripsIndependently(
+            opts,
+            (nameof(opts.IncludeChecksumInfo), (o, v) => o.IncludeChecksumInfo = v, o => o.IncludeChecksumInfo),
+            (nameof(opts.AtomicFlush), (o, v) => o.AtomicFlush = v, o => o.AtomicFlush));
     }
 
     [Fact]

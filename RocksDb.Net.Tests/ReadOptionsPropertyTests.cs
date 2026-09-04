@@ -10,26 +10,23 @@ public class ReadOptionsPropertyTests
 {
     // ── Simple properties ────────────────────────────────────────────────────
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void BoolProperties_RoundTrip(bool value)
+    /// <summary>
+    /// Each of these round-trips both ways on its own, without moving any of
+    /// the others.
+    /// </summary>
+    [Fact]
+    public void BoolProperties_RoundTrip()
     {
         using var opts = new ReadOptions();
 
-        opts.AdaptiveReadahead = value;
-        opts.AutoReadaheadSize = value;
-        opts.AutoPrefixMode = value;
-        opts.AutoRefreshIteratorWithSnapshot = value;
-        opts.AllowUnpreparedValue = value;
-        opts.OptimizeMultiGetForIo = value;
-
-        Assert.Equal(value, opts.AdaptiveReadahead);
-        Assert.Equal(value, opts.AutoReadaheadSize);
-        Assert.Equal(value, opts.AutoPrefixMode);
-        Assert.Equal(value, opts.AutoRefreshIteratorWithSnapshot);
-        Assert.Equal(value, opts.AllowUnpreparedValue);
-        Assert.Equal(value, opts.OptimizeMultiGetForIo);
+        BoolProperty.AssertRoundTripsIndependently(
+            opts,
+            (nameof(opts.AdaptiveReadahead), (o, v) => o.AdaptiveReadahead = v, o => o.AdaptiveReadahead),
+            (nameof(opts.AutoReadaheadSize), (o, v) => o.AutoReadaheadSize = v, o => o.AutoReadaheadSize),
+            (nameof(opts.AutoPrefixMode), (o, v) => o.AutoPrefixMode = v, o => o.AutoPrefixMode),
+            (nameof(opts.AutoRefreshIteratorWithSnapshot), (o, v) => o.AutoRefreshIteratorWithSnapshot = v, o => o.AutoRefreshIteratorWithSnapshot),
+            (nameof(opts.AllowUnpreparedValue), (o, v) => o.AllowUnpreparedValue = v, o => o.AllowUnpreparedValue),
+            (nameof(opts.OptimizeMultiGetForIo), (o, v) => o.OptimizeMultiGetForIo = v, o => o.OptimizeMultiGetForIo));
     }
 
     [Fact]
@@ -277,11 +274,15 @@ public class ReadOptionsPropertyTests
         db.Db.Flush();
 
         TablePropertiesView? escaped = null;
+        bool? validInsideTheCallback = null;
 
         using var opts = new ReadOptions();
         opts.SetTableFilter(props =>
         {
-            Assert.True(props.IsValid);
+            // Recorded, not asserted. The callback catches everything and
+            // returns its fallback, and an xunit failure is only an exception,
+            // so asserting here would pass whatever props said.
+            validInsideTheCallback = props.IsValid;
             escaped = props;
             return true;
         });
@@ -290,6 +291,8 @@ public class ReadOptionsPropertyTests
         {
             iter.SeekToFirst();
         }
+
+        Assert.True(validInsideTheCallback, "the view was not valid while the callback held it");
 
         // RocksDb owns the properties and frees them when the callback returns,
         // so holding on to the view must fail loudly rather than read freed
@@ -397,18 +400,43 @@ public class ReadOptionsPropertyTests
         }
     }
 
+    /// <summary>
+    /// Each <c>SetTableFilter</c> allocates a GCHandle and relies on RocksDb
+    /// running the previous destructor to release it. A missed release pins the
+    /// delegate forever.
+    /// </summary>
+    /// <remarks>
+    /// The old version asserted only that a filter was still installed, which is
+    /// true whether or not the previous few thousand were released. Giving each
+    /// delegate something substantial to capture makes the leak measurable:
+    /// a pinned delegate keeps its captures reachable, so a run that released
+    /// none of them holds on to every ballast array.
+    /// </remarks>
     [Fact]
     public void TableFilter_ReplacedRepeatedly_DoesNotLeakHandles()
     {
-        // Each SetTableFilter allocates a GCHandle and relies on RocksDb running
-        // the previous destructor to release it. If that were wrong, this would
-        // pin thousands of delegates.
+        const int Replacements = 2_000;
+        const int BallastBytes = 64 * 1024;
+
         using var opts = new ReadOptions();
 
-        for (int i = 0; i < 5_000; i++)
+        long before = GC.GetTotalMemory(forceFullCollection: true);
+
+        for (int i = 0; i < Replacements; i++)
         {
-            opts.SetTableFilter(_ => true);
+            byte[] ballast = new byte[BallastBytes];
+            opts.SetTableFilter(_ => ballast.Length == BallastBytes);
         }
+
+        long grew = GC.GetTotalMemory(forceFullCollection: true) - before;
+
+        // 128 MB pinned if nothing was released, against one ballast for the
+        // filter still installed if everything was.
+        const long Budget = 32L * 1024 * 1024;
+
+        Assert.True(
+            grew < Budget,
+            $"managed memory grew by {grew / (1024 * 1024)} MB over {Replacements} replacements, so the handles stayed pinned");
 
         Assert.True(opts.HasTableFilter);
     }

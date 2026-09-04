@@ -9,30 +9,25 @@ namespace RocksDbNet.Tests;
 /// </summary>
 public class EnvOptionsPropertyTests
 {
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void BoolProperties_RoundTrip(bool value)
+    /// <summary>
+    /// Each of these round-trips both ways on its own, without moving any of
+    /// the others.
+    /// </summary>
+    [Fact]
+    public void BoolProperties_RoundTrip()
     {
         using var opts = new EnvOptions();
 
-        opts.UseDirectReads = value;
-        opts.UseDirectWrites = value;
-        opts.UseMmapReads = value;
-        opts.UseMmapWrites = value;
-        opts.AllowFallocate = value;
-        opts.FallocateWithKeepSize = value;
-        opts.FdCloexec = value;
-        opts.StrictBytesPerSync = value;
-
-        Assert.Equal(value, opts.UseDirectReads);
-        Assert.Equal(value, opts.UseDirectWrites);
-        Assert.Equal(value, opts.UseMmapReads);
-        Assert.Equal(value, opts.UseMmapWrites);
-        Assert.Equal(value, opts.AllowFallocate);
-        Assert.Equal(value, opts.FallocateWithKeepSize);
-        Assert.Equal(value, opts.FdCloexec);
-        Assert.Equal(value, opts.StrictBytesPerSync);
+        BoolProperty.AssertRoundTripsIndependently(
+            opts,
+            (nameof(opts.UseDirectReads), (o, v) => o.UseDirectReads = v, o => o.UseDirectReads),
+            (nameof(opts.UseDirectWrites), (o, v) => o.UseDirectWrites = v, o => o.UseDirectWrites),
+            (nameof(opts.UseMmapReads), (o, v) => o.UseMmapReads = v, o => o.UseMmapReads),
+            (nameof(opts.UseMmapWrites), (o, v) => o.UseMmapWrites = v, o => o.UseMmapWrites),
+            (nameof(opts.AllowFallocate), (o, v) => o.AllowFallocate = v, o => o.AllowFallocate),
+            (nameof(opts.FallocateWithKeepSize), (o, v) => o.FallocateWithKeepSize = v, o => o.FallocateWithKeepSize),
+            (nameof(opts.FdCloexec), (o, v) => o.FdCloexec = v, o => o.FdCloexec),
+            (nameof(opts.StrictBytesPerSync), (o, v) => o.StrictBytesPerSync = v, o => o.StrictBytesPerSync));
     }
 
     [Fact]

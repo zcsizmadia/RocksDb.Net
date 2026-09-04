@@ -618,6 +618,15 @@ public sealed class DbOptions : RocksDbHandle
     // ── Logging ───────────────────────────────────────────────────────────────
 
     /// <summary>Info log verbosity level.</summary>
+    /// <remarks>
+    /// Applies to the logger RocksDb creates for itself. It does not filter a
+    /// logger supplied through <see cref="InfoLog"/>: measured over a database
+    /// open, write and flush, setting this to <see cref="InfoLogLevel.Warn"/>
+    /// changed neither the number of messages a custom logger received nor
+    /// their levels. The level such a logger is constructed with is the only
+    /// one that has any effect on it, and even that lets through messages
+    /// RocksDb logs without a level. See issue #129.
+    /// </remarks>
     public InfoLogLevel InfoLogLevel
     {
         get => (InfoLogLevel)NativeMethods.rocksdb_options_get_info_log_level(Handle);

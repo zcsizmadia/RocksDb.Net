@@ -38,27 +38,24 @@ public class BackupEngineOptionsTests
     public void BackupEngineOptions_EmptyPath_Throws()
         => Assert.Throws<ArgumentException>(() => new BackupEngineOptions(string.Empty));
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void BackupEngineOptions_BoolProperties_RoundTrip(bool value)
+    /// <summary>
+    /// Each of these round-trips both ways on its own, without moving any of
+    /// the others.
+    /// </summary>
+    [Fact]
+    public void BackupEngineOptions_BoolProperties_RoundTrip()
     {
         using var dir = new TempDir();
         using var opts = new BackupEngineOptions(dir.Path);
 
-        opts.ShareTableFiles = value;
-        opts.Sync = value;
-        opts.DestroyOldData = value;
-        opts.BackupLogFiles = value;
-        opts.ShareFilesWithChecksum = value;
-        opts.CurrentTemperaturesOverrideManifest = value;
-
-        Assert.Equal(value, opts.ShareTableFiles);
-        Assert.Equal(value, opts.Sync);
-        Assert.Equal(value, opts.DestroyOldData);
-        Assert.Equal(value, opts.BackupLogFiles);
-        Assert.Equal(value, opts.ShareFilesWithChecksum);
-        Assert.Equal(value, opts.CurrentTemperaturesOverrideManifest);
+        BoolProperty.AssertRoundTripsIndependently(
+            opts,
+            (nameof(opts.ShareTableFiles), (o, v) => o.ShareTableFiles = v, o => o.ShareTableFiles),
+            (nameof(opts.Sync), (o, v) => o.Sync = v, o => o.Sync),
+            (nameof(opts.DestroyOldData), (o, v) => o.DestroyOldData = v, o => o.DestroyOldData),
+            (nameof(opts.BackupLogFiles), (o, v) => o.BackupLogFiles = v, o => o.BackupLogFiles),
+            (nameof(opts.ShareFilesWithChecksum), (o, v) => o.ShareFilesWithChecksum = v, o => o.ShareFilesWithChecksum),
+            (nameof(opts.CurrentTemperaturesOverrideManifest), (o, v) => o.CurrentTemperaturesOverrideManifest = v, o => o.CurrentTemperaturesOverrideManifest));
     }
 
     [Fact]
@@ -152,20 +149,20 @@ public class BackupEngineOptionsTests
 
     // ── CreateBackupOptions ──────────────────────────────────────────────────
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void CreateBackupOptions_BoolProperties_RoundTrip(bool value)
+    /// <summary>
+    /// Each of these round-trips both ways on its own, without moving any of
+    /// the others.
+    /// </summary>
+    [Fact]
+    public void CreateBackupOptions_BoolProperties_RoundTrip()
     {
         using var opts = new CreateBackupOptions();
 
-        opts.FlushBeforeBackup = value;
-        opts.AtomicFlush = value;
-        opts.DecreaseBackgroundThreadCpuPriority = value;
-
-        Assert.Equal(value, opts.FlushBeforeBackup);
-        Assert.Equal(value, opts.AtomicFlush);
-        Assert.Equal(value, opts.DecreaseBackgroundThreadCpuPriority);
+        BoolProperty.AssertRoundTripsIndependently(
+            opts,
+            (nameof(opts.FlushBeforeBackup), (o, v) => o.FlushBeforeBackup = v, o => o.FlushBeforeBackup),
+            (nameof(opts.AtomicFlush), (o, v) => o.AtomicFlush = v, o => o.AtomicFlush),
+            (nameof(opts.DecreaseBackgroundThreadCpuPriority), (o, v) => o.DecreaseBackgroundThreadCpuPriority = v, o => o.DecreaseBackgroundThreadCpuPriority));
     }
 
     [Theory]

@@ -166,8 +166,16 @@ public class MergeOperatorTests
             return true;
         }
 
+        private int _partialMergeCalls;
+
+        /// <summary>How many times RocksDb asked for a partial merge.</summary>
+        public int PartialMergeCalls => Volatile.Read(ref _partialMergeCalls);
+
         public override bool PartialMerge(ReadOnlySpan<byte> key, IReadOnlyList<byte[]> operands, out byte[] newValue)
         {
+            // Compaction runs on a background thread.
+            Interlocked.Increment(ref _partialMergeCalls);
+
             var sb = new StringBuilder();
             foreach (var op in operands)
             {
@@ -206,12 +214,14 @@ public class MergeOperatorTests
         db.Flush();
         db.CompactRange();
 
-        string? result = db.GetString("list");
-        Assert.NotNull(result);
-        // The result should contain all operands
-        Assert.Contains("a", result);
-        Assert.Contains("b", result);
-        Assert.Contains("c", result);
+        // The name of this test. It used to assert only that the merged value
+        // came back correct, which the full merge alone produces, so it passed
+        // whether or not PartialMerge was ever reached.
+        Assert.True(
+            mergeOp.PartialMergeCalls > 0,
+            "PartialMerge was never called, so only the full merge was exercised");
+
+        Assert.Equal("a,b,c", db.GetString("list"));
     }
 
     [Fact]

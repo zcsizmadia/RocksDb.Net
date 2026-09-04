@@ -196,8 +196,12 @@ public class ColumnFamilyExportImportTests
         using RocksDb target = OpenWith(targetDir.Path, "payload");
         using var cfOptions = new DbOptions();
 
-        Assert.ThrowsAny<Exception>(
+        RocksDbException ex = Assert.Throws<RocksDbException>(
             () => target.CreateColumnFamilyWithImport("payload", cfOptions, metadata));
+
+        // Named, not just any exception: a NullReferenceException from a wrapper
+        // bug would have satisfied ThrowsAny just as well.
+        Assert.Contains("Column family already exists", ex.Message, StringComparison.Ordinal);
     }
 
     /// <summary>
