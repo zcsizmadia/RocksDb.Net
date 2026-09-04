@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace RocksDbNet;
@@ -73,25 +74,10 @@ public readonly struct CompactionFilterContext
 public abstract class CompactionFilter : RocksDbHandle
 {
     // ── Unmanaged delegate types ─────────────────────────────────────────────
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate void DestructorCb(nint state);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private unsafe delegate byte FilterCb(
-        nint state, int level,
-        byte* key, nuint keyLen,
-        byte* value, nuint valLen,
-        byte** newValue, nuint* newValueLen,
-        byte* valueChanged);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate nint NameCb(nint state);
-
-    // Delegate instances kept as fields to prevent GC from collecting the
-    // objects while the native side still holds function pointers into them.
-    private readonly DestructorCb _destructorCb;
-    private readonly FilterCb _filterCb;
-    private readonly NameCb _nameCb;
+    // Native entry points, not delegates: RocksDb receives the address of the
+    // method rather than of a runtime-generated marshalling thunk. The fields
+    // that used to hold the delegates alive are gone with them; what keeps this
+    // object reachable is the GCHandle from PinGarbageCollector.
 
     // Per-thread scratch space for the new-value buffer.
     // The C++ rocksdb_compactionfilter_t::Filter() method immediately copies
@@ -124,6 +110,7 @@ public abstract class CompactionFilter : RocksDbHandle
     // ── Static callbacks ─────────────────────────────────────────────────────
     // Using static methods avoids unsafe-lambda syntax issues.
 
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void CB_Destructor(nint state)
     {
         try
@@ -146,6 +133,7 @@ public abstract class CompactionFilter : RocksDbHandle
         }
     }
 
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static unsafe byte CB_Filter(
         nint state, int level,
         byte* key, nuint keyLen,
@@ -233,15 +221,12 @@ public abstract class CompactionFilter : RocksDbHandle
         // Pin this instance so that the C++ callbacks can access it via the state pointer
         PinGarbageCollector(name);
 
-        _destructorCb = CB_Destructor;
-        _filterCb = CB_Filter;
-        _nameCb = GetNameFromPinnedIntPtrSafe;
-
         Handle = NativeMethods.rocksdb_compactionfilter_create(
             GetPinnedIntPtr(),
-            Marshal.GetFunctionPointerForDelegate(_destructorCb),
-            Marshal.GetFunctionPointerForDelegate(_filterCb),
-            Marshal.GetFunctionPointerForDelegate(_nameCb));
+            (nint)(delegate* unmanaged[Cdecl]<nint, void>)&CB_Destructor,
+            (nint)(delegate* unmanaged[Cdecl]<
+                nint, int, byte*, nuint, byte*, nuint, byte**, nuint*, byte*, byte>)&CB_Filter,
+            (nint)(delegate* unmanaged[Cdecl]<nint, nint>)&GetNameFromPinnedIntPtrSafe);
     }
 
     // ── Abstract filter method ───────────────────────────────────────────────

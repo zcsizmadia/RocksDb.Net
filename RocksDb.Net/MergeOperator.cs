@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 using RocksDbNet.Extensions;
@@ -25,49 +26,12 @@ namespace RocksDbNet;
 public abstract class MergeOperator : RocksDbHandle
 {
     // ── Unmanaged delegate types ─────────────────────────────────────────────
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate void DestructorDelegate(nint state);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private unsafe delegate nint FullMergeDelegate(
-        nint state,                                 // User-defined state
-        byte* key, nuint keyLen,                    // The key being operated on
-        byte* existingVal, nuint existingValLen,    // The current value (can be IntPtr.Zero)
-        nint operands,                              // Pointer to an array of const char*
-        nint operandsLen,                           // Pointer to an array of size_t
-        int numOperands,                            // Number of operands in the arrays
-        byte* success,                              // Set to 1 for success, 0 for failure
-        nuint* newValLen);                          // Set to the length of the returned buffer
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private unsafe delegate nint PartialMergeDelegate(
-        nint state,                                 // User-defined state
-        byte* key, nuint keyLen,                    // The key being operated on
-        nint operands,                              // Pointer to an array of const char*
-        nint operandsLen,                           // Pointer to an array of size_t
-        int numOperands,                            // Number of operands in the arrays
-        byte* success,                              // Set to 1 for success, 0 for failure
-        nuint* newValLen);                          // Set to the length of the returned buffer
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private unsafe delegate void DeleteValueDelegate(
-        nint state,
-        nint value, nuint valueLen);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate nint NameDelegate(nint state);
-
-    // Delegate instances kept as fields to prevent GC from collecting the
-    // objects while the native side still holds function pointers into them.
-    private readonly DestructorDelegate _destructorDelegate;
-    private readonly FullMergeDelegate _fullMergeDelegate;
-    private readonly PartialMergeDelegate _partialMergeDelegate;
-    private readonly DeleteValueDelegate _deleteValueDelegate;
-    private readonly NameDelegate _nameDelegate;
+        // Native entry points, not delegates. See Comparator for why.
 
     // ── Static callbacks ─────────────────────────────────────────────────────
     // Using static methods avoids unsafe-lambda syntax issues.
 
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void DestructorCallback(nint state)
     {
         try
@@ -82,6 +46,7 @@ public abstract class MergeOperator : RocksDbHandle
         }
     }
 
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static unsafe nint FullMergeCallback(
         nint state,
         byte* key, nuint keyLen,
@@ -135,6 +100,7 @@ public abstract class MergeOperator : RocksDbHandle
         }
     }
 
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static unsafe nint PartialMergeCallback(
         nint state,
         byte* key, nuint keyLen,
@@ -181,6 +147,7 @@ public abstract class MergeOperator : RocksDbHandle
         }
     }
 
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void DeleteValueCallback(
         nint state,
         nint value, nuint valueLen)
@@ -194,8 +161,6 @@ public abstract class MergeOperator : RocksDbHandle
             RocksDbCallbacks.Report("DeleteValue", ex, state);
         }
     }
-
-    private static nint NameCallback(nint state) => GetNameFromPinnedIntPtrSafe(state);
 
     private static MergeOperator SelfFromState(nint state) => GetSelfFromPinnedIntPtr<MergeOperator>(state);
 
@@ -214,12 +179,6 @@ public abstract class MergeOperator : RocksDbHandle
 
         PinGarbageCollector(name);
 
-        _destructorDelegate = DestructorCallback;
-        _fullMergeDelegate = FullMergeCallback;
-        _partialMergeDelegate = PartialMergeCallback;
-        _deleteValueDelegate = DeleteValueCallback;
-        _nameDelegate = NameCallback;
-
         // The partial-merge slot is always installed, even when the subclass does
         // not override PartialMerge. RocksDb invokes it through
         // `(*partial_merge_)(...)` with no null check, unlike the delete-value
@@ -230,11 +189,14 @@ public abstract class MergeOperator : RocksDbHandle
         // combine operands: RocksDb keeps them and calls FullMerge later.
         Handle = NativeMethods.rocksdb_mergeoperator_create(
             GetPinnedIntPtr(),
-            Marshal.GetFunctionPointerForDelegate(_destructorDelegate),
-            Marshal.GetFunctionPointerForDelegate(_fullMergeDelegate),
-            Marshal.GetFunctionPointerForDelegate(_partialMergeDelegate),
-            Marshal.GetFunctionPointerForDelegate(_deleteValueDelegate),
-            Marshal.GetFunctionPointerForDelegate(_nameDelegate));
+            (nint)(delegate* unmanaged[Cdecl]<nint, void>)&DestructorCallback,
+            (nint)(delegate* unmanaged[Cdecl]<
+                nint, byte*, nuint, byte*, nuint, nint, nint, int, byte*, nuint*,
+                nint>)&FullMergeCallback,
+            (nint)(delegate* unmanaged[Cdecl]<
+                nint, byte*, nuint, nint, nint, int, byte*, nuint*, nint>)&PartialMergeCallback,
+            (nint)(delegate* unmanaged[Cdecl]<nint, nint, nuint, void>)&DeleteValueCallback,
+            (nint)(delegate* unmanaged[Cdecl]<nint, nint>)&GetNameFromPinnedIntPtrSafe);
     }
 
     /// <summary>

@@ -201,8 +201,13 @@ public class OwnershipRegressionTests
     [Fact]
     public void AFactoryReturningAFreshFilterEachTimeIsNotReported()
     {
-        using var recorder = new CallbackExceptionRecorder();
         using var factory = new FreshFilterFactory();
+
+        // Scoped to this factory. The parameterless recorder sees every
+        // callback exception in the process, including the ones other tests
+        // provoke deliberately and in parallel, so asserting emptiness on it
+        // is a coin toss — it caught ReadOptionsPropertyTests' table filter.
+        using var recorder = new CallbackExceptionRecorder(factory);
 
         using var db = new TempDb(o =>
         {

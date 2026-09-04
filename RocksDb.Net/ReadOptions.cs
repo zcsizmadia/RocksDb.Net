@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -432,21 +433,13 @@ public sealed class ReadOptions : RocksDbHandle
 
     // ── Table filter ─────────────────────────────────────────────────────────
 
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate byte TableFilterCb(nint state, nint tableProperties);
-
-    // Kept alive for as long as the native side holds a pointer into it.
-    private TableFilterCb? _tableFilterCb;
 
     // Handed to RocksDb as the callback state. RocksDb calls the destructor on
     // re-set and when the options are destroyed, per ClearTableFilter in
     // db/c.cc, so freeing the GCHandle from there is safe.
     private GCHandle _tableFilterState;
 
-    private static readonly TableFilterDestructorCb TableFilterDestructorDelegate = FreeTableFilterState;
 
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate void TableFilterDestructorCb(nint state);
 
     /// <summary>
     /// Installs a predicate that decides which SST files a read may look at.
@@ -473,14 +466,13 @@ public sealed class ReadOptions : RocksDbHandle
         // makes RocksDb run the previous destructor, which frees the old handle,
         // so no leak and no double free.
         GCHandle state = GCHandle.Alloc(filter);
-        _tableFilterCb = InvokeTableFilter;
         _tableFilterState = state;
 
         NativeMethods.rocksdb_readoptions_set_table_filter(
             Handle,
             GCHandle.ToIntPtr(state),
-            Marshal.GetFunctionPointerForDelegate(TableFilterDestructorDelegate),
-            Marshal.GetFunctionPointerForDelegate(_tableFilterCb));
+            (nint)(delegate* unmanaged[Cdecl]<nint, void>)&FreeTableFilterState,
+            (nint)(delegate* unmanaged[Cdecl]<nint, nint, byte>)&InvokeTableFilter);
 
         return this;
     }
@@ -494,11 +486,11 @@ public sealed class ReadOptions : RocksDbHandle
     {
         // RocksDb runs the destructor for us, which releases the GCHandle.
         NativeMethods.rocksdb_readoptions_clear_table_filter(Handle);
-        _tableFilterCb = null;
         _tableFilterState = default;
         return this;
     }
 
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static byte InvokeTableFilter(nint state, nint tableProperties)
     {
         TablePropertiesView? view = null;
@@ -528,6 +520,7 @@ public sealed class ReadOptions : RocksDbHandle
         }
     }
 
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void FreeTableFilterState(nint state)
     {
         try

@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace RocksDbNet;
@@ -343,6 +344,14 @@ public abstract class RocksDbHandle : IDisposable
     /// Name callback used by every callback-based wrapper. Exceptions cannot
     /// cross into native code, so a failure yields a placeholder name.
     /// </summary>
+    /// <remarks>
+    /// A native entry point rather than a delegate, so RocksDb is handed the
+    /// address of this method instead of the address of a runtime-generated
+    /// marshalling thunk. That also means managed code cannot call it: every
+    /// user takes its address, and the one wrapper that used to call it through
+    /// a forwarding method now does the same.
+    /// </remarks>
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     internal static nint GetNameFromPinnedIntPtrSafe(nint state)
     {
         try

@@ -1,7 +1,7 @@
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace RocksDbNet;
-
 
 /// <summary>
 /// Creates a fresh <see cref="CompactionFilter"/> for each compaction / flush
@@ -19,39 +19,25 @@ namespace RocksDbNet;
 public abstract class CompactionFilterFactory : RocksDbHandle
 {
     // ── Unmanaged delegate types ─────────────────────────────────────────────
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate void DestructorCallback(nint state);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate nint CreateFilterCallback(nint state, nint context);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate nint NameCallback(nint state);
-
-    private readonly DestructorCallback _destructorCallback;
-    private readonly CreateFilterCallback _createFilterCallback;
-    private readonly NameCallback _nameCallback;
+        // Native entry points, not delegates. See Comparator for why.
 
     // ── Construction ─────────────────────────────────────────────────────────
-    protected CompactionFilterFactory(string name)
+    protected unsafe CompactionFilterFactory(string name)
     {
         ArgumentException.ThrowIfNullOrEmpty(name);
 
         PinGarbageCollector(name);
 
-        _destructorCallback = FCB_Destructor;
-        _createFilterCallback = FCB_CreateFilter;
-        _nameCallback = GetNameFromPinnedIntPtrSafe;
-
         Handle = NativeMethods.rocksdb_compactionfilterfactory_create(
             GetPinnedIntPtr(),
-            Marshal.GetFunctionPointerForDelegate(_destructorCallback),
-            Marshal.GetFunctionPointerForDelegate(_createFilterCallback),
-            Marshal.GetFunctionPointerForDelegate(_nameCallback));
+            (nint)(delegate* unmanaged[Cdecl]<nint, void>)&FCB_Destructor,
+            (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint>)&FCB_CreateFilter,
+            (nint)(delegate* unmanaged[Cdecl]<nint, nint>)&GetNameFromPinnedIntPtrSafe);
     }
 
     // ── Static callbacks ─────────────────────────────────────────────────────
 
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void FCB_Destructor(nint state)
     {
         try
@@ -69,6 +55,7 @@ public abstract class CompactionFilterFactory : RocksDbHandle
     // Called by C++ for each compaction job. The returned filter handle is
     // wrapped in std::unique_ptr<CompactionFilter>; C++ deletes it when the
     // job finishes, which triggers the filter's own destructor callback.
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static nint FCB_CreateFilter(nint state, nint contextPtr)
     {
         try

@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace RocksDbNet;
@@ -52,38 +53,7 @@ public abstract class WalFilter : RocksDbHandle
 {
     // ── Unmanaged delegate types ─────────────────────────────────────────────
 
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate void DestructorCb(nint state);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private unsafe delegate void ColumnFamilyLogNumberMapCb(
-        nint state,
-        uint* columnFamilyIds,
-        ulong* logNumbers,
-        nuint columnFamilyLogNumberCount,
-        byte** columnFamilyNames,
-        nuint* columnFamilyNameLengths,
-        uint* columnFamilyNameIds,
-        nuint columnFamilyNameCount);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private unsafe delegate int LogRecordFoundCb(
-        nint state,
-        ulong logNumber,
-        byte* logFileName,
-        nuint logFileNameLen,
-        nint batch,
-        nint newBatch,
-        byte* batchChanged);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate nint NameCb(nint state);
-
-    // Held so the native side's function pointers stay valid.
-    private readonly DestructorCb _destructorCb;
-    private readonly ColumnFamilyLogNumberMapCb _columnFamilyLogNumberMapCb;
-    private readonly LogRecordFoundCb _logRecordFoundCb;
-    private readonly NameCb _nameCb;
+        // Native entry points, not delegates. See Comparator for why.
 
     protected unsafe WalFilter(string name)
     {
@@ -91,21 +61,20 @@ public abstract class WalFilter : RocksDbHandle
 
         PinGarbageCollector(name);
 
-        _destructorCb = CB_Destructor;
-        _columnFamilyLogNumberMapCb = CB_ColumnFamilyLogNumberMap;
-        _logRecordFoundCb = CB_LogRecordFound;
-        _nameCb = GetNameFromPinnedIntPtrSafe;
-
         Handle = NativeMethods.rocksdb_walfilter_create(
             GetPinnedIntPtr(),
-            Marshal.GetFunctionPointerForDelegate(_destructorCb),
-            Marshal.GetFunctionPointerForDelegate(_columnFamilyLogNumberMapCb),
-            Marshal.GetFunctionPointerForDelegate(_logRecordFoundCb),
-            Marshal.GetFunctionPointerForDelegate(_nameCb));
+            (nint)(delegate* unmanaged[Cdecl]<nint, void>)&CB_Destructor,
+            (nint)(delegate* unmanaged[Cdecl]<
+                nint, uint*, ulong*, nuint, byte**, nuint*, uint*, nuint,
+                void>)&CB_ColumnFamilyLogNumberMap,
+            (nint)(delegate* unmanaged[Cdecl]<
+                nint, ulong, byte*, nuint, nint, nint, byte*, int>)&CB_LogRecordFound,
+            (nint)(delegate* unmanaged[Cdecl]<nint, nint>)&GetNameFromPinnedIntPtrSafe);
     }
 
     // ── Static callbacks ─────────────────────────────────────────────────────
 
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void CB_Destructor(nint state)
     {
         try
@@ -118,6 +87,7 @@ public abstract class WalFilter : RocksDbHandle
         }
     }
 
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static unsafe void CB_ColumnFamilyLogNumberMap(
         nint state,
         uint* columnFamilyIds,
@@ -161,6 +131,7 @@ public abstract class WalFilter : RocksDbHandle
         }
     }
 
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static unsafe int CB_LogRecordFound(
         nint state,
         ulong logNumber,

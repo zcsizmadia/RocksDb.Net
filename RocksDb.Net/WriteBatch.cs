@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -280,10 +281,12 @@ public sealed unsafe class WriteBatch : RocksDbHandle
             NativeMethods.rocksdb_writebatch_iterate_cf_ld(
                 Handle,
                 GCHandle.ToIntPtr(state),
-                Marshal.GetFunctionPointerForDelegate(_putCollector),
-                Marshal.GetFunctionPointerForDelegate(_deleteCollector),
-                Marshal.GetFunctionPointerForDelegate(_mergeCollector),
-                Marshal.GetFunctionPointerForDelegate(_logDataCollector));
+                (nint)(delegate* unmanaged[Cdecl]<
+                    nint, uint, byte*, nuint, byte*, nuint, void>)&CollectPut,
+                (nint)(delegate* unmanaged[Cdecl]<nint, uint, byte*, nuint, void>)&CollectDelete,
+                (nint)(delegate* unmanaged[Cdecl]<
+                    nint, uint, byte*, nuint, byte*, nuint, void>)&CollectMerge,
+                (nint)(delegate* unmanaged[Cdecl]<nint, byte*, nuint, void>)&CollectLogData);
         }
         finally
         {
@@ -347,29 +350,24 @@ public sealed unsafe class WriteBatch : RocksDbHandle
 
     // Held in static fields so the delegates are not collected while native
     // code holds pointers to them.
-    private static readonly PutCfCollector _putCollector = CollectPut;
-    private static readonly DeleteCfCollector _deleteCollector = CollectDelete;
-    private static readonly PutCfCollector _mergeCollector = CollectMerge;
-    private static readonly LogDataCollector _logDataCollector = CollectLogData;
 
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private unsafe delegate void PutCfCollector(nint state, uint cfId, byte* key, nuint keyLen, byte* value, nuint valueLen);
+    // Native entry points, not delegates. See Comparator for why. These were
+    // already static, so the static readonly fields that held them existed only
+    // to keep the delegate objects from being collected.
 
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private unsafe delegate void DeleteCfCollector(nint state, uint cfId, byte* key, nuint keyLen);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private unsafe delegate void LogDataCollector(nint state, byte* blob, nuint blobLen);
-
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static unsafe void CollectPut(nint state, uint cfId, byte* key, nuint keyLen, byte* value, nuint valueLen)
         => Collect(state, WriteBatchEntryKind.Put, cfId, key, keyLen, value, valueLen);
 
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static unsafe void CollectMerge(nint state, uint cfId, byte* key, nuint keyLen, byte* value, nuint valueLen)
         => Collect(state, WriteBatchEntryKind.Merge, cfId, key, keyLen, value, valueLen);
 
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static unsafe void CollectDelete(nint state, uint cfId, byte* key, nuint keyLen)
         => Collect(state, WriteBatchEntryKind.Delete, cfId, key, keyLen, value: null, valueLen: 0);
 
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static unsafe void CollectLogData(nint state, byte* blob, nuint blobLen)
         => Collect(state, WriteBatchEntryKind.LogData, cfId: 0, key: null, keyLen: 0, blob, blobLen);
 
