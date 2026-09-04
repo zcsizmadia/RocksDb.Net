@@ -59,7 +59,7 @@ public sealed class CounterMergeOperator : MergeOperator
         bool hasExistingValue,
         ReadOnlySpan<byte> existingValue,
         IReadOnlyList<byte[]> operands,
-        out byte[] newValue)
+        out byte[]? newValue)
     {
         long total = hasExistingValue && existingValue.Length == sizeof(long)
             ? BinaryPrimitives.ReadInt64LittleEndian(existingValue)
@@ -81,7 +81,7 @@ public sealed class CounterMergeOperator : MergeOperator
     // Optional. Combining operands with each other, without the existing
     // value, lets compaction collapse a long chain of them early.
     public override bool PartialMerge(
-        ReadOnlySpan<byte> key, IReadOnlyList<byte[]> operands, out byte[] newValue)
+        ReadOnlySpan<byte> key, IReadOnlyList<byte[]> operands, out byte[]? newValue)
     {
         long sum = 0;
 

@@ -145,7 +145,7 @@ public class BorrowedViewTests
 
         public override bool FullMerge(
             ReadOnlySpan<byte> key, bool hasExistingValue, ReadOnlySpan<byte> existingValue,
-            IReadOnlyList<byte[]> operands, out byte[] newValue)
+            IReadOnlyList<byte[]> operands, out byte[]? newValue)
         {
             Kept = operands;
 
@@ -214,7 +214,7 @@ public class BorrowedViewTests
 
         public override bool FullMerge(
             ReadOnlySpan<byte> key, bool hasExistingValue, ReadOnlySpan<byte> existingValue,
-            IReadOnlyList<byte[]> operands, out byte[] newValue)
+            IReadOnlyList<byte[]> operands, out byte[]? newValue)
         {
             LastOperandCount = operands.Count;
             newValue = operands.Count > 0 ? operands[^1] : existingValue.ToArray();

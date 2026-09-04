@@ -9,7 +9,7 @@ public class MergeOperatorTests
     private sealed class NameValidatingMergeOperator(string name) : MergeOperator(name)
     {
         public override bool FullMerge(ReadOnlySpan<byte> key, bool hasExistingValue,
-            ReadOnlySpan<byte> existingValue, IReadOnlyList<byte[]> operands, out byte[] newValue)
+            ReadOnlySpan<byte> existingValue, IReadOnlyList<byte[]> operands, out byte[]? newValue)
         {
             newValue = [];
             return true;
@@ -19,7 +19,7 @@ public class MergeOperatorTests
     private sealed class NoPartialOverrideMergeOperator() : MergeOperator("NoPartialOverride")
     {
         public override bool FullMerge(ReadOnlySpan<byte> key, bool hasExistingValue,
-            ReadOnlySpan<byte> existingValue, IReadOnlyList<byte[]> operands, out byte[] newValue)
+            ReadOnlySpan<byte> existingValue, IReadOnlyList<byte[]> operands, out byte[]? newValue)
         {
             newValue = [];
             return true;
@@ -74,7 +74,7 @@ public class MergeOperatorTests
         public AppendMergeOperator() : base("AppendMerge") { }
 
         public override bool FullMerge(ReadOnlySpan<byte> key, bool hasExistingValue,
-            ReadOnlySpan<byte> existingValue, IReadOnlyList<byte[]> operands, out byte[] newValue)
+            ReadOnlySpan<byte> existingValue, IReadOnlyList<byte[]> operands, out byte[]? newValue)
         {
             var sb = new StringBuilder();
             if (hasExistingValue)
@@ -145,7 +145,7 @@ public class MergeOperatorTests
         public PartialMergeOperator() : base("PartialAppendMerge") { }
 
         public override bool FullMerge(ReadOnlySpan<byte> key, bool hasExistingValue,
-            ReadOnlySpan<byte> existingValue, IReadOnlyList<byte[]> operands, out byte[] newValue)
+            ReadOnlySpan<byte> existingValue, IReadOnlyList<byte[]> operands, out byte[]? newValue)
         {
             var sb = new StringBuilder();
             if (hasExistingValue)
@@ -166,7 +166,7 @@ public class MergeOperatorTests
         /// <summary>How many times RocksDb asked for a partial merge.</summary>
         public int PartialMergeCalls => Volatile.Read(ref _partialMergeCalls);
 
-        public override bool PartialMerge(ReadOnlySpan<byte> key, IReadOnlyList<byte[]> operands, out byte[] newValue)
+        public override bool PartialMerge(ReadOnlySpan<byte> key, IReadOnlyList<byte[]> operands, out byte[]? newValue)
         {
             // Compaction runs on a background thread.
             Interlocked.Increment(ref _partialMergeCalls);
@@ -225,18 +225,27 @@ public class MergeOperatorTests
         Assert.Throws<ArgumentNullException>(() => new NameValidatingMergeOperator(null!));
     }
 
+    /// <summary>
+    /// The base implementation declines, and gives no value when it does.
+    /// </summary>
+    /// <remarks>
+    /// It used to hand back an empty array, which existed only to satisfy a
+    /// non-nullable out parameter and was indistinguishable from a merge that
+    /// genuinely produced no bytes. The parameter is nullable now, matching the
+    /// compaction filter callback beside it, so declining can say so.
+    /// </remarks>
     [Fact]
-    public void MergeOperator_DefaultPartialMerge_ReturnsFalseAndEmpty()
+    public void MergeOperator_DefaultPartialMerge_ReturnsFalseAndNoValue()
     {
         using var mergeOp = new NoPartialOverrideMergeOperator();
 
         bool ok = mergeOp.PartialMerge(
             key: "k"u8,
             operands: [Encoding.UTF8.GetBytes("a"), Encoding.UTF8.GetBytes("b")],
-            out byte[] value);
+            out byte[]? value);
 
         Assert.False(ok);
-        Assert.Empty(value);
+        Assert.Null(value);
     }
 
     [Fact]

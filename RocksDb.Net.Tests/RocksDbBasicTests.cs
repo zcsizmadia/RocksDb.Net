@@ -823,7 +823,7 @@ public class RocksDbBasicTests
         public TestAppendMergeOp() : base("TestAppendMerge") { }
 
         public override bool FullMerge(ReadOnlySpan<byte> key, bool hasExistingValue,
-            ReadOnlySpan<byte> existingValue, IReadOnlyList<byte[]> operands, out byte[] newValue)
+            ReadOnlySpan<byte> existingValue, IReadOnlyList<byte[]> operands, out byte[]? newValue)
         {
             var sb = new StringBuilder();
             if (hasExistingValue)

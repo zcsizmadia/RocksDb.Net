@@ -54,6 +54,20 @@ public enum IoActivity
 
     /// <summary>The first value available for application-defined activities.</summary>
     FirstCustom = 0x80,
+
+    /// <summary>
+    /// No activity recorded, which is what RocksDb labels an operation with
+    /// unless something sets one.
+    /// </summary>
+    /// <remarks>
+    /// <c>kUnknown</c>, which RocksDb keeps last in the enum for exactly this
+    /// purpose. Without it the default was not expressible: reading
+    /// <see cref="ReadOptions.IoActivity"/> on fresh options returned a value no
+    /// member matched, so <c>Enum.IsDefined</c> said false and <c>ToString</c>
+    /// gave a bare number, and a caller who had set an activity had no way to
+    /// put it back.
+    /// </remarks>
+    Unknown = 0xFF,
 }
 
 /// <summary>
@@ -78,9 +92,17 @@ public enum RateLimiterPriority
     User = 3,
 
     /// <summary>
-    /// Not a priority. RocksDb uses this as the count of priorities, so passing
-    /// it is a programming error.
+    /// Do not charge the rate limiter for this operation. The default.
     /// </summary>
+    /// <remarks>
+    /// The name is RocksDb's: <c>Env::IO_TOTAL</c> is the count of real
+    /// priorities, and RocksDb reuses it as the "no rate limiting" value rather
+    /// than declaring a separate one. <c>ReadOptions::rate_limiter_priority</c>
+    /// is declared as <c>= Env::IO_TOTAL</c> with the comment that the special
+    /// value disables charging the rate limiter, so this is both the default and
+    /// a meaningful thing to pass. This used to be documented as a programming
+    /// error to use, which had it exactly backwards.
+    /// </remarks>
     Total = 4,
 }
 
@@ -97,19 +119,19 @@ public enum ReadTier
     /// Memtable, block cache, operating system cache or storage. The default,
     /// and the only tier that always answers.
     /// </summary>
-    ReadAllTier = 0,
+    All = 0,
 
     /// <summary>Memtable or block cache only, so the read never touches storage.</summary>
-    BlockCacheTier = 1,
+    BlockCache = 1,
 
     /// <summary>
     /// Persisted data only. With the write-ahead log disabled this also skips
     /// the memtable. RocksDb supports this for point lookups only, not iterators.
     /// </summary>
-    PersistedTier = 2,
+    Persisted = 2,
 
     /// <summary>Memtable only, for memtable-only iterators.</summary>
-    MemtableTier = 3,
+    Memtable = 3,
 }
 
 /// <summary>

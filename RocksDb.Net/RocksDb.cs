@@ -799,7 +799,7 @@ public sealed class RocksDb : RocksDbHandle
     /// Tries to retrieve <paramref name="key"/>. Returns <c>true</c> and sets
     /// <paramref name="value"/> if the key exists; otherwise returns <c>false</c>.
     /// </summary>
-    public bool TryGet(ReadOnlySpan<byte> key, out byte[]? value, ReadOptions? options = null)
+    public bool TryGet(ReadOnlySpan<byte> key, [NotNullWhen(true)] out byte[]? value, ReadOptions? options = null)
     {
         value = GetInternal(key, options);
         return value != null;
@@ -1647,6 +1647,8 @@ public sealed class RocksDb : RocksDbHandle
     public unsafe void CompactRange(CompactRangeOptions options,
         ReadOnlySpan<byte> startKey = default, ReadOnlySpan<byte> limitKey = default)
     {
+        ArgumentNullException.ThrowIfNull(options);
+
         fixed (byte* s = startKey)
         fixed (byte* e = limitKey)
             NativeMethods.rocksdb_compact_range_opt(Handle, options.Handle,

@@ -49,7 +49,7 @@ public class CallbackExceptionTests
 
     private sealed class ThrowingMergeOperator() : MergeOperator("throwing-merge")
     {
-        public override bool FullMerge(ReadOnlySpan<byte> key, bool hasExistingValue, ReadOnlySpan<byte> existingValue, IReadOnlyList<byte[]> operands, out byte[] newValue)
+        public override bool FullMerge(ReadOnlySpan<byte> key, bool hasExistingValue, ReadOnlySpan<byte> existingValue, IReadOnlyList<byte[]> operands, out byte[]? newValue)
             => throw new InvalidOperationException("merge boom");
     }
 
@@ -225,7 +225,7 @@ public class CallbackExceptionTests
     {
         public override bool FullMerge(
             ReadOnlySpan<byte> key, bool hasExistingValue, ReadOnlySpan<byte> existingValue,
-            IReadOnlyList<byte[]> operands, out byte[] newValue)
+            IReadOnlyList<byte[]> operands, out byte[]? newValue)
         {
             // Deliberately works, so the only thing that can fail is the partial
             // merge below.
@@ -246,7 +246,7 @@ public class CallbackExceptionTests
         }
 
         public override bool PartialMerge(
-            ReadOnlySpan<byte> key, IReadOnlyList<byte[]> operands, out byte[] newValue)
+            ReadOnlySpan<byte> key, IReadOnlyList<byte[]> operands, out byte[]? newValue)
             => throw new InvalidOperationException("partial merge boom");
     }
 

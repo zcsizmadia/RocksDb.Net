@@ -38,7 +38,7 @@ public class SharedOwnershipTests
 
         public override bool FullMerge(
             ReadOnlySpan<byte> key, bool hasExistingValue, ReadOnlySpan<byte> existingValue,
-            IReadOnlyList<byte[]> operands, out byte[] newValue)
+            IReadOnlyList<byte[]> operands, out byte[]? newValue)
         {
             byte[]? last = operands.LastOrDefault();
             newValue = last ?? (hasExistingValue ? existingValue.ToArray() : []);
