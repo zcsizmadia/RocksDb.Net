@@ -236,9 +236,15 @@ public class RocksDbBasicTests
         Assert.NotNull(cfMetadata);
         Assert.Equal("default", defaultMetadata!.Name);
         Assert.Equal("cf1", cfMetadata!.Name);
-        Assert.True(cfMetadata.LevelCount >= 0);
-        Assert.True(cfMetadata.Levels.Count >= 0);
-        Assert.True(cfMetadata.FileCount >= 0);
+        // The three assertions here used to be "at least zero" against
+        // unsigned counts, which no value could fail. One key was flushed into
+        // cf1 and nothing was written to default, so the numbers are known.
+        Assert.Equal(1, cfMetadata.FileCount);
+        Assert.True(cfMetadata.Size > 0);
+        Assert.NotEmpty(cfMetadata.Levels);
+        Assert.Equal(1, cfMetadata.Levels.Single(l => l.Level == 0).Files.Count);
+
+        Assert.Equal(0, defaultMetadata.FileCount);
     }
 
     [Fact]
@@ -252,13 +258,43 @@ public class RocksDbBasicTests
         db.Put("key", "value");
         db.Flush();
 
-        ulong tickerCount = opts.GetTickerCount(0);
-        HistogramData? histogram = opts.GetHistogramData(0);
+        // Both counts are unsigned, so the old "at least zero" assertions held
+        // for every possible value, including the all-zeroes a statistics
+        // object that was never attached returns.
+        //
+        // No ticker enum is exposed and the ids move between RocksDb releases,
+        // so rather than naming one counter this asserts that the subsystem
+        // recorded something. The range stays well inside the smallest ticker
+        // count any supported release has.
+        ulong recorded = 0;
 
-        Assert.True(tickerCount >= 0);
-        Assert.NotNull(histogram);
-        Assert.True(histogram!.Count >= 0);
-        Assert.True(histogram.Min >= 0);
+        for (uint id = 0; id < 100; id++)
+        {
+            recorded += opts.GetTickerCount(id);
+        }
+
+        Assert.True(recorded > 0, "statistics recorded nothing after a put and a flush");
+
+        HistogramData? sampled = null;
+
+        for (uint id = 0; id < 30 && sampled is null; id++)
+        {
+            HistogramData? candidate = opts.GetHistogramData(id);
+
+            if (candidate is { Count: > 0 })
+            {
+                sampled = candidate;
+            }
+        }
+
+        Assert.NotNull(sampled);
+
+        // Self-consistent, which all-zero data from an unattached statistics
+        // object would satisfy only by accident of the bounds being equal.
+        Assert.True(sampled!.Sum > 0);
+        Assert.True(sampled.Min <= sampled.Median);
+        Assert.True(sampled.Median <= sampled.Max);
+        Assert.True(sampled.Average > 0);
     }
 
     [Fact]
@@ -271,9 +307,17 @@ public class RocksDbBasicTests
 
         IReadOnlyList<LiveFileMetadata> liveFiles = db.Db.GetLiveFiles();
 
-        Assert.NotEmpty(liveFiles);
-        Assert.All(liveFiles, file => Assert.False(string.IsNullOrEmpty(file.Name)));
-        Assert.All(liveFiles, file => Assert.True(file.Level >= 0));
+        LiveFileMetadata file = Assert.Single(liveFiles);
+
+        // A flush writes one file at level zero holding the one key. The level
+        // assertion used to be "at least zero", which is every level there is.
+        Assert.EndsWith(".sst", file.Name, StringComparison.Ordinal);
+        Assert.Equal(0, file.Level);
+        Assert.Equal(1UL, file.Entries);
+        Assert.Equal(0UL, file.Deletions);
+        Assert.True(file.Size > 0);
+        Assert.Equal("a"u8.ToArray(), file.SmallestKey);
+        Assert.Equal("a"u8.ToArray(), file.LargestKey);
 
         // Read in full, so the values survive without the database being open
         // and without anything to dispose.
@@ -287,14 +331,24 @@ public class RocksDbBasicTests
     {
         using var db = new TempDb();
 
-        db.Db.Put("a", "1");
-        db.Db.Put("z", "2");
+        // Enough data to span several blocks. The estimate comes from index
+        // block offsets, so two keys in one block are genuinely zero bytes
+        // apart and would prove nothing either way.
+        for (int i = 0; i < 2000; i++)
+        {
+            db.Db.Put($"key{i:D5}", new string('v', 100));
+        }
+
         db.Db.Flush();
 
-        ulong[] sizes = db.Db.ApproximateSizes(new[] { ("a", "z") });
+        ulong[] sizes = db.Db.ApproximateSizes([("key00000", "key01999"), ("zzz0", "zzz9")]);
 
-        Assert.Single(sizes);
-        Assert.True(sizes[0] >= 0);
+        // The old assertion was "at least zero" on an unsigned value. Now the
+        // populated range has to come back with something and the empty range
+        // with nothing, so a stub answering the same for both fails.
+        Assert.Equal(2, sizes.Length);
+        Assert.True(sizes[0] > 0, "the range holding 2000 flushed keys was estimated at zero bytes");
+        Assert.Equal(0UL, sizes[1]);
     }
 
     [Fact]
@@ -307,14 +361,21 @@ public class RocksDbBasicTests
         using var db = RocksDb.Open(options, dir.Path, cfDescs);
         var cf1 = db.GetColumnFamily("cf1");
 
-        db.Put("a", "1", cf1);
-        db.Put("z", "2", cf1);
+        for (int i = 0; i < 2000; i++)
+        {
+            db.Put($"key{i:D5}", new string('v', 100), cf1);
+        }
+
         db.Flush(cf1);
 
-        ulong[] sizes = db.ApproximateSizes(cf1, new[] { ("a", "z") });
+        ulong[] sizes = db.ApproximateSizes(cf1, [("key00000", "key01999")]);
 
         Assert.Single(sizes);
-        Assert.True(sizes[0] >= 0);
+        Assert.True(sizes[0] > 0, "the range holding 2000 flushed keys was estimated at zero bytes");
+
+        // And the column family argument is not ignored: everything went into
+        // cf1, so the same range on the default family is empty.
+        Assert.Equal(0UL, db.ApproximateSizes([("key00000", "key01999")])[0]);
     }
 
     [Fact]
