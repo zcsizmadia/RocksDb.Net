@@ -491,3 +491,9 @@ nupkgs/
 docs/_site/
 docs/api/*.yml
 docs/api/.manifest
+
+# Claude Code skills. The [Rr]elease/ rule above targets build output and also
+# matched .claude/skills/release/, so re-include this tree explicitly rather
+# than renaming a skill around a build pattern.
+!.claude/
+!.claude/**
