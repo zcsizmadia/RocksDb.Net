@@ -401,9 +401,11 @@ public sealed class TransactionDb : RocksDbHandle
         return false;
     }
 
-    /// <summary>Names of the column families this database knows about.</summary>
+    /// <inheritdoc cref="RocksDb.ColumnFamilyNames"/>
     public IReadOnlyCollection<string> ColumnFamilyNames
-        => _columnFamilyHandles.Count > 0 ? [.. _columnFamilyHandles.Keys] : [DefaultColumnFamilyName];
+        => _columnFamilyHandles.ContainsKey(DefaultColumnFamilyName)
+            ? [.. _columnFamilyHandles.Keys]
+            : [DefaultColumnFamilyName, .. _columnFamilyHandles.Keys];
 
     // ── Maintenance ──────────────────────────────────────────────────────────
 
