@@ -316,7 +316,17 @@ public sealed class RocksDb : RocksDbHandle
         nint err = default;
         nuint count;
         byte** list = NativeMethods.rocksdb_list_column_families(options.Handle, path, &count, ref err);
-        NativeMethods.ThrowOnError(err);
+
+        if (err != nint.Zero)
+        {
+            // RocksDb allocates the array whether or not the call succeeded.
+            if (list is not null)
+            {
+                NativeMethods.rocksdb_list_column_families_destroy(list, count);
+            }
+
+            NativeMethods.ThrowOnError(err);
+        }
 
         var result = new string[(int)count];
         for (int i = 0; i < (int)count; i++)
@@ -1220,17 +1230,27 @@ public sealed class RocksDb : RocksDbHandle
         }
 
         byte[][] nameBytes = new byte[names.Count][];
-        nuint[] lengths = new nuint[names.Count];
 
         for (int i = 0; i < names.Count; i++)
         {
             ArgumentException.ThrowIfNullOrEmpty(names[i]);
-            nameBytes[i] = Encoding.UTF8.GetBytes(names[i]);
-            lengths[i] = (nuint)nameBytes[i].Length;
+
+            // NUL-terminated, because RocksDb reads these with
+            // std::string(const char*), which is strlen-terminated. Passing
+            // an unterminated buffer reads past the end of the pinned array
+            // into whatever managed memory follows it. Every other open and
+            // create path in this file already appends the terminator.
+            nameBytes[i] = Encoding.UTF8.GetBytes(names[i] + '\0');
         }
 
         nint err = default;
         nint* list;
+
+        // Not an array of name lengths, despite the plural. RocksDb writes
+        // the number of handles it created into it, and never reads the
+        // value it was given.
+        nuint createdCount = 0;
+
         var pins = new GCHandle[names.Count];
         var namePtrs = new byte*[names.Count];
 
@@ -1243,9 +1263,8 @@ public sealed class RocksDb : RocksDbHandle
             }
 
             fixed (byte** np = namePtrs)
-            fixed (nuint* lp = lengths)
                 list = NativeMethods.rocksdb_create_column_families(
-                    Handle, options.Handle, names.Count, np, lp, ref err);
+                    Handle, options.Handle, names.Count, np, &createdCount, ref err);
         }
         finally
         {
@@ -1258,7 +1277,23 @@ public sealed class RocksDb : RocksDbHandle
             }
         }
 
-        NativeMethods.ThrowOnError(err);
+        if (err != nint.Zero)
+        {
+            // RocksDb keeps the handles it created before the one that failed,
+            // and allocates the array either way, so throwing without this
+            // leaks both.
+            if (list is not null)
+            {
+                for (nuint i = 0; i < createdCount; i++)
+                {
+                    NativeMethods.rocksdb_column_family_handle_destroy(list[i]);
+                }
+
+                NativeMethods.rocksdb_create_column_families_destroy(list);
+            }
+
+            NativeMethods.ThrowOnError(err);
+        }
 
         if (list is null)
         {
@@ -1267,9 +1302,11 @@ public sealed class RocksDb : RocksDbHandle
 
         try
         {
-            var created = new ColumnFamilyHandle[names.Count];
+            // The count RocksDb reported, not the count asked for.
+            int count = checked((int)createdCount);
+            var created = new ColumnFamilyHandle[count];
 
-            for (int i = 0; i < names.Count; i++)
+            for (int i = 0; i < count; i++)
             {
                 created[i] = RegisterColumnFamily(names[i], new ColumnFamilyHandle(list[i]));
             }
