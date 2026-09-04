@@ -26,14 +26,48 @@ public abstract class RocksDbHandle : IDisposable
         _handle = handle;
     }
 
+    // Three states rather than two, because the handle has to stay readable
+    // while it is being released. Alive, releasing, released.
+    private const int Alive = 0;
+    private const int Releasing = 1;
+    private const int Released = 2;
+
     private int _disposed;
 
     /// <summary>
-    /// Gets the native handle associated with the underlying resource.
+    /// Gets the native handle associated with the underlying resource, for
+    /// interoperability with unmanaged code.
     /// </summary>
-    /// <remarks>The handle is typically used for interoperability with unmanaged code or system APIs. The
-    /// value may be IntPtr.Zero if the resource has not been initialized or has been released.</remarks>
-    public nint Handle { get => _handle; protected set => _handle = value; }
+    /// <remarks>
+    /// <para>
+    /// Reading this after disposal throws rather than returning
+    /// <see cref="IntPtr.Zero"/>. The C API dereferences whatever it is given
+    /// without a null check, so a zero handle reaching it is an access
+    /// violation that takes the process down, with a stack that says nothing
+    /// about the disposed object that caused it. Every use-after-dispose in
+    /// the library passes through here, so one guard turns all of them into a
+    /// named exception. Use <see cref="IsDisposed"/> to ask the question
+    /// without throwing.
+    /// </para>
+    /// <para>
+    /// The value is <see cref="IntPtr.Zero"/> before the native object has
+    /// been created, which a wrapper constructed but not yet opened will show.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ObjectDisposedException">This instance has been disposed.</exception>
+    public nint Handle
+    {
+        get
+        {
+            // Releasing, not Released: disposal itself reads this to hand the
+            // pointer to the native destructor, and every DisposeHandle
+            // override would break if the guard fired then.
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) == Released, this);
+            return _handle;
+        }
+
+        protected set => _handle = value;
+    }
 
     /// <summary>
     /// Indicating whether this instance is owned or managed by the current object.
@@ -45,9 +79,12 @@ public abstract class RocksDbHandle : IDisposable
     /// <summary>
     /// Gets a value indicating whether the object has been disposed.
     /// </summary>
-    /// <remarks>Use this property to determine if the object is no longer usable due to disposal. Accessing
-    /// members of a disposed object may result in exceptions.</remarks>
-    public bool IsDisposed => _disposed != 0;
+    /// <remarks>
+    /// True from the moment disposal begins, not from when it finishes, so a
+    /// half-released object never looks usable. Reading <see cref="Handle"/> on
+    /// one of these throws.
+    /// </remarks>
+    public bool IsDisposed => Volatile.Read(ref _disposed) != Alive;
 
     ~RocksDbHandle()
     {
@@ -348,14 +385,24 @@ public abstract class RocksDbHandle : IDisposable
             return;
         }
 
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        if (Interlocked.CompareExchange(ref _disposed, Releasing, Alive) != Alive)
         {
-            // Already disposed, nothing to do
+            // Already disposed, or being disposed, nothing to do
             return;
         }
 
-        // Dispose unmanaged resources regardless of disposing value
-        DisposeUnmanagedResources();
+        try
+        {
+            // Dispose unmanaged resources regardless of disposing value
+            DisposeUnmanagedResources();
+        }
+        finally
+        {
+            // Only now does Handle start throwing. In a finally because a
+            // release that threw halfway must still leave the object unusable
+            // rather than stuck looking half-alive.
+            Volatile.Write(ref _disposed, Released);
+        }
     }
 
     /// <summary>
