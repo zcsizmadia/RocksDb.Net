@@ -12,8 +12,9 @@ namespace RocksDbNet;
 /// <remarks>
 /// <b>Lifetime:</b> After passing the factory to
 /// <see cref="DbOptions.CompactionFilterFactory"/>, the C++ options object
-/// takes ownership (via <c>shared_ptr</c>). Do <em>not</em> dispose the factory
-/// before the database and its options have been closed and disposed.
+/// shares ownership of it through a <c>shared_ptr</c>. Disposing the factory
+/// is safe at any point: attaching registers a hold, so a <c>using</c> block
+/// that ends first defers the release rather than performing it.
 /// </remarks>
 public abstract class CompactionFilterFactory : RocksDbHandle
 {

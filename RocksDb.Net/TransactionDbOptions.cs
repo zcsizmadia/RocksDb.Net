@@ -64,9 +64,10 @@ public sealed class TransactionDbOptions : RocksDbHandle
     /// milliseconds. Negative means wait forever; zero means fail immediately.
     /// </summary>
     /// <remarks>
-    /// This is the ceiling a transaction cannot exceed.
-    /// <see cref="TransactionOptions.LockTimeout"/> can shorten it per
-    /// transaction but not lengthen it past this.
+    /// The value used by transactions that do not set one of their own. It is
+    /// not a ceiling: a non-negative
+    /// <see cref="TransactionOptions.LockTimeout"/> replaces this outright, and
+    /// may be longer than it.
     /// </remarks>
     public long TransactionLockTimeout
     {

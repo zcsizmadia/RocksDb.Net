@@ -13,10 +13,16 @@ public enum FilterDecision
     Keep,
 
     /// <summary>
-    /// Remove the entry. For plain key-values and wide-column entities this
-    /// inserts a tombstone (Delete), which hides earlier versions of the key.
-    /// For merge operands the operand is simply dropped.
+    /// Remove the entry, which inserts a tombstone and hides earlier versions of
+    /// the key.
     /// </summary>
+    /// <remarks>
+    /// Only plain key-values and wide-column entities reach a filter at all. The
+    /// C API installs a filter through the plain callback alone, so merge
+    /// operands are never offered to one and this decision cannot drop them. A
+    /// filter written to expire data will not expire a key whose value is built
+    /// from merge operands.
+    /// </remarks>
     Remove,
 
     /// <summary>
@@ -51,10 +57,10 @@ public readonly struct CompactionFilterContext
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Lifetime:</b> A filter instance registered via
-/// <see cref="DbOptions.CompactionFilter"/> must remain alive (not disposed)
-/// for the entire lifetime of the database. Dispose it only after the
-/// <see cref="RocksDb"/> instance has been closed.
+/// <b>Lifetime:</b> Dispose it whenever you like. Attaching it through
+/// <see cref="DbOptions.CompactionFilter"/> registers a hold, so disposing
+/// while the database is open defers the release instead of performing it.
+/// The usual <c>using</c> shape is safe.
 /// </para>
 /// <para>
 /// <b>Thread safety:</b> When a single instance is registered and

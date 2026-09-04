@@ -1741,7 +1741,15 @@ public sealed class RocksDb : RocksDbHandle
         }
     }
 
-    /// <summary>Applies one or more runtime options to the database.</summary>
+    /// <summary>
+    /// Applies one or more runtime options to the default column family.
+    /// </summary>
+    /// <remarks>
+    /// Column-family options, not database-wide ones, despite taking no column
+    /// family: it is the overload below with the default family filled in. Use
+    /// <see cref="SetDbOptions(IEnumerable{KeyValuePair{string, string}})"/> for
+    /// settings that belong to the database.
+    /// </remarks>
     public unsafe void SetOptions(IEnumerable<KeyValuePair<string, string>> options)
         => ApplyOptions(options, (int count, byte** keys, byte** values, ref nint err)
             => NativeMethods.rocksdb_set_options(Handle, count, keys, values, ref err));

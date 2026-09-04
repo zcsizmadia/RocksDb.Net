@@ -1,6 +1,6 @@
 # Writing callbacks
 
-Five kinds of extension point let you put your own code inside RocksDb: a comparator to change key ordering, a merge operator to combine values without reading them first, a compaction filter to transform data as it is rewritten, a logger to capture RocksDb's own diagnostics, and an event listener to observe flushes and compactions.
+Six kinds of extension point let you put your own code inside RocksDb: a comparator to change key ordering, a merge operator to combine values without reading them first, a compaction filter to transform data as it is rewritten, a logger to capture RocksDb's own diagnostics, an event listener to observe flushes and compactions, and a WAL filter to inspect or rewrite records as they are recovered.
 
 This page is how to write each one. [Callbacks and exceptions](callbacks.md) is the companion: what happens when one throws, which thread it runs on, and how to tell which instance was responsible. Read that one too, because the answers differ per callback and one of them terminates the process.
 
@@ -186,7 +186,7 @@ var options = new DbOptions { CreateIfMissing = true };
 options.EventListener = new FlushWatcher();
 ```
 
-Note the `Interlocked` calls. These run on RocksDb's background threads, concurrently when several flushes or compactions are in flight, so a listener that accumulates anything must be thread-safe.
+Note the `Interlocked` calls. Most listener callbacks run on RocksDb's background threads, concurrently when several flushes or compactions are in flight, so a listener that accumulates anything must be thread-safe. `OnMemTableSealed` is the exception and runs on the writer's thread, which is not a reason to skip the synchronisation: the same listener still hears the rest from elsewhere.
 
 **The setter appends.** `EventListener` is a property, but assigning it twice installs two listeners and both receive every event; the second does not displace the first, and there is no way to remove one afterwards. That is RocksDb's behaviour, not a wrapper choice.
 
@@ -198,4 +198,4 @@ The info objects are copied out before the callback returns, so they are safe to
 
 **Attach before opening.** Nearly every `DbOptions` value, callbacks included, is read once when the database opens. Setting one on a live `DbOptions` does nothing.
 
-**Lifetime is not uniform across the five.** A comparator and compaction filter are raw pointers RocksDb never frees, so the wrapper owns them. A logger is a shared pointer RocksDb copies. A merge operator, event listener and compaction filter factory are transfers RocksDb takes over. The wrapper reconciles those so the ordinary `using` shape is safe in every case, but [Ownership and lifetime](ownership.md) is worth reading before you share one instance between two databases, which is supported for some and rejected for others.
+**Lifetime is not uniform across them.** A comparator and compaction filter are raw pointers RocksDb never frees, so the wrapper owns them. A logger is a shared pointer RocksDb copies. A merge operator, event listener and compaction filter factory are transfers RocksDb takes over. The wrapper reconciles those so the ordinary `using` shape is safe in every case, but [Ownership and lifetime](ownership.md) is worth reading before you share one instance between two databases, which is supported for some and rejected for others.

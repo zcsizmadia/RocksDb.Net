@@ -54,7 +54,8 @@ Two of these are worth understanding rather than memorising.
 
 ## Threading
 
-- `EventListener`, `CompactionFilter` and `MergeOperator` callbacks run on RocksDb background threads, concurrently when several flushes or compactions are in flight. Make them thread-safe, or use `CompactionFilterFactory` to get one filter instance per job.
+- Most `EventListener` callbacks, `CompactionFilter`, and `MergeOperator.PartialMerge` run on RocksDb background threads, concurrently when several flushes or compactions are in flight. Make them thread-safe, or use `CompactionFilterFactory` to get one filter instance per job.
+- Two run on the thread that caused the event instead, measured rather than assumed: `MergeOperator.FullMerge` runs on the reader's thread during a `Get`, and `EventListener.OnMemTableSealed` runs on the writer's. Being on your own thread is not permission to be slow — a merge operator that blocks blocks the read that called it.
 - The `ReadOptions` table filter runs on the reader's own thread, once per candidate SST file per read, so keep it cheap.
 - The backup progress and exclude-files callbacks run on copy threads, concurrently when `BackupEngineOptions.MaxBackgroundOperations` is above one.
 - `WalFilter` runs during `RocksDb.Open` on the calling thread and never concurrently.

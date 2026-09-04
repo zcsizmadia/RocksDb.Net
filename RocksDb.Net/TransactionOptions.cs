@@ -70,9 +70,12 @@ public sealed class TransactionOptions : RocksDbHandle
     /// means use <see cref="TransactionDbOptions.TransactionLockTimeout"/>.
     /// </summary>
     /// <remarks>
-    /// Can shorten the database-wide timeout but not lengthen it past the
-    /// ceiling that sets. Zero fails immediately on contention, which is what a
-    /// test wanting a deterministic conflict should use.
+    /// A non-negative value replaces the database-wide timeout for this
+    /// transaction, in either direction: it can wait longer than the database
+    /// setting allows as readily as it can give up sooner. Measured against a
+    /// database configured to fail immediately, a transaction asking for three
+    /// seconds waits the full three. Zero fails immediately on contention,
+    /// which is what a test wanting a deterministic conflict should use.
     /// </remarks>
     public long LockTimeout
     {
@@ -138,9 +141,13 @@ public sealed class TransactionOptions : RocksDbHandle
     }
 
     /// <summary>
-    /// Size in bytes at which pending writes are flushed to the memtable early,
-    /// or zero to use <see cref="TransactionDbOptions.DefaultWriteBatchFlushThreshold"/>.
+    /// Size in bytes at which pending writes are flushed to the memtable early.
     /// </summary>
+    /// <remarks>
+    /// Zero disables early flushing rather than selecting a default. A negative
+    /// value, which is what this starts at, is the one that defers to
+    /// <see cref="TransactionDbOptions.DefaultWriteBatchFlushThreshold"/>.
+    /// </remarks>
     public long WriteBatchFlushThreshold
     {
         get => NativeMethods.rocksdb_transaction_options_get_write_batch_flush_threshold(Handle);

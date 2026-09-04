@@ -168,7 +168,16 @@ public sealed class ReadOptions : RocksDbHandle
         set => NativeMethods.rocksdb_readoptions_set_prefix_same_as_start(Handle, value ? (byte)1 : (byte)0);
     }
 
-    /// <summary>If true, returned Pinnable slices will pin data in the block cache.</summary>
+    /// <summary>
+    /// If true, the key and value memory an iterator hands out stays valid
+    /// until the iterator moves or is disposed, rather than only until the next
+    /// call.
+    /// </summary>
+    /// <remarks>
+    /// Nothing to do with <c>PinnableSlice</c>, which pins on its own without
+    /// this. This governs iterators, and the cost of it is that the blocks
+    /// behind those pointers cannot be evicted while they are held.
+    /// </remarks>
     public bool PinData
     {
         get => NativeMethods.rocksdb_readoptions_get_pin_data(Handle) != 0;
@@ -625,9 +634,9 @@ public sealed class ReadOptions : RocksDbHandle
     /// </summary>
     /// <remarks>
     /// Worth setting when iterators are disposed on threads that should not
-    /// block on file deletion. RocksDb's database-level
-    /// <c>avoid_unnecessary_blocking_io</c> overrides this one when enabled;
-    /// that option is not exposed by this wrapper yet.
+    /// block on file deletion. The database-level
+    /// <see cref="DbOptions.AvoidUnnecessaryBlockingIo"/> overrides this one
+    /// when enabled, so setting that makes this redundant.
     /// </remarks>
     public bool BackgroundPurgeOnIteratorCleanup
     {

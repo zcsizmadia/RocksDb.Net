@@ -65,34 +65,56 @@ public sealed class BackupEngine : RocksDbHandle
     /// </summary>
     /// <param name="options">Engine configuration. Read here and not retained.</param>
     /// <param name="env">
-    /// The environment to read and write through, or <c>null</c> to use the
-    /// default environment for the duration of the call.
+    /// The environment the engine reads the <em>database</em> through, or
+    /// <c>null</c> for the default one. Not the backup destination, which comes
+    /// from <paramref name="options"/>.
     /// </param>
     /// <remarks>
+    /// <para>
     /// The environment is required by the C API, which dereferences it without a
     /// null check, so a default one is created here when the caller passes
-    /// <c>null</c>. A caller-supplied <paramref name="env"/> is not retained;
-    /// disposing it remains the caller's responsibility.
+    /// <c>null</c>.
+    /// </para>
+    /// <para>
+    /// It is kept for the life of the engine, not just for this call: RocksDb
+    /// hands it straight to <c>BackupEngine::Open</c>, which holds the pointer.
+    /// A caller-supplied environment therefore has to outlive the engine, and
+    /// the engine registers a hold on it so that disposing it early defers
+    /// rather than freeing something RocksDb still points at. This page used to
+    /// say the opposite, which for an in-memory environment was a use after
+    /// free waiting to happen.
+    /// </para>
     /// </remarks>
     public static BackupEngine Open(BackupEngineOptions options, Env? env = null)
     {
         ArgumentNullException.ThrowIfNull(options);
 
         Env environment = env ?? Env.Create();
-        try
-        {
-            nint err = default;
-            nint handle = NativeMethods.rocksdb_backup_engine_open_opts(options.Handle, environment.Handle, ref err);
-            NativeMethods.ThrowOnError(err);
-            return new BackupEngine(handle);
-        }
-        finally
+
+        nint err = default;
+        nint handle = NativeMethods.rocksdb_backup_engine_open_opts(options.Handle, environment.Handle, ref err);
+
+        if (err != nint.Zero)
         {
             if (env is null)
             {
                 environment.Dispose();
             }
+
+            NativeMethods.ThrowOnError(err);
         }
+
+        var engine = new BackupEngine(handle);
+
+        // The engine holds this pointer for its whole life, so the wrapper has
+        // to keep the object behind it alive for just as long. An environment
+        // created here is disposed with the engine; a caller's is held, so
+        // disposing it early defers until the engine lets go.
+        environment.AddHolder();
+        engine._environment = environment;
+        engine._ownsEnvironment = env is null;
+
+        return engine;
     }
 
     /// <summary>Creates a new backup of the database.</summary>
@@ -297,5 +319,31 @@ public sealed class BackupEngine : RocksDbHandle
     protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_backup_engine_close(Handle);
+    }
+
+    // The environment RocksDb reads the database through, kept alive because
+    // the native engine holds a raw pointer to it. See Open.
+    private Env? _environment;
+    private bool _ownsEnvironment;
+
+    protected override void DisposeUnmanagedResources()
+    {
+        // The engine first, since it is the thing pointing at the environment.
+        base.DisposeUnmanagedResources();
+
+        Env? environment = _environment;
+        _environment = null;
+
+        if (environment is null)
+        {
+            return;
+        }
+
+        environment.ReleaseHolder();
+
+        if (_ownsEnvironment)
+        {
+            environment.Dispose();
+        }
     }
 }
