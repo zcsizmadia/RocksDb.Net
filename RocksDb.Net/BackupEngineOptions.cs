@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -252,14 +253,7 @@ public sealed class BackupEngineOptions : RocksDbHandle
 /// </remarks>
 public sealed class CreateBackupOptions : RocksDbHandle
 {
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate void ProgressCb(nint state);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private unsafe delegate byte ExcludeFilesCb(nint state, byte* relativeFile, nuint relativeFileLen);
-
-    private ProgressCb? _progressCb;
-    private ExcludeFilesCb? _excludeFilesCb;
+    // Native entry points, not delegates. See Comparator for why.
     private GCHandle _progressState;
     private GCHandle _excludeFilesState;
 
@@ -317,7 +311,7 @@ public sealed class CreateBackupOptions : RocksDbHandle
     /// <see cref="RocksDbCallbacks.UnhandledException"/> rather than reaching
     /// native code. Pass <c>null</c> to remove a previously installed callback.
     /// </param>
-    public CreateBackupOptions SetProgressCallback(Action? onProgress)
+    public unsafe CreateBackupOptions SetProgressCallback(Action? onProgress)
     {
         ThrowIfDisposed();
 
@@ -327,18 +321,16 @@ public sealed class CreateBackupOptions : RocksDbHandle
 
         if (onProgress is null)
         {
-            _progressCb = null;
             NativeMethods.rocksdb_create_backup_options_set_progress_callback(Handle, nint.Zero, nint.Zero);
             return this;
         }
 
         _progressState = GCHandle.Alloc(onProgress);
-        _progressCb = InvokeProgress;
 
         NativeMethods.rocksdb_create_backup_options_set_progress_callback(
             Handle,
             GCHandle.ToIntPtr(_progressState),
-            Marshal.GetFunctionPointerForDelegate(_progressCb));
+            (nint)(delegate* unmanaged[Cdecl]<nint, void>)&InvokeProgress);
 
         return this;
     }
@@ -373,22 +365,21 @@ public sealed class CreateBackupOptions : RocksDbHandle
 
         if (shouldExclude is null)
         {
-            _excludeFilesCb = null;
             NativeMethods.rocksdb_create_backup_options_set_exclude_files_callback(Handle, nint.Zero, nint.Zero);
             return this;
         }
 
         _excludeFilesState = GCHandle.Alloc(shouldExclude);
-        _excludeFilesCb = InvokeExcludeFiles;
 
         NativeMethods.rocksdb_create_backup_options_set_exclude_files_callback(
             Handle,
             GCHandle.ToIntPtr(_excludeFilesState),
-            Marshal.GetFunctionPointerForDelegate(_excludeFilesCb));
+            (nint)(delegate* unmanaged[Cdecl]<nint, byte*, nuint, byte>)&InvokeExcludeFiles);
 
         return this;
     }
 
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void InvokeProgress(nint state)
     {
         try
@@ -406,6 +397,7 @@ public sealed class CreateBackupOptions : RocksDbHandle
         }
     }
 
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static unsafe byte InvokeExcludeFiles(nint state, byte* relativeFile, nuint relativeFileLen)
     {
         try
@@ -462,8 +454,6 @@ public sealed class CreateBackupOptions : RocksDbHandle
         FreeProgressState();
         FreeExcludeFilesState();
 
-        _progressCb = null;
-        _excludeFilesCb = null;
     }
 }
 

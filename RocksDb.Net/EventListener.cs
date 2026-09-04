@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 using RocksDbNet.Extensions;
@@ -313,62 +314,18 @@ public sealed record MemTableInfo(
 public abstract class EventListener : RocksDbHandle
 {
     // ── Unmanaged delegate types ─────────────────────────────────────────────
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate void DestructorDelegate(nint state);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate void OnFlushBeginDelegate(
-        nint state, nint db, nint info);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate void OnFlushCompletedDelegate(
-        nint state, nint db, nint info);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate void OnCompactionBeginDelegate(
-        nint state, nint db, nint info);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate void OnCompactionCompletedDelegate(
-        nint state, nint db, nint info);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate void OnSubCompactionBeginDelegate(
-        nint state, nint info);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate void OnSubCompactionCompletedDelegate(
-        nint state, nint info);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate void OnExternalFileIngestedDelegate(
-        nint state, nint db, nint info);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate void OnBackgroundErrorDelegate(
-        nint state, uint reason, nint info);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate void OnStallConditionsChangedDelegate(
-        nint state, nint info);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate void OnMemTableSealedDelegate(
-        nint state, nint info);
-
-    // Delegate instances kept as fields to prevent GC from collecting the
-    // objects while the native side still holds function pointers into them.
-    private readonly DestructorDelegate _destructorDelegate;
-    private readonly OnFlushBeginDelegate _onFlushBeginDelegate;
-    private readonly OnFlushCompletedDelegate _onFlushCompletedDelegate;
-    private readonly OnCompactionBeginDelegate _onCompactionBeginDelegate;
-    private readonly OnCompactionCompletedDelegate _onCompactionCompletedDelegate;
-    private readonly OnSubCompactionBeginDelegate _onSubCompactionBeginDelegate;
-    private readonly OnSubCompactionCompletedDelegate _onSubCompactionCompletedDelegate;
-    private readonly OnExternalFileIngestedDelegate _onExternalFileIngestedDelegate;
-    private readonly OnBackgroundErrorDelegate _onBackgroundErrorDelegate;
-    private readonly OnStallConditionsChangedDelegate _onStallConditionsChangedDelegate;
-    private readonly OnMemTableSealedDelegate _onMemTableSealedDelegate;
+        // ── Native entry points ──────────────────────────────────────────────────
+    //
+    // [UnmanagedCallersOnly] rather than delegates, so RocksDb receives the
+    // address of each method instead of a runtime-generated marshalling thunk.
+    // See Comparator for the full reasoning. The eleven fields that used to
+    // hold the delegates alive are gone; what keeps this listener reachable is
+    // the GCHandle from PinGarbageCollector.
+    //
+    // All eleven slots are still installed unconditionally. RocksDb invokes
+    // each without a null check, so a slot left null for an event the subclass
+    // did not override terminated the process. The gate is on the managed side
+    // instead; see the constructor.
 
     // ── Static callbacks ─────────────────────────────────────────────────────
     // Using static methods avoids unsafe-lambda syntax issues.
@@ -419,6 +376,7 @@ public abstract class EventListener : RocksDbHandle
         }
     }
 
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void DestructorCallback(nint state)
     {
         try
@@ -436,51 +394,61 @@ public abstract class EventListener : RocksDbHandle
         }
     }
 
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void OnFlushBeginCallback(nint state, nint db, nint info)
         => Notify(nameof(OnFlushBegin), state, info,
             static self => self._hasOnFlushBegin,
             static (self, i) => self.OnFlushBegin(CreateFlushJobInfo(i)));
 
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void OnFlushCompletedCallback(nint state, nint db, nint info)
         => Notify(nameof(OnFlushCompleted), state, info,
             static self => self._hasOnFlushCompleted,
             static (self, i) => self.OnFlushCompleted(CreateFlushJobInfo(i)));
 
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void OnCompactionBeginCallback(nint state, nint db, nint info)
         => Notify(nameof(OnCompactionBegin), state, info,
             static self => self._hasOnCompactionBegin,
             static (self, i) => self.OnCompactionBegin(CreateCompactionJobInfo(i)));
 
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void OnCompactionCompletedCallback(nint state, nint db, nint info)
         => Notify(nameof(OnCompactionCompleted), state, info,
             static self => self._hasOnCompactionCompleted,
             static (self, i) => self.OnCompactionCompleted(CreateCompactionJobInfo(i)));
 
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void OnSubCompactionBeginCallback(nint state, nint info)
         => Notify(nameof(OnSubCompactionBegin), state, info,
             static self => self._hasOnSubCompactionBegin,
             static (self, i) => self.OnSubCompactionBegin(CreateSubCompactionJobInfo(i)));
 
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void OnSubCompactionCompletedCallback(nint state, nint info)
         => Notify(nameof(OnSubCompactionCompleted), state, info,
             static self => self._hasOnSubCompactionCompleted,
             static (self, i) => self.OnSubCompactionCompleted(CreateSubCompactionJobInfo(i)));
 
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void OnExternalFileIngestedCallback(nint state, nint db, nint info)
         => Notify(nameof(OnExternalFileIngested), state, info,
             static self => self._hasOnExternalFileIngested,
             static (self, i) => self.OnExternalFileIngested(CreateExternalFileIngestionInfo(i)));
 
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void OnStallConditionsChangedCallback(nint state, nint info)
         => Notify(nameof(OnStallConditionsChanged), state, info,
             static self => self._hasOnStallConditionsChanged,
             static (self, i) => self.OnStallConditionsChanged(CreateWriteStallInfo(i)));
 
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void OnMemTableSealedCallback(nint state, nint info)
         => Notify(nameof(OnMemTableSealed), state, info,
             static self => self._hasOnMemTableSealed,
             static (self, i) => self.OnMemTableSealed(CreateMemTableInfo(i)));
 
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void OnBackgroundErrorCallback(nint state, uint reason, nint info)
     {
         try
@@ -502,22 +470,11 @@ public abstract class EventListener : RocksDbHandle
 
     // ── Construction ─────────────────────────────────────────────────────────
 
-    protected EventListener()
+    protected unsafe EventListener()
     {
         // Pin this instance so that the C++ callbacks can access it via the state pointer
         PinGarbageCollector();
 
-        _destructorDelegate = DestructorCallback;
-        _onFlushBeginDelegate = OnFlushBeginCallback;
-        _onFlushCompletedDelegate = OnFlushCompletedCallback;
-        _onCompactionBeginDelegate = OnCompactionBeginCallback;
-        _onCompactionCompletedDelegate = OnCompactionCompletedCallback;
-        _onSubCompactionBeginDelegate = OnSubCompactionBeginCallback;
-        _onSubCompactionCompletedDelegate = OnSubCompactionCompletedCallback;
-        _onExternalFileIngestedDelegate = OnExternalFileIngestedCallback;
-        _onBackgroundErrorDelegate = OnBackgroundErrorCallback;
-        _onStallConditionsChangedDelegate = OnStallConditionsChangedCallback;
-        _onMemTableSealedDelegate = OnMemTableSealedCallback;
 
         // Skip work for events the derived class does not care about, so that no
         // info object is built and no virtual call is made for them.
@@ -544,17 +501,17 @@ public abstract class EventListener : RocksDbHandle
 
         Handle = NativeMethods.rocksdb_eventlistener_create(
             GetPinnedIntPtr(),
-            Marshal.GetFunctionPointerForDelegate(_destructorDelegate),
-            Marshal.GetFunctionPointerForDelegate(_onFlushBeginDelegate),
-            Marshal.GetFunctionPointerForDelegate(_onFlushCompletedDelegate),
-            Marshal.GetFunctionPointerForDelegate(_onCompactionBeginDelegate),
-            Marshal.GetFunctionPointerForDelegate(_onCompactionCompletedDelegate),
-            Marshal.GetFunctionPointerForDelegate(_onSubCompactionBeginDelegate),
-            Marshal.GetFunctionPointerForDelegate(_onSubCompactionCompletedDelegate),
-            Marshal.GetFunctionPointerForDelegate(_onExternalFileIngestedDelegate),
-            Marshal.GetFunctionPointerForDelegate(_onBackgroundErrorDelegate),
-            Marshal.GetFunctionPointerForDelegate(_onStallConditionsChangedDelegate),
-            Marshal.GetFunctionPointerForDelegate(_onMemTableSealedDelegate));
+            (nint)(delegate* unmanaged[Cdecl]<nint, void>)&DestructorCallback,
+            (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&OnFlushBeginCallback,
+            (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&OnFlushCompletedCallback,
+            (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&OnCompactionBeginCallback,
+            (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&OnCompactionCompletedCallback,
+            (nint)(delegate* unmanaged[Cdecl]<nint, nint, void>)&OnSubCompactionBeginCallback,
+            (nint)(delegate* unmanaged[Cdecl]<nint, nint, void>)&OnSubCompactionCompletedCallback,
+            (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&OnExternalFileIngestedCallback,
+            (nint)(delegate* unmanaged[Cdecl]<nint, uint, nint, void>)&OnBackgroundErrorCallback,
+            (nint)(delegate* unmanaged[Cdecl]<nint, nint, void>)&OnStallConditionsChangedCallback,
+            (nint)(delegate* unmanaged[Cdecl]<nint, nint, void>)&OnMemTableSealedCallback);
     }
 
     // ── Virtual methods ───────────────────────────────────────────────

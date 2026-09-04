@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace RocksDbNet;
@@ -22,28 +23,23 @@ namespace RocksDbNet;
 /// </remarks>
 public abstract class Comparator : RocksDbHandle
 {
-    // ── Unmanaged delegate types ─────────────────────────────────────────────
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate void DestructorDelegate(nint state);
+    // ── Native entry points ──────────────────────────────────────────────────
+    //
+    // [UnmanagedCallersOnly] rather than delegates, so what RocksDb receives is
+    // the address of the method. A function pointer taken from a delegate is
+    // the address of a runtime-generated marshalling thunk that dispatches
+    // through a delegate object, which for a blittable signature does little
+    // but is paid on every call — and Compare is on the innermost read and
+    // compaction loop.
+    //
+    // These methods cannot be called from managed code, and nothing does. The
+    // delegate fields that used to exist only to keep the delegates from being
+    // collected are gone with them; what keeps this object alive is the
+    // GCHandle from PinGarbageCollector, which is unchanged and is also what
+    // makes an UnmanagedCallersOnly entry point workable here, since such a
+    // method cannot close over an instance.
 
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private unsafe delegate int CompareDelegate(
-        nint state,
-        byte* keyA, nuint keyALen,
-        byte* keyB, nuint keyBLen);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate nint NameDelegate(nint state);
-
-    // Delegate instances kept as fields to prevent GC from collecting the
-    // objects while the native side still holds function pointers into them.
-    private readonly DestructorDelegate _destructorDelegate;
-    private readonly CompareDelegate _compareDelegate;
-    private readonly NameDelegate _nameDelegate;
-
-    // ── Static callbacks ─────────────────────────────────────────────────────
-    // Using static methods avoids unsafe-lambda syntax issues.
-
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void DestructorCallback(nint state)
     {
         try
@@ -57,6 +53,7 @@ public abstract class Comparator : RocksDbHandle
         }
     }
 
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static unsafe int CompareCallback(
         nint state,
         byte* keyA, nuint keyALen,
@@ -80,8 +77,6 @@ public abstract class Comparator : RocksDbHandle
         }
     }
 
-    //private static nint NameCallback(nint state) => GetNameFromPinnedIntPtr(state);
-
     // ── Construction ─────────────────────────────────────────────────────────
 
     /// <summary>Creates a comparator with the given name.</summary>
@@ -98,15 +93,11 @@ public abstract class Comparator : RocksDbHandle
 
         PinGarbageCollector(name);
 
-        _destructorDelegate = DestructorCallback;
-        _compareDelegate = CompareCallback;
-        _nameDelegate = GetNameFromPinnedIntPtrSafe;
-
         Handle = NativeMethods.rocksdb_comparator_create(
             GetPinnedIntPtr(),
-            Marshal.GetFunctionPointerForDelegate(_destructorDelegate),
-            Marshal.GetFunctionPointerForDelegate(_compareDelegate),
-            Marshal.GetFunctionPointerForDelegate(_nameDelegate));
+            (nint)(delegate* unmanaged[Cdecl]<nint, void>)&DestructorCallback,
+            (nint)(delegate* unmanaged[Cdecl]<nint, byte*, nuint, byte*, nuint, int>)&CompareCallback,
+            (nint)(delegate* unmanaged[Cdecl]<nint, nint>)&GetNameFromPinnedIntPtrSafe);
     }
 
     // ── Abstract methods ───────────────────────────────────────────────

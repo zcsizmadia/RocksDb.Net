@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace RocksDbNet;
@@ -46,28 +47,17 @@ public enum InfoLogLevel : int
 public abstract class Logger : RocksDbHandle
 {
     // ── Unmanaged delegate types ─────────────────────────────────────────────
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate void DestructorDelegate(nint state);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate void LoggerDelegate(
-        nint state,
-        int level,
-        nint msg,
-        uint msg_len);
-
-    // ── Instance state ───────────────────────────────────────────────────────
-
-    private readonly LoggerDelegate _loggerDelegate;
+    // Native entry points, not delegates. See Comparator for why.
 
     // ── Static callbacks ─────────────────────────────────────────────────────
     // Using static methods avoids unsafe-lambda syntax issues.
 
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static unsafe void LoggerCallback(
         nint state,
         int level,
         nint msg,
-        uint msg_len)
+        nuint msg_len)
     {
         try
         {
@@ -98,15 +88,14 @@ public abstract class Logger : RocksDbHandle
     /// do carry a level are filtered. A logger that must not see the rest has to
     /// check <c>logLevel</c> in its own <see cref="Log"/>.
     /// </remarks>
-    protected Logger(InfoLogLevel logLevel)
+    protected unsafe Logger(InfoLogLevel logLevel)
     {
         PinGarbageCollector();
 
-        _loggerDelegate = LoggerCallback;
 
         Handle = NativeMethods.rocksdb_logger_create_callback_logger(
             (int)logLevel,
-            Marshal.GetFunctionPointerForDelegate(_loggerDelegate),
+            (nint)(delegate* unmanaged[Cdecl]<nint, int, nint, nuint, void>)&LoggerCallback,
             GetPinnedIntPtr());
     }
 
