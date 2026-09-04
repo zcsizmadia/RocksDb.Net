@@ -6,45 +6,9 @@ namespace RocksDbNet.Tests;
 
 public class EventListenerTests
 {
-    private sealed class TestEventListener : EventListener
-    {
-        public List<FlushJobInfo> FlushBeginEvents { get; } = [];
-        public List<FlushJobInfo> FlushCompletedEvents { get; } = [];
-        public List<CompactionJobInfo> CompactionBeginEvents { get; } = [];
-        public List<CompactionJobInfo> CompactionCompletedEvents { get; } = [];
-        public List<MemTableInfo> MemTableSealedEvents { get; } = [];
-        public List<ExternalFileIngestionInfo> ExternalFileIngestedEvents { get; } = [];
-
-        public override void OnFlushBegin(FlushJobInfo info)
-        {
-            FlushBeginEvents.Add(info);
-        }
-
-        public override void OnFlushCompleted(FlushJobInfo info)
-        {
-            FlushCompletedEvents.Add(info);
-        }
-
-        public override void OnCompactionBegin(CompactionJobInfo info)
-        {
-            CompactionBeginEvents.Add(info);
-        }
-
-        public override void OnCompactionCompleted(CompactionJobInfo info)
-        {
-            CompactionCompletedEvents.Add(info);
-        }
-
-        public override void OnMemTableSealed(MemTableInfo info)
-        {
-            MemTableSealedEvents.Add(info);
-        }
-
-        public override void OnExternalFileIngested(ExternalFileIngestionInfo info)
-        {
-            ExternalFileIngestedEvents.Add(info);
-        }
-    }
+    // The recorder these tests used to declare here appended to plain Lists
+    // from RocksDb background threads, with no lock on either side. Shared
+    // RecordingListener locks both, which is what it was written for.
 
     private sealed class PassiveEventListener : EventListener
     {
@@ -148,7 +112,7 @@ public class EventListenerTests
     public void EventListener_ReceivesFlushEvents()
     {
         using var dir = new TempDir();
-        var listener = new TestEventListener();
+        var listener = new RecordingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.EventListener = listener;
@@ -159,13 +123,13 @@ public class EventListenerTests
         db.Put("key2", "value2");
         db.Flush();
 
-        Assert.NotEmpty(listener.FlushBeginEvents);
-        var beginInfo = listener.FlushBeginEvents[0];
+        Assert.NotEmpty(listener.FlushBegin);
+        var beginInfo = listener.FlushBegin[0];
         Assert.NotNull(beginInfo.ColumnFamilyName);
         Assert.NotNull(beginInfo.FilePath);
 
-        Assert.NotEmpty(listener.FlushCompletedEvents);
-        var completedInfo = listener.FlushCompletedEvents[0];
+        Assert.NotEmpty(listener.FlushCompleted);
+        var completedInfo = listener.FlushCompleted[0];
         Assert.NotNull(completedInfo.ColumnFamilyName);
         Assert.NotNull(completedInfo.FilePath);
     }
@@ -174,7 +138,7 @@ public class EventListenerTests
     public void EventListener_ReceivesCompactionEvents()
     {
         using var dir = new TempDir();
-        var listener = new TestEventListener();
+        var listener = new RecordingListener();
 
         using var opts = new DbOptions
         {
@@ -201,9 +165,9 @@ public class EventListenerTests
 
         db.CompactRange();
 
-        Assert.NotEmpty(listener.CompactionCompletedEvents);
+        Assert.NotEmpty(listener.CompactionCompleted);
 
-        var info = listener.CompactionCompletedEvents[0];
+        var info = listener.CompactionCompleted[0];
         Assert.NotNull(info.ColumnFamilyName);
         Assert.NotNull(info.Status);
     }
@@ -212,8 +176,8 @@ public class EventListenerTests
     public void EventListener_AddMultiple()
     {
         using var dir = new TempDir();
-        var listener1 = new TestEventListener();
-        var listener2 = new TestEventListener();
+        var listener1 = new RecordingListener();
+        var listener2 = new RecordingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.EventListeners = [listener1, listener2];
@@ -223,15 +187,15 @@ public class EventListenerTests
         db.Put("key1", "value1");
         db.Flush();
 
-        Assert.NotEmpty(listener1.FlushCompletedEvents);
-        Assert.NotEmpty(listener2.FlushCompletedEvents);
+        Assert.NotEmpty(listener1.FlushCompleted);
+        Assert.NotEmpty(listener2.FlushCompleted);
     }
 
     [Fact]
     public void EventListener_FlushJobInfo_Properties()
     {
         using var dir = new TempDir();
-        var listener = new TestEventListener();
+        var listener = new RecordingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.EventListener = listener;
@@ -241,13 +205,20 @@ public class EventListenerTests
         db.Put("a", "1");
         db.Flush();
 
-        Assert.NotEmpty(listener.FlushCompletedEvents);
-        var info = listener.FlushCompletedEvents[0];
+        FlushJobInfo info = Assert.Single(listener.FlushCompleted);
 
-        // Verify all properties are populated
         Assert.Equal("default", info.ColumnFamilyName);
-        Assert.NotNull(info.FilePath);
-        Assert.True(info.FlushReason != 0 || info.FlushReason == 0); // Enum is valid
+        Assert.EndsWith(".sst", info.FilePath, StringComparison.Ordinal);
+
+        // The reason this flush actually had. The assertion here used to read
+        // "reason != 0 || reason == 0", which is true of every value the field
+        // could ever hold, including one the marshalling invented.
+        Assert.Equal(FlushReason.ManualFlush, info.FlushReason);
+
+        // One key was written, so the sequence range is a single number and a
+        // real one rather than the zeroes an unmarshalled struct would show.
+        Assert.True(info.SmallestSeqno > 0);
+        Assert.Equal(info.SmallestSeqno, info.LargestSeqno);
     }
 
     [Fact]
@@ -257,7 +228,7 @@ public class EventListenerTests
         string dbPath = dir.Sub("db");
         string sstPath = Path.Combine(dir.Path, "ingest.sst");
 
-        var listener = new TestEventListener();
+        var listener = new RecordingListener();
 
         using var dbOpts = new DbOptions { CreateIfMissing = true };
         dbOpts.EventListener = listener;
@@ -274,8 +245,8 @@ public class EventListenerTests
         using var ingestOpts = new IngestExternalFileOptions();
         db.IngestExternalFile([sstPath], ingestOpts);
 
-        Assert.NotEmpty(listener.ExternalFileIngestedEvents);
-        var info = listener.ExternalFileIngestedEvents[0];
+        Assert.NotEmpty(listener.Ingested);
+        var info = listener.Ingested[0];
         Assert.NotNull(info.ColumnFamilyName);
     }
 
@@ -283,7 +254,7 @@ public class EventListenerTests
     public void EventListener_ReceivesFlushBeginEvent()
     {
         using var dir = new TempDir();
-        var listener = new TestEventListener();
+        var listener = new RecordingListener();
 
         using var opts = new DbOptions { CreateIfMissing = true };
         opts.EventListener = listener;
@@ -293,14 +264,14 @@ public class EventListenerTests
         db.Put("key", "value");
         db.Flush();
 
-        Assert.NotEmpty(listener.FlushBeginEvents);
+        Assert.NotEmpty(listener.FlushBegin);
     }
 
     [Fact]
     public void EventListener_CompactionJobInfo_HasInputAndOutputFiles()
     {
         using var dir = new TempDir();
-        var listener = new TestEventListener();
+        var listener = new RecordingListener();
 
         using var opts = new DbOptions
         {
@@ -322,12 +293,21 @@ public class EventListenerTests
 
         db.CompactRange();
 
-        if (listener.CompactionCompletedEvents.Count > 0)
-        {
-            var info = listener.CompactionCompletedEvents[0];
-            Assert.NotNull(info.InputFiles);
-            Assert.NotNull(info.OutputFiles);
-        }
+        // Waited for rather than hoped for. This used to be guarded by a count
+        // check, so a run where no compaction fired reached the end having
+        // asserted nothing at all.
+        Assert.True(
+            Wait.Until(() => listener.CompactionCompleted.Count > 0),
+            "no compaction completed");
+
+        CompactionJobInfo info = listener.CompactionCompleted[0];
+
+        // The two flushes above are what it compacted, and it produced at least
+        // one file from them.
+        Assert.NotEmpty(info.InputFiles);
+        Assert.NotEmpty(info.OutputFiles);
+        Assert.All(info.InputFiles, f => Assert.EndsWith(".sst", f, StringComparison.Ordinal));
+        Assert.All(info.OutputFiles, f => Assert.EndsWith(".sst", f, StringComparison.Ordinal));
     }
 
     [Fact]
@@ -427,10 +407,45 @@ public class EventListenerTests
         Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnMemTableSealed)));
     }
 
+    /// <summary>
+    /// Overrides some callbacks and not others, which is the whole point of
+    /// the detection this test covers.
+    /// </summary>
+    /// <remarks>
+    /// Declared here rather than reusing the shared recorder, which overrides
+    /// every callback and so could only ever prove the True half.
+    /// </remarks>
+    private sealed class PartiallyOverridingListener : EventListener
+    {
+        public override void OnFlushBegin(FlushJobInfo info)
+        {
+        }
+
+        public override void OnFlushCompleted(FlushJobInfo info)
+        {
+        }
+
+        public override void OnCompactionBegin(CompactionJobInfo info)
+        {
+        }
+
+        public override void OnCompactionCompleted(CompactionJobInfo info)
+        {
+        }
+
+        public override void OnExternalFileIngested(ExternalFileIngestionInfo info)
+        {
+        }
+
+        public override void OnMemTableSealed(MemTableInfo info)
+        {
+        }
+    }
+
     [Fact]
     public void EventListener_DetectOverrides_Some()
     {
-        var listener = new TestEventListener();
+        var listener = new PartiallyOverridingListener();
 
         Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnFlushBegin)));
         Assert.True(listener.CheckIfMethodOverridden<EventListener>(nameof(EventListener.OnFlushCompleted)));
