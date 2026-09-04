@@ -245,7 +245,7 @@ public class ReadmeSnippetTests
     public void SstFileIngestion()
     {
         using var dir = new TempDir();
-        using var db = new TempDb();
+        using var db = TempDb.OnDisk();
 
         string sstPath = Path.Combine(dir.Path, "data.sst");
 

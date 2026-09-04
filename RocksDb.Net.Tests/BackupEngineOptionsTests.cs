@@ -105,7 +105,7 @@ public class BackupEngineOptionsTests
     [Fact]
     public void Open_WithOptions_TakesAndListsBackups()
     {
-        using var db = new TempDb();
+        using var db = TempDb.OnDisk();
         using var backupDir = new TempDir();
 
         db.Db.Put("a", "1");
@@ -127,7 +127,7 @@ public class BackupEngineOptionsTests
     [Fact]
     public void Open_WithDestroyOldData_ClearsPreviousBackups()
     {
-        using var db = new TempDb();
+        using var db = TempDb.OnDisk();
         using var backupDir = new TempDir();
 
         db.Db.Put("a", "1");
@@ -179,7 +179,7 @@ public class BackupEngineOptionsTests
     [Fact]
     public void CreateNewBackup_WithOptions_ReturnsBackupId()
     {
-        using var db = new TempDb();
+        using var db = TempDb.OnDisk();
         using var backupDir = new TempDir();
 
         db.Db.Put("a", "1");
@@ -197,7 +197,7 @@ public class BackupEngineOptionsTests
     [Fact]
     public void CreateNewBackup_WithAppMetadata_RoundTripsThroughBackupInfo()
     {
-        using var db = new TempDb();
+        using var db = TempDb.OnDisk();
         using var backupDir = new TempDir();
 
         db.Db.Put("a", "1");
@@ -219,7 +219,7 @@ public class BackupEngineOptionsTests
     [Fact]
     public void CreateNewBackup_WithoutMetadata_HasEmptyAppMetadata()
     {
-        using var db = new TempDb();
+        using var db = TempDb.OnDisk();
         using var backupDir = new TempDir();
 
         db.Db.Put("a", "1");
@@ -234,7 +234,7 @@ public class BackupEngineOptionsTests
     [Fact]
     public void ExcludeFilesCallback_IsInvokedPerFile()
     {
-        using var db = new TempDb();
+        using var db = TempDb.OnDisk();
         using var backupDir = new TempDir();
 
         db.Db.Put("a", "1");
@@ -276,7 +276,7 @@ public class BackupEngineOptionsTests
     [Fact]
     public void ExcludeFilesCallback_Throwing_ExcludesNothingAndReports()
     {
-        using var db = new TempDb();
+        using var db = TempDb.OnDisk();
         using var backupDir = new TempDir();
 
         db.Db.Put("a", "1");
@@ -305,7 +305,7 @@ public class BackupEngineOptionsTests
     [Fact]
     public void ProgressCallback_IsInvoked()
     {
-        using var db = new TempDb();
+        using var db = TempDb.OnDisk();
         using var backupDir = new TempDir();
 
         for (int i = 0; i < 200; i++)
@@ -361,7 +361,7 @@ public class BackupEngineOptionsTests
     [Fact]
     public void VerifyBackup_OnHealthyBackup_Succeeds()
     {
-        using var db = new TempDb();
+        using var db = TempDb.OnDisk();
         using var backupDir = new TempDir();
 
         db.Db.Put("a", "1");
@@ -438,7 +438,7 @@ public class BackupEngineOptionsTests
         using var backupDir = new TempDir();
         using var restoreDir = new TempDir();
 
-        using (var db = new TempDb())
+        using (var db = TempDb.OnDisk())
         {
             db.Db.Put("a", "1");
             db.Db.Put("b", "2");
@@ -467,7 +467,7 @@ public class BackupEngineOptionsTests
 
         uint firstBackupId;
 
-        using (var db = new TempDb())
+        using (var db = TempDb.OnDisk())
         {
             using var backupDbOpts = NewDbOptions();
             using var backupEngine = BackupEngine.Open(backupDbOpts, backupDir.Path);
@@ -532,7 +532,7 @@ public class BackupEngineOptionsTests
 
         // And the engine still works, which reading through a freed environment
         // would not.
-        using var db = new TempDb();
+        using var db = TempDb.OnDisk();
 
         db.Db.Put("a", "1");
         engine.CreateNewBackup(db.Db);

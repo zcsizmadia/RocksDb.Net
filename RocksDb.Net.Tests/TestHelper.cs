@@ -37,28 +37,80 @@ public sealed class TempDir : IDisposable
 }
 
 /// <summary>
-/// Opens a RocksDb in a temp directory and disposes both on cleanup.
+/// Opens a RocksDb for a test and disposes everything it created.
 /// </summary>
+/// <remarks>
+/// <para>
+/// In memory by default, through RocksDb's own in-memory environment. Almost
+/// no test cares where its bytes land, and the ones that do are the minority:
+/// this used to create and delete a real directory per test, and on Windows
+/// that dominated the run. Measured over 100 open, write, flush and close
+/// cycles: 1926 ms against a real directory, 268 ms in memory.
+/// </para>
+/// <para>
+/// Use <see cref="OnDisk"/> when the test inspects real files, hands the
+/// options to something that writes outside the database directory such as a
+/// backup engine, or is about the file system rather than the database.
+/// </para>
+/// </remarks>
 public sealed class TempDb : IDisposable
 {
-    public TempDir Dir { get; }
+    private readonly Env? _env;
+
+    /// <summary>The real directory, or <c>null</c> for an in-memory database.</summary>
+    public TempDir? Dir { get; }
+
     public RocksDb Db { get; }
+
     public DbOptions Options { get; }
-    public string Path => Dir.Path;
+
+    /// <summary>
+    /// Where the database lives: a real path on disk, or a path inside this
+    /// instance's own in-memory environment.
+    /// </summary>
+    public string Path { get; }
 
     public TempDb(Action<DbOptions>? configure = null)
+        : this(onDisk: false, configure)
     {
-        Dir = new TempDir();
+    }
+
+    /// <summary>Opens the database in a real temporary directory.</summary>
+    public static TempDb OnDisk(Action<DbOptions>? configure = null) => new(onDisk: true, configure);
+
+    private TempDb(bool onDisk, Action<DbOptions>? configure)
+    {
         Options = new DbOptions { CreateIfMissing = true };
+
+        if (onDisk)
+        {
+            Dir = new TempDir();
+            Path = Dir.Path;
+        }
+        else
+        {
+            // One environment per database rather than one shared by the suite.
+            // A shared handle is freed when the last holder lets go, so an
+            // environment reused by a second database after the first closed is
+            // already disposed. See the ownership guide.
+            _env = Env.CreateInMemory();
+            Options.Env = _env;
+            Path = "/db";
+        }
+
         configure?.Invoke(Options);
-        Db = RocksDb.Open(Options, Dir.Path);
+        Db = RocksDb.Open(Options, Path);
     }
 
     public void Dispose()
     {
+        // The database owns the options and disposes them, which releases the
+        // hold on the environment and so disposes that too. The calls below are
+        // idempotent and are here so this reads as owning what it created.
         Db.Dispose();
         Options.Dispose();
-        Dir.Dispose();
+        _env?.Dispose();
+        Dir?.Dispose();
     }
 }
 

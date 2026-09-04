@@ -136,7 +136,7 @@ public class DocumentationGuideTests
     [Fact]
     public void GettingStarted_Durability()
     {
-        using var db = new TempDb();
+        using var db = TempDb.OnDisk();
 
         using var sync = new WriteOptions { Sync = true };
         db.Db.Put("important", "value", sync);

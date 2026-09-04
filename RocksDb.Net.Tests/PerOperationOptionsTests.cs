@@ -150,7 +150,7 @@ public class PerOperationOptionsTests
     [Fact]
     public void FlushWal_WithOptions_Succeeds()
     {
-        using var db = new TempDb();
+        using var db = TempDb.OnDisk();
         db.Db.Put("a", "1");
 
         using var opts = new FlushWalOptions { Sync = true };
