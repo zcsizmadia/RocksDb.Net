@@ -314,4 +314,122 @@ public class WriteBatchEntriesTests
         Assert.Null(target.Db.GetString("a"));
         Assert.Equal("2", target.Db.GetString("b"));
     }
+
+    // ── Records the C API cannot iterate ────────────────────────────────────
+
+    /// <summary>
+    /// A single delete on the default column family is ignored by the base
+    /// handler and iteration carries on, so the list comes back one short.
+    /// </summary>
+    [Fact]
+    public void Entries_Throws_ForSingleDelete()
+    {
+        using var batch = new WriteBatch();
+
+        batch.Put("a"u8, "1"u8);
+        batch.SingleDelete("a"u8);
+        batch.Put("z"u8, "2"u8);
+
+        var ex = Assert.Throws<NotSupportedException>(() => batch.Entries());
+
+        Assert.Contains("3 operations", ex.Message);
+        Assert.Contains("2", ex.Message);
+        Assert.Contains("GetData", ex.Message);
+    }
+
+    /// <summary>
+    /// A range delete is rejected by the base handler, which stops iteration
+    /// outright: everything queued after it is lost too.
+    /// </summary>
+    [Fact]
+    public void Entries_Throws_ForDeleteRange()
+    {
+        using var batch = new WriteBatch();
+
+        batch.Put("a"u8, "1"u8);
+        batch.DeleteRange("a"u8, "b"u8);
+        batch.Put("z"u8, "2"u8);
+
+        var ex = Assert.Throws<NotSupportedException>(() => batch.Entries());
+
+        // Only the put before the range delete survived.
+        Assert.Contains("only 1", ex.Message);
+    }
+
+    /// <summary>
+    /// A single delete against a named column family is rejected rather than
+    /// ignored, so it stops iteration the way a range delete does.
+    /// </summary>
+    [Fact]
+    public void Entries_Throws_ForSingleDeleteOnColumnFamily()
+    {
+        using var db = new TempDb();
+        using var cfOptions = new DbOptions();
+
+        ColumnFamilyHandle cf = db.Db.CreateColumnFamilies(cfOptions, ["events"])[0];
+
+        using var batch = new WriteBatch();
+
+        batch.Put("a"u8, "1"u8);
+        batch.SingleDelete("a"u8, cf);
+        batch.Put("z"u8, "2"u8);
+
+        Assert.Throws<NotSupportedException>(() => batch.Entries());
+    }
+
+    /// <summary>
+    /// The check must not fire on a batch it can report in full. Log data is the
+    /// case that would trip a naive count comparison, since RocksDb does not
+    /// count it as an operation but it does come back as an entry.
+    /// </summary>
+    [Fact]
+    public void Entries_DoesNotThrow_ForLogData()
+    {
+        using var batch = new WriteBatch();
+
+        batch.Put("a"u8, "1"u8);
+        batch.PutLogData("audit"u8);
+        batch.Delete("a"u8);
+        batch.Merge("m"u8, "1"u8);
+
+        // Two operations by RocksDb's count, three entries by ours.
+        Assert.Equal(3, batch.Count);
+
+        IReadOnlyList<WriteBatchEntry> entries = batch.Entries();
+
+        Assert.Equal(4, entries.Count);
+        Assert.Equal(
+            [WriteBatchEntryKind.Put, WriteBatchEntryKind.LogData, WriteBatchEntryKind.Delete, WriteBatchEntryKind.Merge],
+            entries.Select(e => e.Kind));
+    }
+
+    /// <summary>An empty batch reports nothing and throws nothing.</summary>
+    [Fact]
+    public void Entries_DoesNotThrow_ForEmptyBatch()
+    {
+        using var batch = new WriteBatch();
+
+        Assert.Empty(batch.Entries());
+    }
+
+    /// <summary>
+    /// Clearing the offending record makes the batch readable again, which
+    /// confirms the check is reading the live batch rather than latching.
+    /// </summary>
+    [Fact]
+    public void Entries_SucceedsAfterTheRangeDeleteIsCleared()
+    {
+        using var batch = new WriteBatch();
+
+        batch.Put("a"u8, "1"u8);
+        batch.DeleteRange("a"u8, "b"u8);
+
+        Assert.Throws<NotSupportedException>(() => batch.Entries());
+
+        batch.Clear();
+        batch.Put("a"u8, "1"u8);
+
+        WriteBatchEntry only = Assert.Single(batch.Entries());
+        Assert.Equal(WriteBatchEntryKind.Put, only.Kind);
+    }
 }

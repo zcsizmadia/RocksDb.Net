@@ -252,7 +252,18 @@ public sealed unsafe class WriteBatch : RocksDbHandle
     /// iteration, so materialising is the only safe shape; it also keeps a
     /// caller's exception from having to cross the native boundary.
     /// </para>
+    /// <para>
+    /// Only the four kinds in <see cref="WriteBatchEntryKind"/> can be read
+    /// back. The C API offers no callback for a single delete or a range
+    /// delete, so a batch containing either cannot be reported faithfully and
+    /// this throws rather than returning a list that quietly omits them. Use
+    /// <see cref="GetData"/> for such a batch, or keep those operations out of
+    /// batches you intend to read back.
+    /// </para>
     /// </remarks>
+    /// <exception cref="NotSupportedException">
+    /// The batch contains a single delete or a range delete.
+    /// </exception>
     public unsafe IReadOnlyList<WriteBatchEntry> Entries()
     {
         ThrowIfDisposed();
@@ -279,7 +290,59 @@ public sealed unsafe class WriteBatch : RocksDbHandle
             state.Free();
         }
 
+        ThrowIfIncomplete(collected);
         return collected;
+    }
+
+    /// <summary>
+    /// Fails when the batch held records the callbacks cannot report.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>rocksdb_writebatch_iterate_cf_ld</c> is the richest iteration the C
+    /// API has, and it installs handlers for puts, deletes, merges and log
+    /// data only. Single-delete and range-delete records fall through to the
+    /// base handler, whose defaults ignore a default-column-family single
+    /// delete and reject everything else. A rejection stops iteration, so a
+    /// range delete costs not only itself but every record queued after it.
+    /// The C API discards that status, leaving nothing to notice it by.
+    /// </para>
+    /// <para>
+    /// The batch knows how many operations it holds, so comparing counts finds
+    /// what the callbacks missed. Log data is excluded because RocksDb does not
+    /// count it: it rides along in the write-ahead log but is not an operation
+    /// on a key.
+    /// </para>
+    /// <para>
+    /// Silence would be worse than an exception. The caller most likely to read
+    /// a batch back is doing change data capture, and a delete that vanishes on
+    /// the way out is the one loss they would never detect.
+    /// </para>
+    /// </remarks>
+    private void ThrowIfIncomplete(List<WriteBatchEntry> collected)
+    {
+        int reported = 0;
+
+        foreach (WriteBatchEntry entry in collected)
+        {
+            if (entry.Kind != WriteBatchEntryKind.LogData)
+            {
+                reported++;
+            }
+        }
+
+        int total = Count;
+
+        if (reported == total)
+        {
+            return;
+        }
+
+        throw new NotSupportedException(
+            $"The batch holds {total} operations but only {reported} could be read " +
+            "back. This happens when it contains a single delete or a range delete, " +
+            "which the RocksDb C API provides no way to iterate. Use GetData to " +
+            "read the batch in its serialized form instead.");
     }
 
     // Held in static fields so the delegates are not collected while native
