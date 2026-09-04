@@ -48,6 +48,16 @@ public static class StatisticsEnumGenerator
         sb.AppendLine( "namespace RocksDbNet;");
         sb.AppendLine();
 
+        // The version this file was generated from, so a test can compare it
+        // against the pinned property and fail if the two have drifted apart.
+        // NativeMethods carries the same constant for the bindings.
+        sb.AppendLine( "/// <summary>The RocksDb version these enums were generated from.</summary>");
+        sb.AppendLine( "internal static class StatisticsEnumsVersion");
+        sb.AppendLine( "{");
+        sb.AppendLine($"    internal const string RocksDbVersion = \"{version}\";");
+        sb.AppendLine( "}");
+        sb.AppendLine();
+
         Emit(
             sb,
             "Ticker",

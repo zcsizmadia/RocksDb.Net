@@ -23,4 +23,14 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <!--
+    The pinned native version, so a test can check the generated files were
+    regenerated after it changed. Passed in from the build rather than read
+    from Directory.Build.props at runtime, so the test compares against the
+    same value the build itself used.
+  -->
+  <ItemGroup>
+    <AssemblyMetadata Include="RocksDbVersion" Value="$(RocksDbVersion)" />
+  </ItemGroup>
+
 </Project>

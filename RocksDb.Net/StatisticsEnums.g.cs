@@ -20,6 +20,12 @@
 
 namespace RocksDbNet;
 
+/// <summary>The RocksDb version these enums were generated from.</summary>
+internal static class StatisticsEnumsVersion
+{
+    internal const string RocksDbVersion = "11.8.1";
+}
+
 /// <summary>
 /// A counter collected by the statistics subsystem.
 /// </summary>
