@@ -10,26 +10,23 @@ public class ReadOptionsPropertyTests
 {
     // ── Simple properties ────────────────────────────────────────────────────
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void BoolProperties_RoundTrip(bool value)
+    /// <summary>
+    /// Each of these round-trips both ways on its own, without moving any of
+    /// the others.
+    /// </summary>
+    [Fact]
+    public void BoolProperties_RoundTrip()
     {
         using var opts = new ReadOptions();
 
-        opts.AdaptiveReadahead = value;
-        opts.AutoReadaheadSize = value;
-        opts.AutoPrefixMode = value;
-        opts.AutoRefreshIteratorWithSnapshot = value;
-        opts.AllowUnpreparedValue = value;
-        opts.OptimizeMultiGetForIo = value;
-
-        Assert.Equal(value, opts.AdaptiveReadahead);
-        Assert.Equal(value, opts.AutoReadaheadSize);
-        Assert.Equal(value, opts.AutoPrefixMode);
-        Assert.Equal(value, opts.AutoRefreshIteratorWithSnapshot);
-        Assert.Equal(value, opts.AllowUnpreparedValue);
-        Assert.Equal(value, opts.OptimizeMultiGetForIo);
+        BoolProperty.AssertRoundTripsIndependently(
+            opts,
+            (nameof(opts.AdaptiveReadahead), (o, v) => o.AdaptiveReadahead = v, o => o.AdaptiveReadahead),
+            (nameof(opts.AutoReadaheadSize), (o, v) => o.AutoReadaheadSize = v, o => o.AutoReadaheadSize),
+            (nameof(opts.AutoPrefixMode), (o, v) => o.AutoPrefixMode = v, o => o.AutoPrefixMode),
+            (nameof(opts.AutoRefreshIteratorWithSnapshot), (o, v) => o.AutoRefreshIteratorWithSnapshot = v, o => o.AutoRefreshIteratorWithSnapshot),
+            (nameof(opts.AllowUnpreparedValue), (o, v) => o.AllowUnpreparedValue = v, o => o.AllowUnpreparedValue),
+            (nameof(opts.OptimizeMultiGetForIo), (o, v) => o.OptimizeMultiGetForIo = v, o => o.OptimizeMultiGetForIo));
     }
 
     [Fact]

@@ -265,20 +265,20 @@ public class DatabaseOperationsTests
 
     // ── SizeApproximationOptions ─────────────────────────────────────────────
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void SizeApproximationOptions_BoolProperties_RoundTrip(bool value)
+    /// <summary>
+    /// Each of these round-trips both ways on its own, without moving any of
+    /// the others.
+    /// </summary>
+    [Fact]
+    public void SizeApproximationOptions_BoolProperties_RoundTrip()
     {
         using var opts = new SizeApproximationOptions();
 
-        opts.IncludeMemtables = value;
-        opts.IncludeFiles = value;
-        opts.IncludeBlobFiles = value;
-
-        Assert.Equal(value, opts.IncludeMemtables);
-        Assert.Equal(value, opts.IncludeFiles);
-        Assert.Equal(value, opts.IncludeBlobFiles);
+        BoolProperty.AssertRoundTripsIndependently(
+            opts,
+            (nameof(opts.IncludeMemtables), (o, v) => o.IncludeMemtables = v, o => o.IncludeMemtables),
+            (nameof(opts.IncludeFiles), (o, v) => o.IncludeFiles = v, o => o.IncludeFiles),
+            (nameof(opts.IncludeBlobFiles), (o, v) => o.IncludeBlobFiles = v, o => o.IncludeBlobFiles));
     }
 
     [Fact]

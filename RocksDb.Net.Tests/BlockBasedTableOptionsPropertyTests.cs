@@ -141,26 +141,23 @@ public class BlockBasedTableOptionsPropertyTests
         Assert.Equal(prepopulate, opts.PrepopulateBlockCache);
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void NewBoolProperties_RoundTrip(bool value)
+    /// <summary>
+    /// Each of these round-trips both ways on its own, without moving any of
+    /// the others.
+    /// </summary>
+    [Fact]
+    public void NewBoolProperties_RoundTrip()
     {
         using var opts = new BlockBasedTableOptions();
 
-        opts.EnableIndexCompression = value;
-        opts.VerifyCompression = value;
-        opts.DetectFilterConstructCorruption = value;
-        opts.DecouplePartitionedFilters = value;
-        opts.UseUdiAsPrimaryIndex = value;
-        opts.FailIfNoUdiOnOpen = value;
-
-        Assert.Equal(value, opts.EnableIndexCompression);
-        Assert.Equal(value, opts.VerifyCompression);
-        Assert.Equal(value, opts.DetectFilterConstructCorruption);
-        Assert.Equal(value, opts.DecouplePartitionedFilters);
-        Assert.Equal(value, opts.UseUdiAsPrimaryIndex);
-        Assert.Equal(value, opts.FailIfNoUdiOnOpen);
+        BoolProperty.AssertRoundTripsIndependently(
+            opts,
+            (nameof(opts.EnableIndexCompression), (o, v) => o.EnableIndexCompression = v, o => o.EnableIndexCompression),
+            (nameof(opts.VerifyCompression), (o, v) => o.VerifyCompression = v, o => o.VerifyCompression),
+            (nameof(opts.DetectFilterConstructCorruption), (o, v) => o.DetectFilterConstructCorruption = v, o => o.DetectFilterConstructCorruption),
+            (nameof(opts.DecouplePartitionedFilters), (o, v) => o.DecouplePartitionedFilters = v, o => o.DecouplePartitionedFilters),
+            (nameof(opts.UseUdiAsPrimaryIndex), (o, v) => o.UseUdiAsPrimaryIndex = v, o => o.UseUdiAsPrimaryIndex),
+            (nameof(opts.FailIfNoUdiOnOpen), (o, v) => o.FailIfNoUdiOnOpen = v, o => o.FailIfNoUdiOnOpen));
     }
 
     [Fact]
