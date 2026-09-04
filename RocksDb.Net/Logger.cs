@@ -87,6 +87,17 @@ public abstract class Logger : RocksDbHandle
 
     // ── Construction ─────────────────────────────────────────────────────────
 
+    /// <summary>Creates a logger that asks RocksDb for messages at or above a level.</summary>
+    /// <param name="logLevel">The lowest level this logger wants.</param>
+    /// <remarks>
+    /// A request rather than a guarantee. RocksDb logs a great deal through a
+    /// call that carries no level, and those messages arrive tagged
+    /// <see cref="InfoLogLevel.Info"/> whatever was asked for: measured over a
+    /// database open, write and flush, a logger constructed at
+    /// <see cref="InfoLogLevel.Warn"/> received 354 of them. Only the calls that
+    /// do carry a level are filtered. A logger that must not see the rest has to
+    /// check <c>logLevel</c> in its own <see cref="Log"/>.
+    /// </remarks>
     protected Logger(InfoLogLevel logLevel)
     {
         PinGarbageCollector();
