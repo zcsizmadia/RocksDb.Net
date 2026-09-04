@@ -75,7 +75,6 @@ Every wrapper throws `ObjectDisposedException` when you use it after disposal, w
 
 This used to be an access violation that took the process down. The C API dereferences every pointer it is given without a null check, so the zero a disposed wrapper reported went straight into the native call, and the crash named nothing that would lead you back to the object you had already disposed. The guard sits on the handle itself rather than on individual methods, so it covers paths nobody thought to guard.
 
-
 ## Caller-provided buffers
 
 Most methods copy the key or value, or use it only for the duration of the call, so nothing needs to stay alive afterwards.
