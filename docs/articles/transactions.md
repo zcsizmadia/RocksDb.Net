@@ -15,7 +15,7 @@ Everything below is compiled and run as part of this repository's test suite, so
 The trade is about how often conflicts actually happen:
 
 | | `TransactionDb` | `OptimisticTransactionDb` |
-|---|---|---|
+| --- | --- | --- |
 | Cost when there is no conflict | A lock per written key | Nothing |
 | Cost when there is a conflict | The loser waits, then fails | The loser finishes its work, then discards it |
 | Can deadlock | Yes, detected | No — there are no locks to wait on |
