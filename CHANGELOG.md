@@ -14,6 +14,42 @@ is allowed to be.
 
 ### Added
 
+- **`OptimisticTransactionDb`.** A database whose transactions detect conflicts
+  at commit instead of locking. `TransactionDb` locks every key as it is
+  written and holds it until the transaction ends, so a second writer waits for
+  the lock timeout and then fails; it also keeps a lock manager and can
+  deadlock. This takes no locks at all — `Commit` checks that nothing the
+  transaction read or wrote has changed, and fails if it has. That is the right
+  trade where conflicts are rare and the wrong one under real contention, so a
+  caller has to be ready to retry: a failed commit means someone else got there
+  first. Comes with `OptimisticTransactionDbOptions`, `OptimisticTransactionOptions`,
+  `OccLockBuckets` for sharing a bucket set between databases, and the
+  `OccValidationPolicy` enum pinned against the native values. The underlying
+  non-transactional database is deliberately not exposed: its handle has to be
+  released with `close_base_db` rather than `rocksdb_close`, so surfacing it as
+  a `RocksDb` would hand callers an object whose disposal closes the real
+  database.
+
+- **Batched and copy-free reads on `Transaction`.** `MultiGet` reads a set of
+  keys in one native call instead of one per key, with the same column-family
+  overloads `RocksDb` has, including one family per key. `MultiGetForUpdate`
+  does the same and locks every key it read — the more useful half, since a
+  transaction reading a set of keys it means to write is exactly what conflict
+  detection is for, and locking them one at a time is the slowest way to do it.
+  Its locks are always exclusive, because the C API's batched form takes no
+  shared-lock flag. `GetPinned` and `GetPinnedForUpdate` return a
+  `PinnableSlice` rather than copying, matching the database's own.
+
+- **Two-phase commit on `Transaction`.** `Prepare` makes a transaction's writes
+  durable without committing them, `Name` identifies it, and
+  `TransactionDb.GetPreparedTransactions` hands back the transactions that were
+  prepared but never resolved so a reopened database can commit or roll each one
+  back. The distributed-commit use is the obvious one, but the property that
+  matters more often is recovery: before this, a transaction interrupted by a
+  crash was simply gone, with nothing to enumerate and no way to resume it. A
+  recovered transaction still holds its locks, so it has to be resolved rather
+  than merely disposed.
+
 - **NativeAOT and trimming are supported, and verified rather than claimed.**
   `IsAotCompatible` is set on the library, which implies `IsTrimmable` and turns
   on both analysers for all three target frameworks. CI publishes two samples

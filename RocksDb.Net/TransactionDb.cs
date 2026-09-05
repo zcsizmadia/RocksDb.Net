@@ -181,6 +181,69 @@ public sealed class TransactionDb : RocksDbHandle
         return new Transaction(handle, this);
     }
 
+    /// <summary>
+    /// Returns the transactions that were prepared but never committed or
+    /// rolled back, so that recovery can resolve them.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the other half of <see cref="Transaction.Prepare"/> and the
+    /// reason to prepare at all. Reopening a database after a crash leaves any
+    /// prepared transaction in place, still holding its locks; this is how a
+    /// process finds them. Each carries the <see cref="Transaction.Name"/> it
+    /// was prepared under, which is what lets a coordinator decide whether it
+    /// should now commit or roll back.
+    /// </para>
+    /// <para>
+    /// The returned transactions are owned by the caller: commit or roll each
+    /// one back and then dispose it, exactly as for one from
+    /// <see cref="BeginTransaction"/>. Leaving them undisposed keeps their keys
+    /// locked against every other writer.
+    /// </para>
+    /// <para>
+    /// An empty list is the normal result. A database that was closed cleanly
+    /// has nothing outstanding.
+    /// </para>
+    /// </remarks>
+    public unsafe IReadOnlyList<Transaction> GetPreparedTransactions()
+    {
+        nuint count;
+        nint* handles = NativeMethods.rocksdb_transactiondb_get_prepared_transactions(Handle, &count);
+
+        if (handles is null || count == 0)
+        {
+            // RocksDb still allocates the array for an empty result, so it has
+            // to be freed even when there is nothing in it.
+            if (handles is not null)
+            {
+                NativeMethods.rocksdb_free((nint)handles);
+            }
+
+            return [];
+        }
+
+        try
+        {
+            var transactions = new List<Transaction>(checked((int)count));
+
+            // Each handle is wrapped as it is read, so that a failure part-way
+            // through still leaves the ones already wrapped owned by something
+            // that will destroy them.
+            for (nuint i = 0; i < count; i++)
+            {
+                transactions.Add(new Transaction(handles[i], this));
+            }
+
+            return transactions;
+        }
+        finally
+        {
+            // The array is the caller's to free; the transactions in it are not
+            // freed with it, which is why they are wrapped above.
+            NativeMethods.rocksdb_free((nint)handles);
+        }
+    }
+
     // ── Reads and writes outside a transaction ───────────────────────────────
 
     /// <summary>Writes a key and value, taking the same locks a transaction would.</summary>
