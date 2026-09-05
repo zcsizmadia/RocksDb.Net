@@ -295,6 +295,87 @@ public sealed class Transaction : RocksDbHandle
         NativeMethods.ThrowOnError(err);
     }
 
+    // ── Two-phase commit ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The name this transaction is known by, which is what makes it findable
+    /// again after a crash.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Empty until set. A name has to be given before <see cref="Prepare"/>,
+    /// must be unique among live transactions, and cannot be changed once set.
+    /// </para>
+    /// <para>
+    /// This is the identifier
+    /// <see cref="TransactionDb.GetPreparedTransactions"/> hands back, so it
+    /// wants to mean something to the recovering process — a message id or a
+    /// coordinator's transaction id, rather than a counter that restarts with
+    /// the program.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentException"><paramref name="value"/> is null or empty.</exception>
+    /// <exception cref="RocksDbException">
+    /// The name is already taken, or this transaction already has one.
+    /// </exception>
+    public string Name
+    {
+        get
+        {
+            nint ptr = NativeMethods.rocksdb_transaction_get_name(Handle, out nuint length);
+            return CopyAndFreeUtf8(ptr, length);
+        }
+
+        set
+        {
+            ArgumentException.ThrowIfNullOrEmpty(value);
+
+            nint err = default;
+
+            // The length is in bytes, not characters: the marshaller writes
+            // UTF-8, so a non-ASCII name would otherwise be truncated mid-way
+            // and the transaction registered under a name nothing can look up.
+            NativeMethods.rocksdb_transaction_set_name(
+                Handle, value, (nuint)Encoding.UTF8.GetByteCount(value), ref err);
+
+            NativeMethods.ThrowOnError(err);
+        }
+    }
+
+    /// <summary>
+    /// Makes this transaction's writes durable without committing them, so that
+    /// it survives a crash and can be resolved afterwards.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The first half of two-phase commit. After this returns, the transaction
+    /// is on disk in a prepared state: a later <see cref="Commit"/> applies it
+    /// and <see cref="Rollback"/> discards it, and if the process dies in
+    /// between, <see cref="TransactionDb.GetPreparedTransactions"/> finds it
+    /// again in the reopened database. Without preparing, an interrupted
+    /// transaction is simply gone.
+    /// </para>
+    /// <para>
+    /// A prepared transaction holds its locks until it is resolved, including
+    /// across the restart. Recovery that never commits or rolls one back leaves
+    /// those keys locked against every other writer.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="RocksDbException">
+    /// The transaction has no <see cref="Name"/>, or is not in a state that can
+    /// be prepared.
+    /// </exception>
+    public void Prepare()
+    {
+        // Iterators read the write batch this is about to make durable, and
+        // Commit and Rollback already dispose them for the same reason.
+        DisposeIterators();
+
+        nint err = default;
+        NativeMethods.rocksdb_transaction_prepare(Handle, ref err);
+        NativeMethods.ThrowOnError(err);
+    }
+
     // ── Finishing ────────────────────────────────────────────────────────────
 
     /// <summary>Applies the transaction's writes to the database.</summary>
@@ -379,6 +460,25 @@ public sealed class Transaction : RocksDbHandle
         }
 
         byte[] result = new ReadOnlySpan<byte>((byte*)value, checked((int)length)).ToArray();
+        NativeMethods.rocksdb_free(value);
+        return result;
+    }
+
+    /// <summary>
+    /// Copies a native UTF-8 string the caller owns, and frees it.
+    /// </summary>
+    /// <remarks>
+    /// An unnamed transaction returns a zero-length name rather than a null
+    /// pointer, so both are treated as "no name" and neither is an error.
+    /// </remarks>
+    private static unsafe string CopyAndFreeUtf8(nint value, nuint length)
+    {
+        if (value == nint.Zero)
+        {
+            return string.Empty;
+        }
+
+        string result = Encoding.UTF8.GetString((byte*)value, checked((int)length));
         NativeMethods.rocksdb_free(value);
         return result;
     }

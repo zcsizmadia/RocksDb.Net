@@ -14,6 +14,16 @@ is allowed to be.
 
 ### Added
 
+- **Two-phase commit on `Transaction`.** `Prepare` makes a transaction's writes
+  durable without committing them, `Name` identifies it, and
+  `TransactionDb.GetPreparedTransactions` hands back the transactions that were
+  prepared but never resolved so a reopened database can commit or roll each one
+  back. The distributed-commit use is the obvious one, but the property that
+  matters more often is recovery: before this, a transaction interrupted by a
+  crash was simply gone, with nothing to enumerate and no way to resume it. A
+  recovered transaction still holds its locks, so it has to be resolved rather
+  than merely disposed.
+
 - **NativeAOT and trimming are supported, and verified rather than claimed.**
   `IsAotCompatible` is set on the library, which implies `IsTrimmable` and turns
   on both analysers for all three target frameworks. CI publishes two samples
