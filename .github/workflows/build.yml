@@ -107,32 +107,54 @@ jobs:
       run: |
         # Read the line rate straight out of the Cobertura report rather than
         # taking a dependency on a coverage action.
-        # Neither of these pipes into head any more. Under `set -o pipefail`,
-        # head exiting after the first line makes the upstream command fail on a
-        # broken pipe, and `-e` then aborts the step. It only bites once the
-        # upstream still has output buffered when head closes the pipe, so it
-        # lay dormant until the coverage report grew past that point and then
-        # failed the gate with `sed: couldn't flush stdout: Broken pipe` rather
-        # than with a coverage number. Both commands now stop on their own.
-        report=$(find TestResults -name 'coverage.cobertura.xml' -print -quit)
-        if [ -z "$report" ]; then
-          echo "::error::No coverage report was produced."
-          exit 1
-        fi
+        #
+        # Nothing here pipes into head. Under `set -o pipefail`, head exiting
+        # after the first line makes the upstream command fail on a broken pipe,
+        # and `-e` then aborts the step. It only bites once the upstream still
+        # has output buffered when head closes the pipe, so it lay dormant until
+        # the coverage report grew past that point and then failed the gate with
+        # `sed: couldn't flush stdout: Broken pipe` rather than with a coverage
+        # number. The awk below stops on its own instead.
+        # One report per test assembly per target framework, so a run produces
+        # four: three from RocksDb.Net.Tests and one from
+        # NativeMethodsGenerator.Tests. Taking whichever the filesystem happened
+        # to return first was a coin flip, and it only became one when the
+        # generator gained its own test project — before that every report
+        # measured the shipped library. The generator's reads about 45%, so the
+        # gate would fail on a number that has nothing to do with what it
+        # guards, on a run where nothing had changed.
+        #
+        # So: read the rate for the RocksDb.Net package specifically, from every
+        # report that carries one, and gate on the lowest. Per-package rather
+        # than the document rate because that is the thing being guarded, and
+        # lowest rather than first so a framework-specific regression cannot
+        # hide behind a healthier one.
+        percent=""
+        worst_report=""
 
-        # One awk, no pipe: it finds the first line-rate, converts it and exits.
-        # The document's own rate is the first one in the file; the rest belong
-        # to individual classes.
-        percent=$(awk 'match($0, /line-rate="[0-9.]+"/) {
-                         rate = substr($0, RSTART + 11, RLENGTH - 12)
-                         printf "%.1f", rate * 100
-                         exit
-                       }' "$report")
+        while IFS= read -r report; do
+          rate=$(awk '/<package name="RocksDb\.Net"/ {
+                        if (match($0, /line-rate="[0-9.]+"/)) {
+                          printf "%.1f", substr($0, RSTART + 11, RLENGTH - 12) * 100
+                          exit
+                        }
+                      }' "$report")
+
+          # No such package: a report for something other than the library.
+          [ -n "$rate" ] || continue
+
+          if [ -z "$percent" ] || awk -v a="$rate" -v b="$percent" 'BEGIN { exit !(a < b) }'; then
+            percent="$rate"
+            worst_report="$report"
+          fi
+        done < <(find TestResults -name 'coverage.cobertura.xml')
 
         if [ -z "$percent" ]; then
-          echo "::error::Could not read a line rate out of $report."
+          echo "::error::No coverage report measured the RocksDb.Net package."
           exit 1
         fi
+
+        echo "Lowest RocksDb.Net line coverage came from $worst_report."
 
         {
           echo "## Coverage"
