@@ -132,9 +132,16 @@ public class ApiShapeTests
 
     /// <summary>
     /// The native info snapshot no longer outlives the call, so an abandoned
-    /// enumerator cannot leak it. Asserting the shape is what is checkable
-    /// here; the leak itself was invisible from managed code.
+    /// enumerator cannot leak it.
     /// </summary>
+    /// <remarks>
+    /// The read-in-full claim is asserted by outliving the engine. This used to
+    /// compare <c>backups.Select(b =&gt; b.BackupId)</c> with itself, which no
+    /// change to the library could have made fail; a lazily streamed sequence
+    /// would have satisfied it just as well. Reading the list after the engine
+    /// that produced it is disposed is the assertion that separates the two,
+    /// because a streamed one would be walking a destroyed native handle.
+    /// </remarks>
     [Fact]
     public void BackupInfo_IsReadInFullRatherThanStreamed()
     {
@@ -143,21 +150,31 @@ public class ApiShapeTests
 
         db.Db.Put("k", "v");
 
-        using var engine = BackupEngine.Open(db.Options, backupDir.Path);
-        engine.CreateNewBackup(db.Db);
-        engine.CreateNewBackup(db.Db);
+        IReadOnlyList<BackupInfo> backups;
+        BackupInfo first;
 
-        IReadOnlyList<BackupInfo> backups = engine.AsEnumerable();
+        using (BackupEngine engine = BackupEngine.Open(db.Options, backupDir.Path))
+        {
+            engine.CreateNewBackup(db.Db);
+            engine.CreateNewBackup(db.Db);
 
-        // A materialised list, not a lazy sequence: the count is available
-        // without enumerating, and enumerating twice gives the same thing.
+            backups = engine.AsEnumerable();
+
+            // Taking one entry and abandoning the rest used to leak the native
+            // info object. Now there is nothing left open to leak.
+            first = engine.AsEnumerable().First();
+        }
+
+        // The engine is gone and its native handle destroyed.
         Assert.Equal(2, backups.Count);
-        Assert.Equal(backups.Select(b => b.BackupId), backups.Select(b => b.BackupId));
 
-        // Taking one entry and abandoning the rest used to leak the native
-        // info object. Now there is nothing left open to leak.
-        BackupInfo first = engine.AsEnumerable().First();
-        Assert.True(first.BackupId > 0);
+        uint[] ids = [.. backups.Select(b => b.BackupId)];
+        Assert.Equal(2, ids.Distinct().Count());
+        Assert.Equal(ids.Order(), ids);
+        Assert.All(ids, id => Assert.True(id > 0));
+        Assert.All(backups, b => Assert.True(b.Timestamp > 0));
+
+        Assert.Equal(ids[0], first.BackupId);
         Assert.True(first.Timestamp > 0);
     }
 

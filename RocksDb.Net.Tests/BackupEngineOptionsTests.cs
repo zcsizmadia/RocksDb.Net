@@ -1,3 +1,6 @@
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+
 namespace RocksDbNet.Tests;
 
 /// <summary>
@@ -329,10 +332,25 @@ public class BackupEngineOptionsTests
         Assert.True(Volatile.Read(ref progressCalls) > 0);
     }
 
+    /// <summary>
+    /// Replacing a callback frees the handle pinning the previous one, and so
+    /// does clearing it.
+    /// </summary>
+    /// <remarks>
+    /// The loop on its own asserted nothing: it would have passed while leaking
+    /// all 4,000 <see cref="GCHandle"/>s it allocated, which is the single thing
+    /// it exists to rule out. There is no count of live handles to assert on, but
+    /// the handle targets the delegate, so a leaked handle is a rooted delegate —
+    /// and that a weak reference can see. Each registration happens in a method
+    /// of its own so the delegate is not still held by a caller's local.
+    /// </remarks>
     [Fact]
     public void Callbacks_CanBeRemovedAndReplaced()
     {
         using var opts = new CreateBackupOptions();
+
+        WeakReference progress = RegisterProgress(opts);
+        WeakReference exclude = RegisterExclude(opts);
 
         // Each call frees the previous GCHandle itself, since the C API gives no
         // destructor for these callbacks.
@@ -344,6 +362,41 @@ public class BackupEngineOptionsTests
 
         opts.SetProgressCallback(null);
         opts.SetExcludeFilesCallback(null);
+
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+        GC.WaitForPendingFinalizers();
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+
+        Assert.False(progress.IsAlive, "the replaced progress callback is still rooted, so its GCHandle was not freed");
+        Assert.False(exclude.IsAlive, "the replaced exclude-files callback is still rooted, so its GCHandle was not freed");
+    }
+
+    // Both of these capture, and that is load-bearing rather than incidental:
+    // the compiler caches a non-capturing lambda in a static field and hands
+    // out the same instance every time, so a delegate written `() => { }` is
+    // rooted for the life of the process and could never be collected however
+    // correctly the handle was freed.
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static WeakReference RegisterProgress(CreateBackupOptions opts)
+    {
+        var token = new object();
+        Action callback = () => GC.KeepAlive(token);
+        opts.SetProgressCallback(callback);
+        return new WeakReference(callback);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static WeakReference RegisterExclude(CreateBackupOptions opts)
+    {
+        var token = new object();
+        Func<string, bool> callback = _ =>
+        {
+            GC.KeepAlive(token);
+            return false;
+        };
+        opts.SetExcludeFilesCallback(callback);
+        return new WeakReference(callback);
     }
 
     [Fact]

@@ -54,6 +54,16 @@ is allowed to be.
   returns null and fell through to `AppContext.BaseDirectory` — correct by
   accident. Now handled deliberately. This is the path AOT actually takes: the
   native library lands beside the executable rather than under `runtimes/`.
+- **`DropColumnFamily` left the dropped name registered.** The family was gone
+  from the database but stayed in `ColumnFamilyNames`, and `GetColumnFamily`
+  went on handing out a handle for it, so the listing and the lookup both
+  disagreed with the database. Worse, the name could never be used again:
+  creating a family with it threw a duplicate-key `ArgumentException` out of a
+  private dictionary, which is not something a caller could have acted on. The
+  drop now deregisters the name, so it is absent from the listing, absent from
+  the lookup, and free to reuse. Note that reading through a handle to a
+  dropped family still succeeds — RocksDb keeps the data alive until the last
+  handle to it is destroyed, and that is unchanged.
 
 ### Changed
 

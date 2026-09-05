@@ -57,7 +57,30 @@ public class ColumnFamilyExportImportTests
 
         Assert.False(string.IsNullOrEmpty(metadata.DbComparatorName));
 
-        Assert.NotEmpty(metadata.GetFiles());
+        // Asserted by field rather than by count. Nothing read a
+        // LiveFileMetadata out of an export before this, so the export path
+        // could have returned the right number of blank records and the test
+        // named for the metadata "describing the files" would still have passed.
+        LiveFileMetadata file = Assert.Single(metadata.GetFiles());
+
+        Assert.EndsWith(".sst", file.Name, StringComparison.Ordinal);
+        Assert.False(string.IsNullOrEmpty(file.Directory));
+        Assert.Equal(0, file.Level);
+        Assert.True(file.Size > 0);
+
+        // Everything went in through one flush, so this file spans the range.
+        Assert.Equal("key000"u8.ToArray(), file.SmallestKey);
+        Assert.Equal("key049"u8.ToArray(), file.LargestKey);
+        Assert.Equal(1UL, file.SmallestSequenceNumber);
+        Assert.Equal(50UL, file.LargestSequenceNumber);
+
+        // Entries is zero here, and that is RocksDb's doing rather than the
+        // wrapper's: the same file read through GetLiveFiles reports 50, and
+        // both go through the same rocksdb_livefiles_* accessors, so the export
+        // metadata simply does not carry a count. Asserted rather than skipped
+        // so that a release which starts populating it is noticed here.
+        Assert.Equal(0UL, file.Entries);
+        Assert.Equal(0UL, file.Deletions);
     }
 
     /// <summary>

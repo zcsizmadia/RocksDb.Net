@@ -1359,13 +1359,27 @@ public sealed class RocksDb : RocksDbHandle
     }
 
     /// <summary>Drops <paramref name="cf"/> from the database. The handle is invalidated after this call.</summary>
+    /// <remarks>
+    /// The name is also removed from <see cref="ColumnFamilyNames"/> and from
+    /// <see cref="GetColumnFamily"/>. It used to stay registered, so the listing
+    /// and the lookup both went on reporting a family that no longer existed,
+    /// and the name could never be used again: creating a family with it threw a
+    /// duplicate-key <see cref="ArgumentException"/> out of the backing
+    /// dictionary rather than doing anything a caller could act on.
+    /// </remarks>
     public void DropColumnFamily(ColumnFamilyHandle cf)
     {
         ArgumentNullException.ThrowIfNull(cf);
 
+        // Read before the drop. The registry is keyed by name, and reading a
+        // name back out of a dropped handle is not a contract RocksDb makes.
+        string name = cf.Name;
+
         nint err = default;
         NativeMethods.rocksdb_drop_column_family(Handle, cf.Handle, ref err);
         NativeMethods.ThrowOnError(err);
+
+        _columnFamilyHandles.Remove(name);
     }
 
     /// <summary>

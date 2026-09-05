@@ -808,14 +808,26 @@ public class RocksDbBasicTests
         Assert.Null(prop);
     }
 
+    /// <summary>
+    /// An unknown property is absent, not zero. The distinction is the whole
+    /// reason the return type is nullable.
+    /// </summary>
+    /// <remarks>
+    /// This read the value into a local and asserted nothing, so it stated the
+    /// opposite of its name: it would have passed had the property returned 0,
+    /// which is the one answer a caller must not confuse with absence, since a
+    /// great many real properties legitimately read 0.
+    /// </remarks>
     [Fact]
     public void GetPropertyInt_InvalidProperty_ReturnsNull()
     {
         using var db = new TempDb();
 
-        ulong? val = db.Db.GetPropertyInt("rocksdb.unknown.property.xyz");
-        // Property does not exist, but the API returns null vs 0 depending on implementation
-        // At minimum it shouldn't throw
+        Assert.Null(db.Db.GetPropertyInt("rocksdb.unknown.property.xyz"));
+
+        // And a real property that happens to be zero is still reported as a
+        // value, so null means "no such property" rather than "nothing yet".
+        Assert.Equal(0ul, db.Db.GetPropertyInt("rocksdb.num-immutable-mem-table"));
     }
 
     private sealed class TestAppendMergeOp : MergeOperator
