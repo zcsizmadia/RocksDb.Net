@@ -233,12 +233,22 @@ jobs:
 
     - name: Install the 32-bit runtime
       # setup-dotnet installs the 64-bit runtime, and `dotnet test -a x86` needs
-      # the x86 one to host the test process. Installed to the default x86
-      # location, which is where the x86 muxer looks.
+      # the x86 one to host the test process.
+      #
+      # Both halves below matter. dotnet-install.ps1 defaults to a per-user
+      # directory rather than the x86 location anything probes, so the install
+      # dir is explicit. And setup-dotnet exports DOTNET_ROOT=<64-bit dotnet>,
+      # which a 32-bit host falls back to and then fails to load a 64-bit
+      # hostfxr from (HRESULT 0x800700C1). DOTNET_ROOT_X86 is read ahead of
+      # DOTNET_ROOT by a 32-bit host, so setting it is what wins over the
+      # inherited value; putting the runtime in the default location is not
+      # enough on its own.
       shell: pwsh
       run: |
+        $dir = "${env:ProgramFiles(x86)}\dotnet"
         Invoke-WebRequest https://dot.net/v1/dotnet-install.ps1 -OutFile dotnet-install.ps1
-        ./dotnet-install.ps1 -Architecture x86 -Channel 10.0 -Runtime dotnet
+        ./dotnet-install.ps1 -Architecture x86 -Channel 10.0 -Runtime dotnet -InstallDir $dir
+        "DOTNET_ROOT_X86=$dir" >> $env:GITHUB_ENV
 
     - name: Test as 32-bit
       shell: pwsh
