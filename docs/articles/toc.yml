@@ -1,5 +1,7 @@
 - name: Your first database
   href: getting-started.md
+- name: Transactions
+  href: transactions.md
 - name: Ownership and lifetime
   href: ownership.md
 - name: Writing callbacks

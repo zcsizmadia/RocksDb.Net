@@ -104,11 +104,19 @@ Applying a batch does not consume it. It can be applied again, or to a second da
 
 `TransactionDb.Open` consumes its `DbOptions` exactly as `RocksDb.Open` does, and disposes them after the database closes. The `TransactionDbOptions` are copied instead, so dispose those whenever you like.
 
-A `Transaction` must be disposed whether or not it was committed. Neither `Commit` nor `Rollback` releases it; they decide what happens to its writes. A transaction that is never disposed keeps its locks until the database closes.
+`OptimisticTransactionDb.Open` follows the same rule: it consumes its `DbOptions` and copies its `OptimisticTransactionDbOptions`. An `OccLockBuckets` shared between databases is a `shared_ptr` copy on RocksDb's side, so dispose it whenever you like once the databases that share it are open — the same rule the block cache follows.
 
-An iterator created from a transaction is invalidated by `Commit`, `Rollback` and `RollbackToSavePoint`. RocksDb does not stop you using one afterwards, so those three dispose any open iterator first, and a later call throws `ObjectDisposedException` instead of reading freed memory.
+A `Transaction` must be disposed whether or not it was committed. Neither `Commit` nor `Rollback` releases it; they decide what happens to its writes. A transaction that is never disposed keeps its locks until the database closes. That holds for both database types, which hand out the same `Transaction`.
 
-Three transaction functions are deliberately not wrapped, because each hands back a pointer to something the transaction still owns and the obvious disposal would free it twice: the transaction snapshot, its internal write batch, and the base database behind a transaction database.
+A transaction recovered by `TransactionDb.GetPreparedTransactions` belongs to you in the same way, with one addition: it is still holding the locks it held when it was prepared, and it kept them across the restart. Disposing it is not enough — commit or roll it back first, or those keys stay locked against every other writer for the life of the database.
+
+An iterator created from a transaction is invalidated by `Commit`, `Rollback`, `RollbackToSavePoint` and `Prepare`. RocksDb does not stop you using one afterwards, so all four dispose any open iterator first, and a later call throws `ObjectDisposedException` instead of reading freed memory.
+
+A `PinnableSlice` from `Transaction.GetPinned` keeps the transaction alive, exactly as one from the database keeps the database alive. Dispose it promptly: it pins the block its value came from, which cannot leave the block cache until it is released.
+
+Two transaction functions are deliberately not wrapped, because each hands back a pointer to something the transaction still owns and the obvious disposal would free it twice: the transaction snapshot and its internal write batch.
+
+The base database behind a transaction database is withheld for a different reason. `get_base_db` allocates a wrapper that must be released with `close_base_db` rather than `rocksdb_close`, so handing it out as a `RocksDb` would give you an object whose disposal closes the real database. It is reached for in exactly one place — resolving the default column family, whose handle is not otherwise obtainable — and there the wrapper never escapes the method.
 
 ## Snapshots you can keep, views you cannot
 
