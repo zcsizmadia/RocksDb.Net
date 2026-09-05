@@ -22,7 +22,8 @@ A modern C# wrapper for [RocksDb](https://rocksdb.org/), the high-performance em
 - **Column families** — create, drop, and operate on multiple column families, with metadata inspection
 - **Merge operators** — built-in `UInt64Add` and custom merge operator support
 - **Compaction filters** — filter or transform key-value pairs during compaction
-- **Transactions** — `WriteBatch` and `WriteBatchWithIndex` for atomic multi-key operations
+- **Atomic writes** — `WriteBatch` and `WriteBatchWithIndex` for multi-key operations that apply all at once
+- **Transactions** — `TransactionDb` for pessimistic locking and `OptimisticTransactionDb` for conflict detection at commit, with batched and pinned reads, save points, and two-phase commit for transactions that must survive a crash
 - **Backups & checkpoints** — `BackupEngine` and `Checkpoint` for point-in-time snapshots
 - **SST file ingestion** — bulk-load data with `SstFileWriter`
 - **Bloom/Ribbon filters** — configurable filter policies for point lookups

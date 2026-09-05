@@ -620,4 +620,176 @@ public class DocumentationGuideTests
         Assert.NotEmpty(Directory.GetFiles(path, "*.blob"));
         Assert.Equal(new string('v', 4096), db.GetString("large"));
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // transactions.md
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Transactions_PessimisticReadModifyWrite()
+    {
+        using var dir = new TempDir();
+
+        var options = new DbOptions { CreateIfMissing = true };
+        using var txnOptions = new TransactionDbOptions();
+        using TransactionDb db = TransactionDb.Open(options, txnOptions, dir.Path);
+
+        using Transaction txn = db.BeginTransaction();
+
+        // GetForUpdate locks the key. A plain Get does not, and a decision based
+        // on one is not protected against anything.
+        string? balance = txn.GetStringForUpdate("account:1");
+        txn.Put("account:1", (int.Parse(balance ?? "0") + 100).ToString());
+
+        txn.Commit();
+
+        Assert.Equal("100", db.GetString("account:1"));
+    }
+
+    /// <summary>
+    /// The retry loop from the guide, driven into its interesting branch: a
+    /// competing commit lands mid-transaction, so the first attempt fails and
+    /// the second reads the newer value.
+    /// </summary>
+    [Fact]
+    public void Transactions_OptimisticRetryLoop()
+    {
+        using var dir = new TempDir();
+
+        var options = new DbOptions { CreateIfMissing = true };
+        using OptimisticTransactionDb db = OptimisticTransactionDb.Open(options, dir.Path);
+
+        bool interfered = false;
+
+        for (int attempt = 0; ; attempt++)
+        {
+            using Transaction txn = db.BeginTransaction();
+
+            string? balance = txn.GetStringForUpdate("account:1");
+            txn.Put("account:1", (int.Parse(balance ?? "0") + 100).ToString());
+
+            // Not in the guide: forces the conflict the loop exists to handle,
+            // exactly once, so the catch is exercised rather than assumed.
+            if (!interfered)
+            {
+                interfered = true;
+                using Transaction other = db.BeginTransaction();
+                other.Put("account:1", "500");
+                other.Commit();
+            }
+
+            try
+            {
+                txn.Commit();
+                break;
+            }
+            catch (RocksDbException) when (attempt < 5)
+            {
+                // Someone else committed first. Nothing was written, so start
+                // again from what the database says now.
+            }
+        }
+
+        // 500 from the interfering write, plus the 100 the retry added.
+        using Transaction reader = db.BeginTransaction();
+        Assert.Equal("600", reader.GetString("account:1"));
+    }
+
+    [Fact]
+    public void Transactions_MultiGet()
+    {
+        using var dir = new TempDir();
+
+        var options = new DbOptions { CreateIfMissing = true };
+        using OptimisticTransactionDb db = OptimisticTransactionDb.Open(options, dir.Path);
+
+        using (Transaction seed = db.BeginTransaction())
+        {
+            seed.Put("account:1", "1");
+            seed.Put("account:3", "3");
+            seed.Commit();
+        }
+
+        using Transaction txn = db.BeginTransaction();
+
+        byte[]?[] values = txn.MultiGet([
+            "account:1"u8.ToArray(),
+            "account:2"u8.ToArray(),
+            "account:3"u8.ToArray(),
+        ]);
+
+        // A missing key is null in the corresponding position.
+        Assert.Equal("1", Encoding.UTF8.GetString(values[0]!));
+        Assert.Null(values[1]);
+        Assert.Equal("3", Encoding.UTF8.GetString(values[2]!));
+    }
+
+    [Fact]
+    public void Transactions_GetPinned()
+    {
+        using var dir = new TempDir();
+
+        var options = new DbOptions { CreateIfMissing = true };
+        using OptimisticTransactionDb db = OptimisticTransactionDb.Open(options, dir.Path);
+
+        using (Transaction seed = db.BeginTransaction())
+        {
+            seed.Put("account:1", "100");
+            seed.Commit();
+        }
+
+        using Transaction txn = db.BeginTransaction();
+        using PinnableSlice? slice = txn.GetPinned("account:1"u8.ToArray());
+
+        Assert.NotNull(slice);
+
+        ReadOnlySpan<byte> value = slice.Value;   // no copy
+        Assert.Equal("100"u8.ToArray(), value.ToArray());
+    }
+
+    /// <summary>
+    /// Both halves of the two-phase commit section, across a real close and
+    /// reopen — which is the only way the recovery snippet means anything.
+    /// </summary>
+    [Fact]
+    public void Transactions_PrepareAndRecover()
+    {
+        using var dir = new TempDir();
+        using var txnOptions = new TransactionDbOptions();
+
+        using (TransactionDb db = TransactionDb.Open(
+            new DbOptions { CreateIfMissing = true }, txnOptions, dir.Path))
+        {
+            using Transaction txn = db.BeginTransaction();
+            txn.Put("order:4711", "pending");
+
+            txn.Name = "order-4711";
+            txn.Prepare();          // durable, but not committed
+        }
+
+        DbOptions options = new() { CreateIfMissing = true };
+
+        using (TransactionDb db = TransactionDb.Open(options, txnOptions, dir.Path))
+        {
+            foreach (Transaction recovered in db.GetPreparedTransactions())
+            {
+                using (recovered)
+                {
+                    // The name is how you decide. It is yours to choose, so make
+                    // it mean something to whoever has to resolve it.
+                    if (recovered.Name == "order-4711")
+                    {
+                        recovered.Commit();
+                    }
+                    else
+                    {
+                        recovered.Rollback();
+                    }
+                }
+            }
+
+            Assert.Equal("pending", db.GetString("order:4711"));
+            Assert.Empty(db.GetPreparedTransactions());
+        }
+    }
 }
