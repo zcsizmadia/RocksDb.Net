@@ -217,3 +217,39 @@ jobs:
           (cd "$out" && "./$sample")
           echo "::endgroup::"
         done
+
+  x86:
+    name: 32-bit
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Install .NET SDKs
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: |
+          10.0.x
+
+    - name: Install the 32-bit runtime
+      # setup-dotnet installs the 64-bit runtime, and `dotnet test -a x86` needs
+      # the x86 one to host the test process. Installed to the default x86
+      # location, which is where the x86 muxer looks.
+      shell: pwsh
+      run: |
+        Invoke-WebRequest https://dot.net/v1/dotnet-install.ps1 -OutFile dotnet-install.ps1
+        ./dotnet-install.ps1 -Architecture x86 -Channel 10.0 -Runtime dotnet
+
+    - name: Test as 32-bit
+      shell: pwsh
+      run: |
+        # The only leg that is not 64-bit, and the only one that can catch a
+        # size_t read as a fixed 64 bits. That defect has shipped once already:
+        # merge operand lengths are a size_t array, read as 64-bit, so on
+        # win-x86 every index after the first came from the wrong offset and the
+        # last ran past the end of the array. It was invisible everywhere else,
+        # and it stayed invisible because nothing ran 32-bit.
+        #
+        # One framework rather than three. This is about pointer width, which
+        # does not vary between them.
+        dotnet test RocksDb.Net.Tests\RocksDb.Net.Tests.csproj -c Release -f net10.0 -a x86
