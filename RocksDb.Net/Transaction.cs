@@ -46,10 +46,18 @@ public sealed class Transaction : RocksDbHandle
     private readonly List<Iterator> _iterators = [];
     private readonly object _gate = new();
 
-    internal Transaction(nint handle, TransactionDb db)
+    /// <param name="handle">Native transaction handle.</param>
+    /// <param name="owner">
+    /// The database that began it — a <see cref="TransactionDb"/> or an
+    /// <see cref="OptimisticTransactionDb"/>. Both hand out the same native
+    /// transaction type and destroy it the same way; what differs is when
+    /// conflicts are detected, which is the database's business rather than
+    /// this type's.
+    /// </param>
+    internal Transaction(nint handle, RocksDbHandle owner)
         : base(handle)
     {
-        SetParent(db);
+        SetParent(owner);
     }
 
     // ── Writes ───────────────────────────────────────────────────────────────

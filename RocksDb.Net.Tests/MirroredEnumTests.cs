@@ -328,6 +328,16 @@ public class MirroredEnumTests
             ("Disable", 1),
             ("UseDefault", 2));
 
+    /// <summary>
+    /// From <c>include/rocksdb/utilities/optimistic_transaction_db.h</c>.
+    /// Positional, and the C API takes it as a plain <c>int</c>.
+    /// </summary>
+    [Fact]
+    public void OccValidationPolicy_MatchesOptimisticTransactionDbHeader()
+        => NativeEnum.AssertExactly<OccValidationPolicy>(
+            ("ValidateSerial", 0),
+            ("ValidateParallel", 1));
+
     /// <summary>From <c>include/rocksdb/port_defs.h</c>.</summary>
     [Fact]
     public void CpuPriority_MatchesPortDefsHeader()
