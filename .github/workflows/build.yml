@@ -217,3 +217,49 @@ jobs:
           (cd "$out" && "./$sample")
           echo "::endgroup::"
         done
+
+  x86:
+    name: 32-bit
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Install .NET SDKs
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: |
+          10.0.x
+
+    - name: Install the 32-bit runtime
+      # setup-dotnet installs the 64-bit runtime, and `dotnet test -a x86` needs
+      # the x86 one to host the test process.
+      #
+      # Both halves below matter. dotnet-install.ps1 defaults to a per-user
+      # directory rather than the x86 location anything probes, so the install
+      # dir is explicit. And setup-dotnet exports DOTNET_ROOT=<64-bit dotnet>,
+      # which a 32-bit host falls back to and then fails to load a 64-bit
+      # hostfxr from (HRESULT 0x800700C1). DOTNET_ROOT_X86 is read ahead of
+      # DOTNET_ROOT by a 32-bit host, so setting it is what wins over the
+      # inherited value; putting the runtime in the default location is not
+      # enough on its own.
+      shell: pwsh
+      run: |
+        $dir = "${env:ProgramFiles(x86)}\dotnet"
+        Invoke-WebRequest https://dot.net/v1/dotnet-install.ps1 -OutFile dotnet-install.ps1
+        ./dotnet-install.ps1 -Architecture x86 -Channel 10.0 -Runtime dotnet -InstallDir $dir
+        "DOTNET_ROOT_X86=$dir" >> $env:GITHUB_ENV
+
+    - name: Test as 32-bit
+      shell: pwsh
+      run: |
+        # The only leg that is not 64-bit, and the only one that can catch a
+        # size_t read as a fixed 64 bits. That defect has shipped once already:
+        # merge operand lengths are a size_t array, read as 64-bit, so on
+        # win-x86 every index after the first came from the wrong offset and the
+        # last ran past the end of the array. It was invisible everywhere else,
+        # and it stayed invisible because nothing ran 32-bit.
+        #
+        # One framework rather than three. This is about pointer width, which
+        # does not vary between them.
+        dotnet test RocksDb.Net.Tests\RocksDb.Net.Tests.csproj -c Release -f net10.0 -a x86

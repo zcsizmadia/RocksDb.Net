@@ -30,6 +30,7 @@
     <File Path="Directory.Packages.props" />
   </Folder>
   <Project Path="NativeMethodsGenerator/NativeMethodsGenerator.csproj" />
+  <Project Path="NativeMethodsGenerator.Tests/NativeMethodsGenerator.Tests.csproj" />
   <Project Path="RocksDb.Net.Tests/RocksDb.Net.Tests.csproj" Id="80e46977-aae4-49f4-b017-24173b4f5551" />
   <Project Path="RocksDb.Net/RocksDb.Net.csproj" />
 </Solution>
