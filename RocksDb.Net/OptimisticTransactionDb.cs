@@ -61,6 +61,8 @@ public sealed class OptimisticTransactionDb : RocksDbHandle
     private readonly Dictionary<string, ColumnFamilyHandle> _columnFamilyHandles = [];
     private readonly DbOptions _ownedOptions;
 
+    private ColumnFamilyHandle? _defaultColumnFamily;
+
     private OptimisticTransactionDb(nint handle, DbOptions options)
         : base(handle)
     {
@@ -281,17 +283,58 @@ public sealed class OptimisticTransactionDb : RocksDbHandle
             return true;
         }
 
+        // Every database has a default family, even one opened without naming
+        // any, so resolve it on demand rather than reporting it as unknown.
+        if (name == DefaultColumnFamilyName)
+        {
+            columnFamily = GetDefaultColumnFamily();
+            return true;
+        }
+
         columnFamily = null;
         return false;
     }
 
+    /// <summary>
+    /// Returns a non-owning wrapper around the default column family handle.
+    /// Do <em>not</em> call Dispose on the returned handle — its lifetime is
+    /// managed by the database.
+    /// </summary>
+    /// <inheritdoc cref="TransactionDb.GetDefaultColumnFamily" path="/remarks"/>
+    public ColumnFamilyHandle GetDefaultColumnFamily()
+    {
+        if (_defaultColumnFamily is not null)
+        {
+            return _defaultColumnFamily;
+        }
+
+        nint baseDb = NativeMethods.rocksdb_optimistictransactiondb_get_base_db(Handle);
+        nint h;
+        try
+        {
+            h = NativeMethods.rocksdb_get_default_column_family_handle(baseDb);
+        }
+        finally
+        {
+            // Releases only the rocksdb_t wrapper allocated above. This is the
+            // one place the base database is reached for, and it is reached for
+            // narrowly: the wrapper never escapes this method, so no caller can
+            // dispose it and close the real database.
+            NativeMethods.rocksdb_optimistictransactiondb_close_base_db(baseDb);
+        }
+
+        var cf = new ColumnFamilyHandle(h);
+        cf.SetParent(this);
+
+        _defaultColumnFamily = cf;
+        return cf;
+    }
+
     /// <summary>Names of the column families this database knows about.</summary>
     /// <remarks>
-    /// A database opened without an explicit family list still has a default
-    /// family, but no handle for it is reachable through the C API here, so it
-    /// is reported and cannot be resolved. Naming it at open gives a handle
-    /// that <see cref="GetColumnFamily"/> can return. See issue #165, which is
-    /// the same gap on <see cref="TransactionDb"/>.
+    /// The default family is always in here, whether or not it was named when
+    /// the database was opened, and <see cref="GetColumnFamily"/> resolves it
+    /// either way.
     /// </remarks>
     public IReadOnlyCollection<string> ColumnFamilyNames
         => _columnFamilyHandles.ContainsKey(DefaultColumnFamilyName)

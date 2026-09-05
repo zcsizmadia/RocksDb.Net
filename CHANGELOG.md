@@ -90,6 +90,15 @@ is allowed to be.
   returns null and fell through to `AppContext.BaseDirectory` — correct by
   accident. Now handled deliberately. This is the path AOT actually takes: the
   native library lands beside the executable rather than under `runtimes/`.
+- **`TransactionDb` and `OptimisticTransactionDb` listed the default column
+  family but could not resolve it.** `ColumnFamilyNames` reported `default` and
+  `GetColumnFamily("default")` threw `KeyNotFoundException` — with a message
+  that listed it among the known families. Both now resolve it on demand, as
+  `RocksDb` already did, and both gained `GetDefaultColumnFamily`. The handle is
+  only reachable through the underlying non-transactional database, so this
+  takes a base-database wrapper and releases it with `close_base_db`, which
+  frees that wrapper alone and leaves the database open.
+
 - **`DropColumnFamily` left the dropped name registered.** The family was gone
   from the database but stayed in `ColumnFamilyNames`, and `GetColumnFamily`
   went on handing out a handle for it, so the listing and the lookup both
