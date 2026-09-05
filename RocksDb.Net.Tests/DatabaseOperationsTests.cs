@@ -88,16 +88,36 @@ public class DatabaseOperationsTests
             => Interlocked.Increment(ref _count);
     }
 
+    /// <summary>
+    /// Each pause needs its own continue, and the count is what decides when
+    /// work resumes.
+    /// </summary>
+    /// <remarks>
+    /// The nesting is asserted through the continue that goes one too far.
+    /// RocksDb rejects unpausing work that is not paused, so the balanced pairs
+    /// succeeding and the next call failing is exactly the statement that a
+    /// counter is being kept: were pause a flag rather than a count, the first
+    /// continue would have unpaused it and the second would have thrown.
+    ///
+    /// It is asserted this way rather than by watching for a flush that should
+    /// not happen yet, because that observation depends on background threads
+    /// being scheduled and would be timing-dependent in a way this is not.
+    /// </remarks>
     [Fact]
     public void PauseBackgroundWork_Nests()
     {
         using var db = new TempDb();
 
-        // Each pause needs its own continue before work resumes.
         db.Db.PauseBackgroundWork();
         db.Db.PauseBackgroundWork();
+
+        // Still paused after one continue: the second pause is outstanding.
         db.Db.ContinueBackgroundWork();
         db.Db.ContinueBackgroundWork();
+
+        // Now balanced, so there is nothing left to resume.
+        RocksDbException ex = Assert.Throws<RocksDbException>(db.Db.ContinueBackgroundWork);
+        Assert.Contains("already unpaused", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     // ── VerifyChecksum ───────────────────────────────────────────────────────

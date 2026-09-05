@@ -62,9 +62,12 @@ public class NativeMemoryTests
 
             Assert.False(string.IsNullOrEmpty(file.RelativeFilename));
             Assert.False(string.IsNullOrEmpty(file.Directory));
-            Assert.NotNull(file.SmallestKey);
-            Assert.NotEmpty(file.SmallestKey);
-            Assert.NotNull(file.LargestKey);
+
+            // By content on every one of the hundred reads. "Stable" has to
+            // mean the same bytes each time, and a non-empty check would hold
+            // just as well for a copy that decayed into zeroes after the first.
+            Assert.Equal("key000"u8.ToArray(), file.SmallestKey);
+            Assert.Equal("key049"u8.ToArray(), file.LargestKey);
         }
     }
 

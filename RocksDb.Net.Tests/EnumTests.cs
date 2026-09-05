@@ -22,29 +22,9 @@ namespace RocksDbNet.Tests;
 /// </remarks>
 public class NativeEnumValueTests
 {
-    /// <summary>
-    /// Asserts the enum has exactly the expected members, with the expected
-    /// values and no extras.
-    /// </summary>
-    private static void AssertExactly<TEnum>(params (string Name, int Value)[] expected)
-        where TEnum : struct, Enum
-    {
-        foreach ((string name, int value) in expected)
-        {
-            Assert.True(Enum.IsDefined(typeof(TEnum), name), $"{typeof(TEnum).Name}.{name} is missing");
-            Assert.Equal(value, Convert.ToInt32(Enum.Parse<TEnum>(name)));
-        }
-
-        // No members beyond the native set. An extra one is a value some future
-        // RocksDb release will claim for something else.
-        Assert.Equal(
-            expected.Select(e => e.Name).OrderBy(n => n, StringComparer.Ordinal),
-            Enum.GetNames<TEnum>().OrderBy(n => n, StringComparer.Ordinal));
-    }
-
     [Fact]
     public void CompactionReason_MatchesListenerHeader()
-        => AssertExactly<CompactionReason>(
+        => NativeEnum.AssertExactly<CompactionReason>(
             ("Unknown", 0),
             ("LevelL0FilesNum", 1),
             ("LevelMaxLevelSize", 2),
@@ -69,7 +49,7 @@ public class NativeEnumValueTests
 
     [Fact]
     public void FlushReason_MatchesListenerHeader()
-        => AssertExactly<FlushReason>(
+        => NativeEnum.AssertExactly<FlushReason>(
             ("Others", 0x00),
             ("GetLiveFiles", 0x01),
             ("ShutDown", 0x02),
@@ -89,7 +69,7 @@ public class NativeEnumValueTests
 
     [Fact]
     public void BackgroundErrorReason_MatchesListenerHeader()
-        => AssertExactly<BackgroundErrorReason>(
+        => NativeEnum.AssertExactly<BackgroundErrorReason>(
             ("Flush", 0),
             ("Compaction", 1),
             ("WriteCallback", 2),
@@ -107,7 +87,7 @@ public class NativeEnumValueTests
     /// </summary>
     [Fact]
     public void WriteStallCondition_MatchesTypesHeader()
-        => AssertExactly<WriteStallCondition>(
+        => NativeEnum.AssertExactly<WriteStallCondition>(
             ("Delayed", 0),
             ("Stopped", 1),
             ("Normal", 2));

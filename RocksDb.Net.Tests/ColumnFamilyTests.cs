@@ -16,15 +16,51 @@ public class ColumnFamilyTests
         Assert.Equal("test_cf", cf.Name);
     }
 
+    /// <summary>
+    /// A dropped family stops being one the database reports or resolves, and
+    /// its name becomes free again.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This asserted only that the call did not throw, which is what left the
+    /// registry defect undetected: the name stayed in
+    /// <see cref="RocksDb.ColumnFamilyNames"/>, the lookup went on returning a
+    /// handle for a family that no longer existed, and the name could never be
+    /// reused because creating it again threw a duplicate-key
+    /// <see cref="ArgumentException"/> out of a private dictionary.
+    /// </para>
+    /// <para>
+    /// Reading through <c>cf</c> after the drop is deliberately not asserted to
+    /// fail. RocksDb keeps a dropped family's data alive until the last handle
+    /// to it is destroyed, so that read still succeeds, and a test demanding
+    /// otherwise would pin the opposite of the documented contract.
+    /// </para>
+    /// </remarks>
     [Fact]
-    public void DropColumnFamily_Works()
+    public void DropColumnFamily_DeregistersTheName()
     {
         using var db = new TempDb();
         using var cfOpts = new DbOptions();
-        using var cf = db.Db.CreateColumnFamily(cfOpts, "to_drop");
 
-        db.Db.DropColumnFamily(cf);
-        // Should not throw
+        using (ColumnFamilyHandle cf = db.Db.CreateColumnFamily(cfOpts, "to_drop"))
+        {
+            db.Db.Put("k", "v", cf);
+
+            Assert.Contains("to_drop", db.Db.ColumnFamilyNames);
+
+            db.Db.DropColumnFamily(cf);
+
+            Assert.DoesNotContain("to_drop", db.Db.ColumnFamilyNames);
+            Assert.False(db.Db.TryGetColumnFamily("to_drop", out _));
+            Assert.Throws<KeyNotFoundException>(() => db.Db.GetColumnFamily("to_drop"));
+        }
+
+        // The name is free again, and what comes back is a new empty family
+        // rather than the dropped one reappearing.
+        using ColumnFamilyHandle recreated = db.Db.CreateColumnFamily(cfOpts, "to_drop");
+
+        Assert.Contains("to_drop", db.Db.ColumnFamilyNames);
+        Assert.Null(db.Db.GetString("k", recreated));
     }
 
     [Fact]

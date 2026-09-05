@@ -45,8 +45,14 @@ public class BorrowedViewTests
         SstFileMetadata file = level0.Files[0];
         Assert.False(string.IsNullOrEmpty(file.RelativeFilename));
         Assert.True(file.Size > 0);
-        Assert.NotNull(file.SmallestKey);
-        Assert.NotNull(file.LargestKey);
+
+        // The bounds are asserted by content, not just as non-null. Everything
+        // written went into one flush, so the file spans the whole key range —
+        // and a copy that were the right length but full of zeroes, which is
+        // what a botched eager read would produce, would pass a null check in
+        // the very file whose purpose is proving the copy is correct.
+        Assert.Equal("key000"u8.ToArray(), file.SmallestKey);
+        Assert.Equal("key049"u8.ToArray(), file.LargestKey);
     }
 
     /// <summary>
@@ -107,8 +113,12 @@ public class BorrowedViewTests
         Assert.False(string.IsNullOrEmpty(file.Name));
         Assert.False(string.IsNullOrEmpty(file.Directory));
         Assert.True(file.Size > 0);
-        Assert.True(file.Entries > 0);
-        Assert.NotNull(file.SmallestKey);
+        Assert.Equal(1UL, file.Entries);
+
+        // One key was written, so it is both bounds. Asserting the content is
+        // the point: a right-length array of zeroes would pass a null check.
+        Assert.Equal("key"u8.ToArray(), file.SmallestKey);
+        Assert.Equal("key"u8.ToArray(), file.LargestKey);
     }
 
     /// <summary>
