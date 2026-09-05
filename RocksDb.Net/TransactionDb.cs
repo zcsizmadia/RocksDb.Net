@@ -40,6 +40,8 @@ public sealed class TransactionDb : RocksDbHandle
     private readonly Dictionary<string, ColumnFamilyHandle> _columnFamilyHandles = [];
     private readonly DbOptions _ownedOptions;
 
+    private ColumnFamilyHandle? _defaultColumnFamily;
+
     private TransactionDb(nint handle, DbOptions options)
         : base(handle)
     {
@@ -484,8 +486,72 @@ public sealed class TransactionDb : RocksDbHandle
             return true;
         }
 
+        // Every database has a default family, even one opened without naming
+        // any, so resolve it on demand rather than reporting it as unknown.
+        // Without this the listing and the lookup disagreed: ColumnFamilyNames
+        // reported "default" and asking for it threw, with a message that
+        // listed it among the known families.
+        if (name == DefaultColumnFamilyName)
+        {
+            columnFamily = GetDefaultColumnFamily();
+            return true;
+        }
+
         columnFamily = null;
         return false;
+    }
+
+    /// <summary>
+    /// Returns a non-owning wrapper around the default column family handle.
+    /// Do <em>not</em> call Dispose on the returned handle — its lifetime is
+    /// managed by the database.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The handle is only reachable through the underlying non-transactional
+    /// database, since <c>rocksdb_get_default_column_family_handle</c> takes a
+    /// <c>rocksdb_t*</c>. <c>rocksdb_transactiondb_get_base_db</c> allocates a
+    /// <c>rocksdb_t</c> wrapper around a <c>DB*</c> this database owns, and
+    /// <c>rocksdb_transactiondb_close_base_db</c> deletes that wrapper and
+    /// nothing else — so the base database is not closed, and the column family
+    /// handle taken from it outlives the wrapper it came through.
+    /// </para>
+    /// <para>
+    /// Cached, because each call allocates a fresh
+    /// <c>rocksdb_column_family_handle_t</c> and the wrapper is non-owning, so
+    /// every call would otherwise leak one.
+    /// </para>
+    /// </remarks>
+    public ColumnFamilyHandle GetDefaultColumnFamily()
+    {
+        if (_defaultColumnFamily is not null)
+        {
+            return _defaultColumnFamily;
+        }
+
+        nint baseDb = NativeMethods.rocksdb_transactiondb_get_base_db(Handle);
+        nint h;
+        try
+        {
+            h = NativeMethods.rocksdb_get_default_column_family_handle(baseDb);
+        }
+        finally
+        {
+            // Releases only the rocksdb_t wrapper allocated above. Using
+            // rocksdb_close here instead would shut the real database.
+            NativeMethods.rocksdb_transactiondb_close_base_db(baseDb);
+        }
+
+        var cf = new ColumnFamilyHandle(h);
+
+        // Destroyed like any other handle rather than transferred away: the
+        // native call sets immortal on the struct it allocates, and
+        // rocksdb_column_family_handle_destroy honours that by deleting only
+        // the wrapper and leaving the column family alone.
+        cf.SetParent(this);
+
+        _defaultColumnFamily = cf;
+        return cf;
     }
 
     /// <inheritdoc cref="RocksDb.ColumnFamilyNames"/>
