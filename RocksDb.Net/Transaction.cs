@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace RocksDbNet;
@@ -244,6 +245,162 @@ public sealed class Transaction : RocksDbHandle
         return value is null ? null : Encoding.UTF8.GetString(value);
     }
 
+    // ── Batched reads ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Reads several keys in one call, seeing this transaction's pending
+    /// writes.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// One native call instead of one per key. A missing key yields
+    /// <see langword="null"/> in the corresponding position.
+    /// </para>
+    /// <para>
+    /// This takes no locks, exactly like
+    /// <see cref="Get(ReadOnlySpan{byte}, ReadOptions?)"/>. Use
+    /// <see cref="MultiGetForUpdate(IReadOnlyList{byte[]}, ReadOptions?)"/>
+    /// for reads a later write depends on.
+    /// </para>
+    /// </remarks>
+    public byte[]?[] MultiGet(IReadOnlyList<byte[]> keys, ReadOptions? options = null)
+        => MultiGetCore(keys, columnFamilies: null, options, forUpdate: false);
+
+    /// <inheritdoc cref="MultiGet(IReadOnlyList{byte[]}, ReadOptions?)"/>
+    public byte[]?[] MultiGet(IReadOnlyList<byte[]> keys, ColumnFamilyHandle cf, ReadOptions? options = null)
+        => MultiGetCore(keys, Repeat(cf, keys), options, forUpdate: false);
+
+    /// <summary>
+    /// Reads several keys in one call, each from the column family at the same
+    /// position in <paramref name="columnFamilies"/>.
+    /// </summary>
+    /// <inheritdoc cref="MultiGet(IReadOnlyList{byte[]}, ReadOptions?)" path="/remarks"/>
+    /// <exception cref="ArgumentException">The two lists are of different lengths.</exception>
+    public byte[]?[] MultiGet(
+        IReadOnlyList<byte[]> keys, IReadOnlyList<ColumnFamilyHandle> columnFamilies, ReadOptions? options = null)
+        => MultiGetCore(keys, Handles(keys, columnFamilies), options, forUpdate: false);
+
+    /// <summary>
+    /// Reads several keys in one call and locks every one of them.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The batched form of
+    /// <see cref="GetForUpdate(ReadOnlySpan{byte}, bool, ReadOptions?)"/>, and
+    /// the more useful half of this pair: a transaction that reads a set of
+    /// keys it intends to write is exactly the case conflict detection is for,
+    /// and locking them one at a time is the slowest way to do it.
+    /// </para>
+    /// <para>
+    /// Every key is locked, including ones that turn out to be absent. If any
+    /// key cannot be locked the call throws, and the locks it did take stay
+    /// held until the transaction ends — locking is not rolled back.
+    /// </para>
+    /// <para>
+    /// The locks are always exclusive. Unlike
+    /// <see cref="GetForUpdate(ReadOnlySpan{byte}, bool, ReadOptions?)"/> there
+    /// is no shared-lock form, because the C API's batched variant takes no
+    /// such flag; a shared lock on a set of keys means reading them one at a
+    /// time.
+    /// </para>
+    /// </remarks>
+    /// <param name="keys">Keys to read and lock.</param>
+    /// <param name="options">Read options, or null for the defaults.</param>
+    public byte[]?[] MultiGetForUpdate(IReadOnlyList<byte[]> keys, ReadOptions? options = null)
+        => MultiGetCore(keys, columnFamilies: null, options, forUpdate: true);
+
+    /// <inheritdoc cref="MultiGetForUpdate(IReadOnlyList{byte[]}, ReadOptions?)"/>
+    public byte[]?[] MultiGetForUpdate(
+        IReadOnlyList<byte[]> keys, ColumnFamilyHandle cf, ReadOptions? options = null)
+        => MultiGetCore(keys, Repeat(cf, keys), options, forUpdate: true);
+
+    /// <inheritdoc cref="MultiGetForUpdate(IReadOnlyList{byte[]}, ReadOptions?)"/>
+    /// <exception cref="ArgumentException">The two lists are of different lengths.</exception>
+    public byte[]?[] MultiGetForUpdate(
+        IReadOnlyList<byte[]> keys,
+        IReadOnlyList<ColumnFamilyHandle> columnFamilies,
+        ReadOptions? options = null)
+        => MultiGetCore(keys, Handles(keys, columnFamilies), options, forUpdate: true);
+
+    // ── Reads that avoid a copy ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Reads a key without copying the value into managed memory, or returns
+    /// <see langword="null"/> if it is absent.
+    /// </summary>
+    /// <remarks>
+    /// Dispose the result promptly: it pins the block the value came from,
+    /// which cannot be evicted from the block cache while it lives. See
+    /// <see cref="PinnableSlice"/>.
+    /// </remarks>
+    public unsafe PinnableSlice? GetPinned(ReadOnlySpan<byte> key, ReadOptions? options = null)
+    {
+        nint err = default;
+        nint slice;
+        fixed (byte* k = key)
+            slice = NativeMethods.rocksdb_transaction_get_pinned(
+                Handle, (options ?? _defaultReadOptions).Handle, k, (nuint)key.Length, ref err);
+
+        // A null return means either "not found" or "failed", so the error has
+        // to be checked before deciding which.
+        NativeMethods.ThrowOnError(err);
+
+        return slice == nint.Zero ? null : new PinnableSlice(slice, this);
+    }
+
+    /// <inheritdoc cref="GetPinned(ReadOnlySpan{byte}, ReadOptions?)"/>
+    public unsafe PinnableSlice? GetPinned(ReadOnlySpan<byte> key, ColumnFamilyHandle cf, ReadOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(cf);
+
+        nint err = default;
+        nint slice;
+        fixed (byte* k = key)
+            slice = NativeMethods.rocksdb_transaction_get_pinned_cf(
+                Handle, (options ?? _defaultReadOptions).Handle, cf.Handle, k, (nuint)key.Length, ref err);
+
+        NativeMethods.ThrowOnError(err);
+
+        return slice == nint.Zero ? null : new PinnableSlice(slice, this);
+    }
+
+    /// <summary>
+    /// Reads a key without copying the value, and locks it.
+    /// </summary>
+    /// <inheritdoc cref="GetPinned(ReadOnlySpan{byte}, ReadOptions?)" path="/remarks"/>
+    public unsafe PinnableSlice? GetPinnedForUpdate(
+        ReadOnlySpan<byte> key, bool exclusive = true, ReadOptions? options = null)
+    {
+        nint err = default;
+        nint slice;
+        fixed (byte* k = key)
+            slice = NativeMethods.rocksdb_transaction_get_pinned_for_update(
+                Handle, (options ?? _defaultReadOptions).Handle,
+                k, (nuint)key.Length, exclusive ? (byte)1 : (byte)0, ref err);
+
+        NativeMethods.ThrowOnError(err);
+
+        return slice == nint.Zero ? null : new PinnableSlice(slice, this);
+    }
+
+    /// <inheritdoc cref="GetPinnedForUpdate(ReadOnlySpan{byte}, bool, ReadOptions?)"/>
+    public unsafe PinnableSlice? GetPinnedForUpdate(
+        ReadOnlySpan<byte> key, ColumnFamilyHandle cf, bool exclusive = true, ReadOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(cf);
+
+        nint err = default;
+        nint slice;
+        fixed (byte* k = key)
+            slice = NativeMethods.rocksdb_transaction_get_pinned_for_update_cf(
+                Handle, (options ?? _defaultReadOptions).Handle, cf.Handle,
+                k, (nuint)key.Length, exclusive ? (byte)1 : (byte)0, ref err);
+
+        NativeMethods.ThrowOnError(err);
+
+        return slice == nint.Zero ? null : new PinnableSlice(slice, this);
+    }
+
     // ── Iteration ────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -450,6 +607,138 @@ public sealed class Transaction : RocksDbHandle
         {
             iterator.Dispose();
         }
+    }
+
+    /// <summary>The same column family for every key.</summary>
+    private static nint[] Repeat(ColumnFamilyHandle cf, IReadOnlyList<byte[]> keys)
+    {
+        ArgumentNullException.ThrowIfNull(cf);
+        ArgumentNullException.ThrowIfNull(keys);
+
+        nint[] handles = new nint[keys.Count];
+        Array.Fill(handles, cf.Handle);
+        return handles;
+    }
+
+    /// <summary>One column family per key, checked for length agreement.</summary>
+    private static nint[] Handles(IReadOnlyList<byte[]> keys, IReadOnlyList<ColumnFamilyHandle> columnFamilies)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+        ArgumentNullException.ThrowIfNull(columnFamilies);
+
+        if (keys.Count != columnFamilies.Count)
+        {
+            throw new ArgumentException(
+                $"Expected one column family per key, but got {keys.Count} keys and " +
+                $"{columnFamilies.Count} column families.",
+                nameof(columnFamilies));
+        }
+
+        nint[] handles = new nint[columnFamilies.Count];
+        for (int i = 0; i < columnFamilies.Count; i++)
+        {
+            ColumnFamilyHandle cf = columnFamilies[i];
+            ArgumentNullException.ThrowIfNull(cf);
+            handles[i] = cf.Handle;
+        }
+
+        return handles;
+    }
+
+    /// <summary>
+    /// Marshals the key list, makes the one native call, then copies and frees
+    /// every value before considering the errors.
+    /// </summary>
+    /// <remarks>
+    /// The ordering is the point: throwing from inside the copy loop would leak
+    /// the values and error strings for every key after the first failure, and
+    /// that is exactly the defect the database's own MultiGet was fixed for.
+    /// </remarks>
+    private unsafe byte[]?[] MultiGetCore(
+        IReadOnlyList<byte[]> keys, nint[]? columnFamilies, ReadOptions? options, bool forUpdate)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+
+        int n = keys.Count;
+        if (n == 0)
+        {
+            return [];
+        }
+
+        byte*[] keyPtrs = new byte*[n];
+        nuint[] keySizes = new nuint[n];
+        byte*[] valPtrs = new byte*[n];
+        nuint[] valSizes = new nuint[n];
+        nint[] errs = new nint[n];
+
+        var pins = new GCHandle[n];
+        try
+        {
+            for (int i = 0; i < n; i++)
+            {
+                ArgumentNullException.ThrowIfNull(keys[i]);
+                pins[i] = GCHandle.Alloc(keys[i], GCHandleType.Pinned);
+                keyPtrs[i] = (byte*)pins[i].AddrOfPinnedObject();
+                keySizes[i] = (nuint)keys[i].Length;
+            }
+
+            nint opts = (options ?? _defaultReadOptions).Handle;
+
+            fixed (byte** kp = keyPtrs)
+            fixed (nuint* ks = keySizes)
+            fixed (byte** vp = valPtrs)
+            fixed (nuint* vs = valSizes)
+            fixed (nint* ep = errs)
+            fixed (nint* cfp = columnFamilies)
+            {
+                if (columnFamilies is null)
+                {
+                    if (forUpdate)
+                    {
+                        NativeMethods.rocksdb_transaction_multi_get_for_update(
+                            Handle, opts, (nuint)n, kp, ks, vp, vs, (byte**)ep);
+                    }
+                    else
+                    {
+                        NativeMethods.rocksdb_transaction_multi_get(
+                            Handle, opts, (nuint)n, kp, ks, vp, vs, (byte**)ep);
+                    }
+                }
+                else if (forUpdate)
+                {
+                    NativeMethods.rocksdb_transaction_multi_get_for_update_cf(
+                        Handle, opts, cfp, (nuint)n, kp, ks, vp, vs, (byte**)ep);
+                }
+                else
+                {
+                    NativeMethods.rocksdb_transaction_multi_get_cf(
+                        Handle, opts, cfp, (nuint)n, kp, ks, vp, vs, (byte**)ep);
+                }
+            }
+        }
+        finally
+        {
+            for (int i = 0; i < n; i++)
+            {
+                if (pins[i].IsAllocated)
+                {
+                    pins[i].Free();
+                }
+            }
+        }
+
+        var results = new byte[]?[n];
+        for (int i = 0; i < n; i++)
+        {
+            if (valPtrs[i] is not null)
+            {
+                results[i] = new ReadOnlySpan<byte>(valPtrs[i], checked((int)valSizes[i])).ToArray();
+                NativeMethods.rocksdb_free((nint)valPtrs[i]);
+            }
+        }
+
+        NativeMethods.ThrowFirstError(errs);
+        return results;
     }
 
     private static unsafe byte[]? CopyAndFree(nint value, nuint length)

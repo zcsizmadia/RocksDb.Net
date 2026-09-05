@@ -14,6 +14,16 @@ is allowed to be.
 
 ### Added
 
+- **Batched and copy-free reads on `Transaction`.** `MultiGet` reads a set of
+  keys in one native call instead of one per key, with the same column-family
+  overloads `RocksDb` has, including one family per key. `MultiGetForUpdate`
+  does the same and locks every key it read — the more useful half, since a
+  transaction reading a set of keys it means to write is exactly what conflict
+  detection is for, and locking them one at a time is the slowest way to do it.
+  Its locks are always exclusive, because the C API's batched form takes no
+  shared-lock flag. `GetPinned` and `GetPinnedForUpdate` return a
+  `PinnableSlice` rather than copying, matching the database's own.
+
 - **Two-phase commit on `Transaction`.** `Prepare` makes a transaction's writes
   durable without committing them, `Name` identifies it, and
   `TransactionDb.GetPreparedTransactions` hands back the transactions that were

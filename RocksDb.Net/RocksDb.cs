@@ -966,7 +966,7 @@ public sealed class RocksDb : RocksDbHandle
 
         try
         {
-            ThrowFirstError(errs);
+            NativeMethods.ThrowFirstError(errs);
         }
         catch
         {
@@ -1057,40 +1057,8 @@ public sealed class RocksDb : RocksDbHandle
             }
         }
 
-        ThrowFirstError(errs);
+        NativeMethods.ThrowFirstError(errs);
         return results;
-    }
-
-    /// <summary>
-    /// Throws for the first per-key error, having freed all of them.
-    /// </summary>
-    /// <remarks>
-    /// RocksDb allocates one message per failing key and the caller owns each.
-    /// Only the first becomes the exception, but every one has to be released.
-    /// </remarks>
-    private static void ThrowFirstError(nint[] errs)
-    {
-        nint first = nint.Zero;
-
-        for (int i = 0; i < errs.Length; i++)
-        {
-            if (errs[i] == nint.Zero)
-            {
-                continue;
-            }
-
-            if (first == nint.Zero)
-            {
-                first = errs[i];
-            }
-            else
-            {
-                NativeMethods.rocksdb_free(errs[i]);
-            }
-        }
-
-        // Frees the message it reports.
-        NativeMethods.ThrowOnError(first);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
