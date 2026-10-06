@@ -217,4 +217,32 @@ public class IteratorBenchmarks
 
         return bytes;
     }
+
+    /// <summary>
+    /// The accessors alone, on an iterator that does not move, so what is
+    /// measured is the cost of crossing into native code rather than of
+    /// RocksDb finding the next entry.
+    /// </summary>
+    /// <remarks>
+    /// The three accessors skip the GC transition. A full scan cannot show
+    /// whether that helped, because the work Next does dwarfs it; this can.
+    /// </remarks>
+    [Benchmark(Description = "Accessors on a positioned iterator, x Keys")]
+    public long Accessors()
+    {
+        long bytes = 0;
+
+        using Iterator it = _db.Db.NewIterator();
+        it.SeekToFirst();
+
+        for (int i = 0; i < Keys; i++)
+        {
+            if (it.IsValid())
+            {
+                bytes += it.Key().Length + it.Value().Length;
+            }
+        }
+
+        return bytes;
+    }
 }

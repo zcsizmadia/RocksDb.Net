@@ -12,6 +12,44 @@ public static class PInvokeGenerator
         "[UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]";
 
     /// <summary>
+    /// The functions declared <c>[SuppressGCTransition]</c>, which skips the
+    /// switch into and out of preemptive GC mode around the call.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The transition costs a few nanoseconds per call, which only matters for
+    /// a call made once per entry of a scan whose own work is a few
+    /// nanoseconds too. A step of a full scan makes four calls, and three of
+    /// them, the accessors below, only return a field or a pointer the
+    /// iterator already holds.
+    /// </para>
+    /// <para>
+    /// An allowlist, and a short one, because getting it wrong is undefined
+    /// behaviour rather than a slow call. The garbage collector cannot run on
+    /// any thread while a suppressed call is in progress, so the function must
+    /// return promptly, must not block or take a lock that might be held, must
+    /// not call back into managed code, and must not throw. Each entry was
+    /// checked against <c>db/c.cc</c> for that. Never add <c>Seek</c>,
+    /// <c>Next</c>, <c>Get</c>, any destructor, or anything else that can do
+    /// I/O, wait, or reach a comparator, merge operator or other callback;
+    /// those run inside <c>Next</c> and <c>Seek</c>, not inside the accessors.
+    /// </para>
+    /// </remarks>
+    public static readonly IReadOnlySet<string> SuppressGCTransition = new HashSet<string>
+    {
+        // DBIter::Valid(), key() and value() return state that Seek and Next
+        // already computed. A blob value or a merge result is resolved there,
+        // before value() is reached.
+        "rocksdb_iter_valid",
+        "rocksdb_iter_key",
+        "rocksdb_iter_value",
+
+        // The record count and the backing buffer of the batch's std::string.
+        "rocksdb_writebatch_count",
+        "rocksdb_writebatch_data",
+    };
+
+    /// <summary>
     /// Generates the full NativeMethods.cs file content.
     /// </summary>
     public static string Generate(List<CFunction> functions, string version, string url)
@@ -156,6 +194,11 @@ public static class PInvokeGenerator
             : $"[LibraryImport(LibName)]";
         sb.AppendLine($"    {libImport}");
         sb.AppendLine($"    {CallConvAttr}");
+
+        if (SuppressGCTransition.Contains(fn.Name))
+        {
+            sb.AppendLine("    [SuppressGCTransition]");
+        }
 
         if (parameters.Count == 0)
         {
