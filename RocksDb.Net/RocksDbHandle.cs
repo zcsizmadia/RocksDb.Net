@@ -545,22 +545,98 @@ public abstract class RocksDbHandle : IDisposable
 
     // The handles that live inside this one, held as strong references for as
     // long as they are open. See SetParent for why both directions are needed.
-    private List<RocksDbHandle>? _children;
-    private readonly object _childGate = new();
+    //
+    // An intrusive doubly-linked list in creation order, threaded through the
+    // children's own sibling fields. It used to be a List, and every pinned
+    // read, iterator and snapshot adds itself on creation and removes itself
+    // on disposal, so removal scanned and shifted the list: disposing a
+    // MultiGetPinned batch in order cost O(n^2), all of it under the one
+    // database-wide lock that concurrent reads queue on. Both ends are O(1)
+    // now.
+    //
+    // The head lives in its own object, created the first time a child is
+    // added, and is also the lock. Most handles never have children, such as
+    // every pinned value and iterator, so they carry one null reference rather
+    // than a list and a lock object each.
+    private sealed class ChildList
+    {
+        public RocksDbHandle? First;
+        public RocksDbHandle? Last;
+        public int Count;
+    }
+
+    private ChildList? _childList;
+
+    // This handle's place in its parent's list. Guarded by the parent's list.
+    private RocksDbHandle? _previousSibling;
+    private RocksDbHandle? _nextSibling;
+
+    private ChildList Children
+        => Volatile.Read(ref _childList)
+            ?? Interlocked.CompareExchange(ref _childList, new ChildList(), null)
+            ?? _childList!;
 
     private void AddChild(RocksDbHandle child)
     {
-        lock (_childGate)
+        ChildList list = Children;
+
+        lock (list)
         {
-            (_children ??= []).Add(child);
+            child._previousSibling = list.Last;
+            child._nextSibling = null;
+
+            if (list.Last is null)
+            {
+                list.First = child;
+            }
+            else
+            {
+                list.Last._nextSibling = child;
+            }
+
+            list.Last = child;
+            list.Count++;
         }
     }
 
     private void RemoveChild(RocksDbHandle child)
     {
-        lock (_childGate)
+        ChildList? list = Volatile.Read(ref _childList);
+        if (list is null)
         {
-            _children?.Remove(child);
+            return;
+        }
+
+        lock (list)
+        {
+            // Not in the list: already removed, or taken out by
+            // DisposeChildren, which unlinks every child before disposing it.
+            if (child._previousSibling is null && !ReferenceEquals(list.First, child))
+            {
+                return;
+            }
+
+            if (child._previousSibling is null)
+            {
+                list.First = child._nextSibling;
+            }
+            else
+            {
+                child._previousSibling._nextSibling = child._nextSibling;
+            }
+
+            if (child._nextSibling is null)
+            {
+                list.Last = child._previousSibling;
+            }
+            else
+            {
+                child._nextSibling._previousSibling = child._previousSibling;
+            }
+
+            child._previousSibling = null;
+            child._nextSibling = null;
+            list.Count--;
         }
     }
 
@@ -583,29 +659,43 @@ public abstract class RocksDbHandle : IDisposable
     {
         RocksDbHandle[] open;
 
-        // A handle whose base constructor never ran has no children, and
-        // locking on its null gate would throw. That instance exists: a derived
-        // constructor that throws while evaluating the arguments it passes to
-        // base(...) leaves an allocated object with every base field at its
-        // default, and the finalizer still runs on it. An exception from a
-        // finalizer takes the process down, so this is checked rather than
-        // assumed.
-        object? gate = _childGate;
+        // No list means no child was ever added. That includes a handle whose
+        // base constructor never ran: a derived constructor that throws while
+        // evaluating the arguments it passes to base(...) leaves an allocated
+        // object with every base field at its default, and the finalizer still
+        // runs on it. An exception from a finalizer takes the process down, so
+        // this is checked rather than assumed.
+        ChildList? list = Volatile.Read(ref _childList);
 
-        if (gate is null)
+        if (list is null)
         {
             return;
         }
 
-        lock (gate)
+        lock (list)
         {
-            if (_children is not { Count: > 0 })
+            if (list.Count == 0)
             {
                 return;
             }
 
-            open = [.. _children];
-            _children.Clear();
+            open = new RocksDbHandle[list.Count];
+
+            int i = 0;
+            for (RocksDbHandle? child = list.First; child is not null; i++)
+            {
+                RocksDbHandle? next = child._nextSibling;
+
+                open[i] = child;
+                child._previousSibling = null;
+                child._nextSibling = null;
+
+                child = next;
+            }
+
+            list.First = null;
+            list.Last = null;
+            list.Count = 0;
         }
 
         for (int i = open.Length - 1; i >= 0; i--)
@@ -675,9 +765,15 @@ public abstract class RocksDbHandle : IDisposable
     {
         get
         {
-            lock (_childGate)
+            ChildList? list = Volatile.Read(ref _childList);
+            if (list is null)
             {
-                return _children?.Count ?? 0;
+                return 0;
+            }
+
+            lock (list)
+            {
+                return list.Count;
             }
         }
     }

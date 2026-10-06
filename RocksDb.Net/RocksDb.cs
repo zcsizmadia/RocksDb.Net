@@ -375,11 +375,17 @@ public sealed class RocksDb : RocksDbHandle
 
     /// <summary>Convenience overload using UTF-8 string key and value.</summary>
     public void Put(string key, string value, WriteOptions? options = null)
-        => Put(Encoding.UTF8.GetBytes(key), Encoding.UTF8.GetBytes(value), options);
+    {
+        using var utf8 = PooledUtf8.Encode(key, value);
+        Put(utf8.First, utf8.Second, options);
+    }
 
     /// <summary>Convenience overload using UTF-8 string key and value in a column family.</summary>
     public void Put(string key, string value, ColumnFamilyHandle cf, WriteOptions? options = null)
-        => Put(Encoding.UTF8.GetBytes(key), Encoding.UTF8.GetBytes(value), cf, options);
+    {
+        using var utf8 = PooledUtf8.Encode(key, value);
+        Put(utf8.First, utf8.Second, cf, options);
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -436,7 +442,10 @@ public sealed class RocksDb : RocksDbHandle
 
     /// <inheritdoc cref="SingleDelete(ReadOnlySpan{byte}, WriteOptions?)"/>
     public void SingleDelete(string key, WriteOptions? options = null)
-        => SingleDelete(Encoding.UTF8.GetBytes(key), options);
+    {
+        using var utf8 = PooledUtf8.Encode(key);
+        SingleDelete(utf8.First, options);
+    }
 
     /// <summary>Deletes the entry for <paramref name="key"/> from <paramref name="cf"/>.</summary>
     public unsafe void Delete(ReadOnlySpan<byte> key, ColumnFamilyHandle cf, WriteOptions? options = null)
@@ -452,11 +461,17 @@ public sealed class RocksDb : RocksDbHandle
 
     /// <summary>Convenience overload using a UTF-8 string key.</summary>
     public void Delete(string key, WriteOptions? options = null)
-        => Delete(Encoding.UTF8.GetBytes(key), options);
+    {
+        using var utf8 = PooledUtf8.Encode(key);
+        Delete(utf8.First, options);
+    }
 
     /// <summary>Convenience overload using a UTF-8 string key in a column family.</summary>
     public void Delete(string key, ColumnFamilyHandle cf, WriteOptions? options = null)
-        => Delete(Encoding.UTF8.GetBytes(key), cf, options);
+    {
+        using var utf8 = PooledUtf8.Encode(key);
+        Delete(utf8.First, cf, options);
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -507,7 +522,10 @@ public sealed class RocksDb : RocksDbHandle
 
     /// <summary>Applies a merge operation to <paramref name="key"/> in the default column family.</summary>
     public void Merge(string key, string value, WriteOptions? options = null)
-        => Merge(Encoding.UTF8.GetBytes(key), Encoding.UTF8.GetBytes(value), options);
+    {
+        using var utf8 = PooledUtf8.Encode(key, value);
+        Merge(utf8.First, utf8.Second, options);
+    }
 
     /// <summary>Applies a merge operation to <paramref name="key"/> in <paramref name="cf"/>.</summary>
     public unsafe void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value,
@@ -526,7 +544,10 @@ public sealed class RocksDb : RocksDbHandle
 
     /// <summary>Applies a merge operation to <paramref name="key"/> in <paramref name="cf"/>.</summary>
     public void Merge(string key, string value, ColumnFamilyHandle cf, WriteOptions? options = null)
-        => Merge(Encoding.UTF8.GetBytes(key), Encoding.UTF8.GetBytes(value), cf, options);
+    {
+        using var utf8 = PooledUtf8.Encode(key, value);
+        Merge(utf8.First, utf8.Second, cf, options);
+    }
 
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -574,19 +595,48 @@ public sealed class RocksDb : RocksDbHandle
         return GetInternal(key, options);
     }
 
-    private unsafe byte[]? GetInternal(ReadOnlySpan<byte> key, ReadOptions? options)
+    private byte[]? GetInternal(ReadOnlySpan<byte> key, ReadOptions? options)
+        => NativeMethods.CopyPinnedAndDestroy(GetPinnedHandle(key, options));
+
+    /// <summary>
+    /// The native slice for <paramref name="key"/>, or zero when it is absent.
+    /// The caller owns it.
+    /// </summary>
+    /// <remarks>
+    /// The copying reads go through here rather than <c>rocksdb_get</c>, which
+    /// is a pinned read underneath that then copies the value twice before the
+    /// wrapper copies it a third time. See
+    /// <see cref="NativeMethods.CopyPinnedAndDestroy"/>.
+    /// </remarks>
+    private unsafe nint GetPinnedHandle(ReadOnlySpan<byte> key, ReadOptions? options)
     {
         nint err = default;
-        nint valNint;
-        nuint vallen;
+        nint slice;
         fixed (byte* k = key)
-        {
-            valNint = NativeMethods.rocksdb_get(Handle, (options ?? _defaultReadOptions).Handle,
-                k, (nuint)key.Length, out vallen, ref err);
-            GC.KeepAlive(options);
-        }
+            slice = NativeMethods.rocksdb_get_pinned(Handle, (options ?? _defaultReadOptions).Handle,
+                k, (nuint)key.Length, ref err);
+        GC.KeepAlive(options);
+
+        // A null return means either "not found" or "failed", so the error has
+        // to be checked before deciding which.
         NativeMethods.ThrowOnError(err);
-        return NativeMethods.CopyAndFree(valNint, vallen);
+        return slice;
+    }
+
+    /// <inheritdoc cref="GetPinnedHandle(ReadOnlySpan{byte}, ReadOptions?)"/>
+    private unsafe nint GetPinnedHandle(ReadOnlySpan<byte> key, ColumnFamilyHandle cf, ReadOptions? options)
+    {
+        ArgumentNullException.ThrowIfNull(cf);
+
+        nint err = default;
+        nint slice;
+        fixed (byte* k = key)
+            slice = NativeMethods.rocksdb_get_pinned_cf(Handle, (options ?? _defaultReadOptions).Handle,
+                cf.Handle, k, (nuint)key.Length, ref err);
+        GC.KeepAlive(options);
+
+        NativeMethods.ThrowOnError(err);
+        return slice;
     }
 
     /// <summary>
@@ -657,36 +707,16 @@ public sealed class RocksDb : RocksDbHandle
     /// cannot be evicted from the block cache while it lives. See
     /// <see cref="PinnableSlice"/>.
     /// </remarks>
-    public unsafe PinnableSlice? GetPinned(ReadOnlySpan<byte> key, ReadOptions? options = null)
+    public PinnableSlice? GetPinned(ReadOnlySpan<byte> key, ReadOptions? options = null)
     {
-        nint err = default;
-        nint slice;
-        fixed (byte* k = key)
-            slice = NativeMethods.rocksdb_get_pinned(Handle, (options ?? _defaultReadOptions).Handle,
-                k, (nuint)key.Length, ref err);
-        GC.KeepAlive(options);
-
-        // A null return means either "not found" or "failed", so the error has to
-        // be checked before deciding which.
-        NativeMethods.ThrowOnError(err);
-
+        nint slice = GetPinnedHandle(key, options);
         return slice == nint.Zero ? null : new PinnableSlice(slice, this);
     }
 
     /// <inheritdoc cref="GetPinned(ReadOnlySpan{byte}, ReadOptions?)"/>
-    public unsafe PinnableSlice? GetPinned(ReadOnlySpan<byte> key, ColumnFamilyHandle cf, ReadOptions? options = null)
+    public PinnableSlice? GetPinned(ReadOnlySpan<byte> key, ColumnFamilyHandle cf, ReadOptions? options = null)
     {
-        ArgumentNullException.ThrowIfNull(cf);
-
-        nint err = default;
-        nint slice;
-        fixed (byte* k = key)
-            slice = NativeMethods.rocksdb_get_pinned_cf(Handle, (options ?? _defaultReadOptions).Handle,
-                cf.Handle, k, (nuint)key.Length, ref err);
-        GC.KeepAlive(options);
-
-        NativeMethods.ThrowOnError(err);
-
+        nint slice = GetPinnedHandle(key, cf, options);
         return slice == nint.Zero ? null : new PinnableSlice(slice, this);
     }
 
@@ -759,33 +789,25 @@ public sealed class RocksDb : RocksDbHandle
     }
 
     /// <summary>Returns the value for <paramref name="key"/> in <paramref name="cf"/>, or <c>null</c>.</summary>
-    public unsafe byte[]? Get(ReadOnlySpan<byte> key, ColumnFamilyHandle cf, ReadOptions? options = null)
-    {
-        ArgumentNullException.ThrowIfNull(cf);
-        nint err = default;
-        nuint vallen;
-        nint valNint;
-        fixed (byte* k = key)
-            valNint = NativeMethods.rocksdb_get_cf(Handle, (options ?? _defaultReadOptions).Handle, cf.Handle,
-                k, (nuint)key.Length, out vallen, ref err);
-        GC.KeepAlive(options);
-        NativeMethods.ThrowOnError(err);
-        return NativeMethods.CopyAndFree(valNint, vallen);
-    }
+    public byte[]? Get(ReadOnlySpan<byte> key, ColumnFamilyHandle cf, ReadOptions? options = null)
+        => NativeMethods.CopyPinnedAndDestroy(GetPinnedHandle(key, cf, options));
 
     /// <summary>Convenience overload using a UTF-8 string key; returns the value as a string or <c>null</c>.</summary>
+    /// <remarks>Decodes straight from the pinned value, so the string is the only allocation.</remarks>
     public string? GetString(string key, ReadOptions? options = null)
     {
-        byte[]? val = GetInternal(Encoding.UTF8.GetBytes(key), options);
-        return val == null ? null : Encoding.UTF8.GetString(val);
+        using var utf8 = PooledUtf8.Encode(key);
+        return NativeMethods.DecodePinnedAndDestroy(GetPinnedHandle(utf8.First, options));
     }
 
     /// <summary>Convenience overload using a UTF-8 string key in a column family.</summary>
+    /// <inheritdoc cref="GetString(string, ReadOptions?)" path="/remarks"/>
     public string? GetString(string key, ColumnFamilyHandle cf, ReadOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(cf);
-        byte[]? val = Get(Encoding.UTF8.GetBytes(key), cf, options);
-        return val == null ? null : Encoding.UTF8.GetString(val);
+
+        using var utf8 = PooledUtf8.Encode(key);
+        return NativeMethods.DecodePinnedAndDestroy(GetPinnedHandle(utf8.First, cf, options));
     }
 
     /// <summary>
@@ -800,7 +822,10 @@ public sealed class RocksDb : RocksDbHandle
 
     /// <summary>Returns the value for a string key, or <c>null</c> if not found.</summary>
     public byte[]? Get(string key, ReadOptions? options = null)
-        => GetInternal(Encoding.UTF8.GetBytes(key), options);
+    {
+        using var utf8 = PooledUtf8.Encode(key);
+        return GetInternal(utf8.First, options);
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // MultiGet
@@ -814,7 +839,10 @@ public sealed class RocksDb : RocksDbHandle
     /// position, so the result always has one entry per key.
     /// </remarks>
     public byte[]?[] MultiGet(IReadOnlyList<byte[]> keys, ReadOptions? options = null)
-        => MultiGetCore(keys, columnFamilies: null, options);
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+        return MultiGetSingleFamily(keys, GetDefaultColumnFamily(), options);
+    }
 
     /// <summary>
     /// Reads several keys from <paramref name="cf"/> in one call.
@@ -825,10 +853,7 @@ public sealed class RocksDb : RocksDbHandle
         ArgumentNullException.ThrowIfNull(keys);
         ArgumentNullException.ThrowIfNull(cf);
 
-        nint[] handles = new nint[keys.Count];
-        Array.Fill(handles, cf.Handle);
-
-        return MultiGetCore(keys, handles, options);
+        return MultiGetSingleFamily(keys, cf, options);
     }
 
     /// <summary>
@@ -912,55 +937,23 @@ public sealed class RocksDb : RocksDbHandle
             return [];
         }
 
-        byte*[] keyPtrs = new byte*[n];
-        nuint[] keySizes = new nuint[n];
-        nint[] slices = new nint[n];
-        nint[] errs = new nint[n];
-
-        var pins = new GCHandle[n];
-        try
-        {
-            for (int i = 0; i < n; i++)
-            {
-                ArgumentNullException.ThrowIfNull(keys[i]);
-                pins[i] = GCHandle.Alloc(keys[i], GCHandleType.Pinned);
-                keyPtrs[i] = (byte*)pins[i].AddrOfPinnedObject();
-                keySizes[i] = (nuint)keys[i].Length;
-            }
-
-            fixed (byte** kp = keyPtrs)
-            fixed (nuint* ks = keySizes)
-            fixed (nint* sp = slices)
-            fixed (nint* ep = errs)
-                NativeMethods.rocksdb_batched_multi_get_cf(Handle, (options ?? _defaultReadOptions).Handle,
-                    cf.Handle, (nuint)n, kp, ks, sp, (byte**)ep, sortedInput ? (byte)1 : (byte)0);
-            GC.KeepAlive(options);
-        }
-        finally
-        {
-            for (int i = 0; i < n; i++)
-            {
-                if (pins[i].IsAllocated)
-                {
-                    pins[i].Free();
-                }
-            }
-        }
+        using var batch = new NativeKeyBatch(keys);
+        BatchedMultiGet(batch, cf, sortedInput, options);
 
         // Wrap everything before throwing, so a failure in one key does not leak
         // the slices RocksDb allocated for the others.
         var results = new PinnableSlice?[n];
         for (int i = 0; i < n; i++)
         {
-            if (slices[i] != nint.Zero)
+            if (batch.Values[i] != nint.Zero)
             {
-                results[i] = new PinnableSlice(slices[i], this);
+                results[i] = new PinnableSlice(batch.Values[i], this);
             }
         }
 
         try
         {
-            NativeMethods.ThrowFirstError(errs);
+            NativeMethods.ThrowFirstError(batch.Errors, n);
         }
         catch
         {
@@ -976,11 +969,11 @@ public sealed class RocksDb : RocksDbHandle
     }
 
     /// <summary>
-    /// Shared implementation. A null <paramref name="columnFamilies"/> reads from
-    /// the default family; otherwise it holds one handle per key.
+    /// Reads keys that each name their own column family, one handle per key in
+    /// <paramref name="columnFamilies"/>.
     /// </summary>
     private unsafe byte[]?[] MultiGetCore(
-        IReadOnlyList<byte[]> keys, nint[]? columnFamilies, ReadOptions? options)
+        IReadOnlyList<byte[]> keys, nint[] columnFamilies, ReadOptions? options)
     {
         ArgumentNullException.ThrowIfNull(keys);
 
@@ -990,59 +983,54 @@ public sealed class RocksDb : RocksDbHandle
             return [];
         }
 
-        byte*[] keyPtrs = new byte*[n];
-        nuint[] keySizes = new nuint[n];
-        byte*[] valPtrs = new byte*[n];
-        nuint[] valSizes = new nuint[n];
-        nint[] errs = new nint[n];
+        using var batch = new NativeKeyBatch(keys);
 
-        var pins = new GCHandle[n];
-        try
-        {
-            for (int i = 0; i < n; i++)
-            {
-                ArgumentNullException.ThrowIfNull(keys[i]);
-                pins[i] = GCHandle.Alloc(keys[i], GCHandleType.Pinned);
-                keyPtrs[i] = (byte*)pins[i].AddrOfPinnedObject();
-                keySizes[i] = (nuint)keys[i].Length;
-            }
-
-            fixed (byte** kp = keyPtrs)
-            fixed (nuint* ks = keySizes)
-            fixed (byte** vp = valPtrs)
-            fixed (nuint* vs = valSizes)
-            fixed (nint* ep = errs)
-            fixed (nint* cfp = columnFamilies)
-            {
-                if (columnFamilies is null)
-                {
-                    NativeMethods.rocksdb_multi_get(Handle, (options ?? _defaultReadOptions).Handle,
-                        (nuint)n, kp, ks, vp, vs, (byte**)ep);
-                }
-                else
-                {
-                    NativeMethods.rocksdb_multi_get_cf(Handle, (options ?? _defaultReadOptions).Handle,
-                        cfp, (nuint)n, kp, ks, vp, vs, (byte**)ep);
-                    GC.KeepAlive(options);
-                }
-            }
-        }
-        finally
-        {
-            for (int i = 0; i < n; i++)
-            {
-                if (pins[i].IsAllocated)
-                {
-                    pins[i].Free();
-                }
-            }
-        }
+        fixed (nint* cfp = columnFamilies)
+            NativeMethods.rocksdb_multi_get_cf(Handle, (options ?? _defaultReadOptions).Handle,
+                cfp, (nuint)n, batch.Keys, batch.KeySizes, (byte**)batch.Values, batch.ValueSizes, (byte**)batch.Errors);
+        GC.KeepAlive(options);
 
         // Copy and free every value before considering the errors. Throwing from
         // inside this loop, which is what the single-family version used to do,
         // leaked the values and error strings for every key after the first
         // failure.
-        return NativeMethods.CopyAndFreeBatch(valPtrs, valSizes, errs);
+        return NativeMethods.CopyAndFreeBatch(batch, pinned: false);
+    }
+
+    /// <summary>
+    /// Reads keys that all come from one column family, through RocksDb's
+    /// batched read.
+    /// </summary>
+    /// <remarks>
+    /// The batched read returns pinned values, so each is copied once, straight
+    /// from the block cache or memtable. <c>rocksdb_multi_get</c> builds a
+    /// <c>std::string</c> per value and then copies each into a fresh
+    /// <c>malloc</c> buffer before the wrapper copies it again. It also sorts
+    /// the keys and reads blocks in batches, which the per-key form does not.
+    /// </remarks>
+    private byte[]?[] MultiGetSingleFamily(IReadOnlyList<byte[]> keys, ColumnFamilyHandle cf, ReadOptions? options)
+    {
+        if (keys.Count == 0)
+        {
+            return [];
+        }
+
+        using var batch = new NativeKeyBatch(keys);
+        BatchedMultiGet(batch, cf, sortedInput: false, options);
+
+        return NativeMethods.CopyAndFreeBatch(batch, pinned: true);
+    }
+
+    /// <summary>
+    /// Runs <c>rocksdb_batched_multi_get_cf</c> over <paramref name="batch"/>,
+    /// leaving a pinned slice or zero in each value slot.
+    /// </summary>
+    private unsafe void BatchedMultiGet(in NativeKeyBatch batch, ColumnFamilyHandle cf, bool sortedInput, ReadOptions? options)
+    {
+        NativeMethods.rocksdb_batched_multi_get_cf(Handle, (options ?? _defaultReadOptions).Handle,
+            cf.Handle, (nuint)batch.Count, batch.Keys, batch.KeySizes, batch.Values, (byte**)batch.Errors,
+            sortedInput ? (byte)1 : (byte)0);
+        GC.KeepAlive(options);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1087,13 +1075,19 @@ public sealed class RocksDb : RocksDbHandle
     /// Returns <c>true</c> if the UTF-8 encoded key <em>may</em> exist.
     /// </summary>
     public bool KeyMayExist(string key, ReadOptions? options = null)
-        => KeyMayExist(Encoding.UTF8.GetBytes(key), options);
+    {
+        using var utf8 = PooledUtf8.Encode(key);
+        return KeyMayExist(utf8.First, options);
+    }
 
     /// <summary>
     /// Returns <c>true</c> if the UTF-8 encoded key <em>may</em> exist in <paramref name="cf"/>.
     /// </summary>
     public bool KeyMayExist(string key, ColumnFamilyHandle cf, ReadOptions? options = null)
-        => KeyMayExist(Encoding.UTF8.GetBytes(key), cf, options);
+    {
+        using var utf8 = PooledUtf8.Encode(key);
+        return KeyMayExist(utf8.First, cf, options);
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Iterator

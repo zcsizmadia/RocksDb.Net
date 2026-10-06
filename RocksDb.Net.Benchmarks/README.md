@@ -52,6 +52,8 @@ otherwise ship, and the first person to notice would be a user.
 | `ReadBenchmarks` | Do the three read tiers actually differ, and does the gap widen with value size? The README's zero-copy claim rests on this. |
 | `MultiGetBenchmarks` | Is batching worth restructuring calling code for, against a plain loop? |
 | `IteratorBenchmarks` | Does a full scan allocate? The `ref struct` iterator claim lives in the allocation column, not the time column. |
+| `StringOverloadBenchmarks` | What do `Put(string, string)` and `GetString` cost beyond the encoding itself? The answer is in the allocation column. |
+| `PinnedBatchBenchmarks` | Does the bookkeeping each pinned value does with its database stay flat as a batch grows, or does disposing one cost more the more are open? |
 
 ## In memory, deliberately
 

@@ -285,11 +285,17 @@ public sealed class TransactionDb : RocksDbHandle
 
     /// <summary>Writes a UTF-8 key and value.</summary>
     public void Put(string key, string value, WriteOptions? options = null)
-        => Put(Encoding.UTF8.GetBytes(key), Encoding.UTF8.GetBytes(value), options);
+    {
+        using var utf8 = PooledUtf8.Encode(key, value);
+        Put(utf8.First, utf8.Second, options);
+    }
 
     /// <inheritdoc cref="Put(string, string, WriteOptions?)"/>
     public void Put(string key, string value, ColumnFamilyHandle cf, WriteOptions? options = null)
-        => Put(Encoding.UTF8.GetBytes(key), Encoding.UTF8.GetBytes(value), cf, options);
+    {
+        using var utf8 = PooledUtf8.Encode(key, value);
+        Put(utf8.First, utf8.Second, cf, options);
+    }
 
     /// <summary>Deletes a key.</summary>
     public unsafe void Delete(ReadOnlySpan<byte> key, WriteOptions? options = null)
@@ -317,7 +323,10 @@ public sealed class TransactionDb : RocksDbHandle
 
     /// <inheritdoc cref="Delete(ReadOnlySpan{byte}, WriteOptions?)"/>
     public void Delete(string key, WriteOptions? options = null)
-        => Delete(Encoding.UTF8.GetBytes(key), options);
+    {
+        using var utf8 = PooledUtf8.Encode(key);
+        Delete(utf8.First, options);
+    }
 
     /// <summary>Applies a merge operation to a key.</summary>
     public unsafe void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteOptions? options = null)
@@ -358,56 +367,50 @@ public sealed class TransactionDb : RocksDbHandle
     }
 
     /// <summary>Reads a key, or returns <see langword="null"/> if it is absent.</summary>
-    public unsafe byte[]? Get(ReadOnlySpan<byte> key, ReadOptions? options = null)
-    {
-        nint err = default;
-        nint value;
-        nuint length;
-        fixed (byte* k = key)
-            value = NativeMethods.rocksdb_transactiondb_get(Handle, (options ?? _defaultReadOptions).Handle,
-                k, (nuint)key.Length, out length, ref err);
-        GC.KeepAlive(options);
-
-        NativeMethods.ThrowOnError(err);
-        return CopyAndFree(value, length);
-    }
+    public byte[]? Get(ReadOnlySpan<byte> key, ReadOptions? options = null)
+        => NativeMethods.CopyPinnedAndDestroy(GetPinnedHandle(key, options));
 
     /// <inheritdoc cref="Get(ReadOnlySpan{byte}, ReadOptions?)"/>
-    public unsafe byte[]? Get(ReadOnlySpan<byte> key, ColumnFamilyHandle cf, ReadOptions? options = null)
-    {
-        ArgumentNullException.ThrowIfNull(cf);
-
-        nint err = default;
-        nint value;
-        nuint length;
-        fixed (byte* k = key)
-            value = NativeMethods.rocksdb_transactiondb_get_cf(Handle, (options ?? _defaultReadOptions).Handle, cf.Handle,
-                k, (nuint)key.Length, out length, ref err);
-        GC.KeepAlive(options);
-
-        NativeMethods.ThrowOnError(err);
-        return CopyAndFree(value, length);
-    }
+    public byte[]? Get(ReadOnlySpan<byte> key, ColumnFamilyHandle cf, ReadOptions? options = null)
+        => NativeMethods.CopyPinnedAndDestroy(GetPinnedHandle(key, cf, options));
 
     /// <summary>Reads a UTF-8 key as a string, or <see langword="null"/> if absent.</summary>
     public string? GetString(string key, ReadOptions? options = null)
     {
-        byte[]? value = Get(Encoding.UTF8.GetBytes(key), options);
-        return value is null ? null : Encoding.UTF8.GetString(value);
+        using var utf8 = PooledUtf8.Encode(key);
+        return NativeMethods.DecodePinnedAndDestroy(GetPinnedHandle(utf8.First, options));
     }
 
     /// <inheritdoc cref="GetString(string, ReadOptions?)"/>
     public string? GetString(string key, ColumnFamilyHandle cf, ReadOptions? options = null)
     {
-        byte[]? value = Get(Encoding.UTF8.GetBytes(key), cf, options);
-        return value is null ? null : Encoding.UTF8.GetString(value);
+        using var utf8 = PooledUtf8.Encode(key);
+        return NativeMethods.DecodePinnedAndDestroy(GetPinnedHandle(utf8.First, cf, options));
     }
 
     /// <summary>
     /// Reads a key without copying the value into managed memory, or returns
     /// <see langword="null"/> if it is absent.
     /// </summary>
-    public unsafe PinnableSlice? GetPinned(ReadOnlySpan<byte> key, ReadOptions? options = null)
+    public PinnableSlice? GetPinned(ReadOnlySpan<byte> key, ReadOptions? options = null)
+    {
+        nint slice = GetPinnedHandle(key, options);
+        return slice == nint.Zero ? null : new PinnableSlice(slice, this);
+    }
+
+    /// <inheritdoc cref="GetPinned(ReadOnlySpan{byte}, ReadOptions?)"/>
+    public PinnableSlice? GetPinned(ReadOnlySpan<byte> key, ColumnFamilyHandle cf, ReadOptions? options = null)
+    {
+        nint slice = GetPinnedHandle(key, cf, options);
+        return slice == nint.Zero ? null : new PinnableSlice(slice, this);
+    }
+
+    // The native pinned reads, which the copying reads go through too, rather
+    // than through rocksdb_transactiondb_get, which is a pinned read underneath
+    // that then copies the value twice; see NativeMethods.CopyPinnedAndDestroy.
+    // Each returns zero when the key is absent, and the caller owns the slice.
+
+    private unsafe nint GetPinnedHandle(ReadOnlySpan<byte> key, ReadOptions? options)
     {
         nint err = default;
         nint slice;
@@ -417,11 +420,10 @@ public sealed class TransactionDb : RocksDbHandle
         GC.KeepAlive(options);
 
         NativeMethods.ThrowOnError(err);
-        return slice == nint.Zero ? null : new PinnableSlice(slice, this);
+        return slice;
     }
 
-    /// <inheritdoc cref="GetPinned(ReadOnlySpan{byte}, ReadOptions?)"/>
-    public unsafe PinnableSlice? GetPinned(ReadOnlySpan<byte> key, ColumnFamilyHandle cf, ReadOptions? options = null)
+    private unsafe nint GetPinnedHandle(ReadOnlySpan<byte> key, ColumnFamilyHandle cf, ReadOptions? options)
     {
         ArgumentNullException.ThrowIfNull(cf);
 
@@ -433,7 +435,7 @@ public sealed class TransactionDb : RocksDbHandle
         GC.KeepAlive(options);
 
         NativeMethods.ThrowOnError(err);
-        return slice == nint.Zero ? null : new PinnableSlice(slice, this);
+        return slice;
     }
 
     // ── Iterators and snapshots ──────────────────────────────────────────────
@@ -646,11 +648,6 @@ public sealed class TransactionDb : RocksDbHandle
         int found = NativeMethods.rocksdb_transactiondb_property_int(Handle, propertyName, &value);
         return found == 0 ? value : null;
     }
-
-    // ── Helpers ──────────────────────────────────────────────────────────────
-
-    private static byte[]? CopyAndFree(nint value, nuint length)
-        => NativeMethods.CopyAndFree(value, length);
 
     protected override void DisposeHandle()
     {

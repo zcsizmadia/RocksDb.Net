@@ -70,11 +70,17 @@ public sealed unsafe class WriteBatch : RocksDbHandle
 
     /// <summary>Convenience overload using UTF-8 string key and value.</summary>
     public WriteBatch Put(string key, string value)
-        => Put(Encoding.UTF8.GetBytes(key), Encoding.UTF8.GetBytes(value));
+    {
+        using var utf8 = PooledUtf8.Encode(key, value);
+        return Put(utf8.First, utf8.Second);
+    }
 
     /// <summary>Convenience overload using UTF-8 string key and value in a specific column family.</summary>
     public WriteBatch Put(string key, string value, ColumnFamilyHandle cf)
-        => Put(Encoding.UTF8.GetBytes(key), Encoding.UTF8.GetBytes(value), cf);
+    {
+        using var utf8 = PooledUtf8.Encode(key, value);
+        return Put(utf8.First, utf8.Second, cf);
+    }
 
     // ── Merge ────────────────────────────────────────────────────────────────
 
@@ -117,10 +123,18 @@ public sealed unsafe class WriteBatch : RocksDbHandle
     }
 
     /// <summary>Convenience overload using a UTF-8 string key.</summary>
-    public WriteBatch Delete(string key) => Delete(Encoding.UTF8.GetBytes(key));
+    public WriteBatch Delete(string key)
+    {
+        using var utf8 = PooledUtf8.Encode(key);
+        return Delete(utf8.First);
+    }
 
     /// <summary>Convenience overload using a UTF-8 string key in a column family.</summary>
-    public WriteBatch Delete(string key, ColumnFamilyHandle cf) => Delete(Encoding.UTF8.GetBytes(key), cf);
+    public WriteBatch Delete(string key, ColumnFamilyHandle cf)
+    {
+        using var utf8 = PooledUtf8.Encode(key);
+        return Delete(utf8.First, cf);
+    }
 
     // ── SingleDelete ─────────────────────────────────────────────────────────
 

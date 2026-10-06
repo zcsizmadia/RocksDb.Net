@@ -137,11 +137,11 @@ internal static unsafe partial class NativeMethods
     /// released, which is why this is not a loop that throws on the first
     /// non-zero entry.
     /// </remarks>
-    internal static void ThrowFirstError(nint[] errs)
+    internal static void ThrowFirstError(nint* errs, int count)
     {
         nint first = nint.Zero;
 
-        for (int i = 0; i < errs.Length; i++)
+        for (int i = 0; i < count; i++)
         {
             if (errs[i] == nint.Zero)
             {
@@ -190,6 +190,63 @@ internal static unsafe partial class NativeMethods
     }
 
     /// <summary>
+    /// Copies the value a pinned read returned into a managed array and
+    /// destroys the slice. Returns null for a null slice, which is how the
+    /// pinned reads report a missing key.
+    /// </summary>
+    /// <remarks>
+    /// This is how the array-returning reads are implemented. <c>rocksdb_get</c>
+    /// is a pinned read underneath that then copies the value into a
+    /// <c>std::string</c>, and <c>c.cc</c> copies that again into a fresh
+    /// <c>malloc</c> buffer before the wrapper copies it a third time. Reading
+    /// pinned instead leaves one copy, straight from the block cache or
+    /// memtable, and no value-sized allocation on the native side.
+    /// </remarks>
+    internal static byte[]? CopyPinnedAndDestroy(nint slice)
+    {
+        if (slice == nint.Zero)
+        {
+            return null;
+        }
+
+        try
+        {
+            byte* data = rocksdb_pinnableslice_value(slice, out nuint length);
+            return data is null ? [] : new ReadOnlySpan<byte>(data, checked((int)length)).ToArray();
+        }
+        finally
+        {
+            rocksdb_pinnableslice_destroy(slice);
+        }
+    }
+
+    /// <summary>
+    /// Decodes the value a pinned read returned as UTF-8 and destroys the
+    /// slice. Returns null for a null slice.
+    /// </summary>
+    /// <remarks>
+    /// Decodes in place rather than copying to an array first, so the only
+    /// allocation is the string itself.
+    /// </remarks>
+    internal static string? DecodePinnedAndDestroy(nint slice)
+    {
+        if (slice == nint.Zero)
+        {
+            return null;
+        }
+
+        try
+        {
+            byte* data = rocksdb_pinnableslice_value(slice, out nuint length);
+            return data is null ? string.Empty : System.Text.Encoding.UTF8.GetString(data, checked((int)length));
+        }
+        finally
+        {
+            rocksdb_pinnableslice_destroy(slice);
+        }
+    }
+
+    /// <summary>
     /// Decodes a UTF-8 string the caller owns and frees it. Returns null for a null pointer.
     /// </summary>
     /// <inheritdoc cref="CopyAndFree" path="/remarks"/>
@@ -220,16 +277,23 @@ internal static unsafe partial class NativeMethods
     /// still frees the values after it and the error strings, and the first
     /// exception is rethrown once they have been.
     /// </remarks>
-    internal static byte[]?[] CopyAndFreeBatch(byte*[] values, nuint[] lengths, nint[] errs)
+    /// <param name="batch">The batch the read wrote its results into.</param>
+    /// <param name="pinned">
+    /// Whether the value slots hold pinned slices, from the batched read, or
+    /// <c>malloc</c> buffers with their lengths, from <c>rocksdb_multi_get</c>.
+    /// </param>
+    internal static byte[]?[] CopyAndFreeBatch(in NativeKeyBatch batch, bool pinned)
     {
-        var results = new byte[]?[values.Length];
+        var results = new byte[]?[batch.Count];
         Exception? copyFailure = null;
 
-        for (int i = 0; i < values.Length; i++)
+        for (int i = 0; i < batch.Count; i++)
         {
             try
             {
-                results[i] = CopyAndFree((nint)values[i], lengths[i]);
+                results[i] = pinned
+                    ? CopyPinnedAndDestroy(batch.Values[i])
+                    : CopyAndFree(batch.Values[i], batch.ValueSizes[i]);
             }
             catch (Exception e)
             {
@@ -239,18 +303,18 @@ internal static unsafe partial class NativeMethods
 
         if (copyFailure is not null)
         {
-            foreach (nint err in errs)
+            for (int i = 0; i < batch.Count; i++)
             {
-                if (err != nint.Zero)
+                if (batch.Errors[i] != nint.Zero)
                 {
-                    rocksdb_free(err);
+                    rocksdb_free(batch.Errors[i]);
                 }
             }
 
             System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(copyFailure);
         }
 
-        ThrowFirstError(errs);
+        ThrowFirstError(batch.Errors, batch.Count);
         return results;
     }
 
