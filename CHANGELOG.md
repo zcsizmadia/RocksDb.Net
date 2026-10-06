@@ -178,6 +178,10 @@ is allowed to be.
   destroy the native struct while RocksDb was still using it. About a hundred
   calls across the library now keep their arguments alive until they return,
   and a test scans the sources so a new call cannot leave one out.
+- **`GetAggregatedPropertyInt` threw if a column family was dropped while it
+  summed.** It read the family names first and looked each one up after, so a
+  family dropped in between threw `KeyNotFoundException`. A dropped family is
+  now left out of the sum.
 - **Disposal is now documented as the exception to thread safety.** Disposing
   a database while another thread is inside a call on it is an access violation,
   not an `ObjectDisposedException`. That was always so; the class documentation
