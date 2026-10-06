@@ -82,6 +82,8 @@ RocksDb holds the filter as a raw pointer it never frees, so the wrapper owns it
 
 `ChangeValue` accepts an empty array, which blanks the value while keeping the key. Returning `ChangeValue` with `newValue` left `null` is a contradiction and leaves the entry untouched.
 
+A filter that changes many values can override the other form of `Filter` instead, `Filter(int level, ReadOnlySpan<byte> key, ReadOnlySpan<byte> existingValue, IBufferWriter<byte> newValue)`, and write the replacement into the buffer rather than allocating an array for each one. Writing nothing with `ChangeValue` there means an empty value. Override one form, not both: by default the buffer form calls the array form, so a filter written against the arrays behaves exactly as before.
+
 ## Rewriting rather than dropping
 
 The same hook migrates a value format in place, so the cost is paid by compaction rather than by a migration script:

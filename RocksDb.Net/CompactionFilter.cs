@@ -186,7 +186,7 @@ public abstract class CompactionFilter : RocksDbHandle
             (nint)(delegate* unmanaged[Cdecl]<nint, nint>)&GetNameFromPinnedIntPtrSafe);
     }
 
-    // ── Abstract filter method ───────────────────────────────────────────────
+    // ── Filter methods: override one form ────────────────────────────────────
     /// <summary>
     /// Called for each key-value pair during table-file creation.
     /// </summary>

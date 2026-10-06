@@ -89,7 +89,7 @@ public sealed class CounterMergeOperator : MergeOperator
         {
             if (operand.Length != sizeof(long))
             {
-                newValue = [];
+                newValue = null;
                 return false;   // decline, and let FullMerge handle it
             }
 
@@ -124,9 +124,38 @@ db.Merge("visits"u8, Delta(5));
 long visits = BinaryPrimitives.ReadInt64LittleEndian(db.Get("visits"u8));   // 6
 ```
 
+### Merging without allocating
+
+The operator above allocates an array per operand and one for the result on every merge. Each method also has a span form, which reads the operands in place through `MergeOperands` and writes the result into an `IBufferWriter<byte>`:
+
+```csharp
+public sealed class SpanCounterMergeOperator : MergeOperator
+{
+    public SpanCounterMergeOperator() : base("example.span-counter") { }
+
+    public override bool FullMerge(
+        ReadOnlySpan<byte> key, bool hasExistingValue, ReadOnlySpan<byte> existingValue,
+        MergeOperands operands, IBufferWriter<byte> newValue)
+    {
+        long total = hasExistingValue ? BinaryPrimitives.ReadInt64LittleEndian(existingValue) : 0;
+
+        for (int i = 0; i < operands.Count; i++)
+        {
+            total += BinaryPrimitives.ReadInt64LittleEndian(operands[i]);
+        }
+
+        BinaryPrimitives.WriteInt64LittleEndian(newValue.GetSpan(sizeof(long)), total);
+        newValue.Advance(sizeof(long));
+        return true;
+    }
+}
+```
+
+Override one form of each method, not both. By default the span form copies the operands and calls the array form, which is why an operator written against the arrays keeps working unchanged. One that overrides neither form of `FullMerge` fails every merge, with the reason reported through `RocksDbCallbacks.UnhandledException`. `PartialMerge` is optional in either form.
+
 Three things to know.
 
-**The operands are managed copies and may be kept.** RocksDb builds those arrays as call-scoped locals natively, and the wrapper materialises them before calling you, so storing the list beyond the callback is safe.
+**Array operands are managed copies and may be kept; span operands may not.** RocksDb builds the operands as call-scoped locals natively. The array form copies them before calling you, so storing the list beyond the callback is safe. `MergeOperands` and the buffer writer point into RocksDb's memory and are valid only until the callback returns.
 
 **Returning false from `FullMerge` is a real failure.** The read that triggered it reports a corruption error. Use it when the operands genuinely cannot be combined, not as a way to skip work.
 

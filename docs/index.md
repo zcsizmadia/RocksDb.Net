@@ -35,6 +35,7 @@ string? value = db.GetString("key");
 - **[Ownership and lifetime](articles/ownership.md)** for what owns which native handle. Worth reading before attaching a comparator or logger, because the rules are not uniform.
 - **[Writing callbacks](articles/writing-callbacks.md)** for comparators, merge operators, loggers and event listeners, and **[Compaction filters](articles/compaction-filters.md)** for transforming data as it is rewritten.
 - **[Callbacks and exceptions](articles/callbacks.md)** for what happens when one of those throws, which differs per callback and in one case terminates the process.
+- **[Logging and metrics](articles/observability.md)** for RocksDb's info log through `ILogger`, its statistics and key properties as `System.Diagnostics.Metrics` instruments, and what statistics cost.
 - **[Samples](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples)** in the repository, one per feature area.
 
 ## Versioning

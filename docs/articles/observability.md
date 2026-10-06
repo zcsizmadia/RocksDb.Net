@@ -47,6 +47,8 @@ using var metrics = RocksDbMetrics.Register(db, new RocksDbMetricsOptions
 });
 ```
 
+`Register` takes a `RocksDb`. `TransactionDb` and `OptimisticTransactionDb` cannot be exported yet, though `UseLogging` works for them as for any database.
+
 Instruments are created on a meter called `RocksDb.Net` and named as RocksDb names them, so `rocksdb.block.cache.miss` here is the counter of that name in RocksDb's statistics dump, its documentation and existing dashboards.
 
 | Source | Instrument | Notes |

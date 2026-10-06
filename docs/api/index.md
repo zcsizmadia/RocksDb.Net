@@ -13,6 +13,7 @@ The generated P/Invoke declarations in `RocksDbNet.Native` are excluded. There a
 - `TransactionDb` and `OptimisticTransactionDb` add conflict detection on top of that, by locking and by validating at commit respectively. Both hand out the same `Transaction`. See [Transactions](../articles/transactions.md) for which to choose, since they fail in different places rather than one being safer.
 - `Iterator` scans ranges. `Snapshot` pins a consistent view.
 - `BackupEngine` and `Checkpoint` copy a database.
+- `RocksDbMetrics` exports statistics and key properties as `System.Diagnostics.Metrics` instruments, and `DbOptions.UseLogging` sends the info log to an `ILogger` through `MicrosoftExtensionsLogger`. See [Logging and metrics](../articles/observability.md).
 - `EventListener`, `CompactionFilter`, `MergeOperator`, `Comparator` and `WalFilter` are the extension points. Read [Callbacks and exceptions](../articles/callbacks.md) before implementing one.
 
 Before writing much code, [Ownership and lifetime](../articles/ownership.md) is worth ten minutes: RocksDb is inconsistent about which side frees what, and the wrapper follows it rather than hiding it.

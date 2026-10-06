@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Text;
 
@@ -438,7 +439,7 @@ public class DocumentationGuideTests
             {
                 if (operand.Length != sizeof(long))
                 {
-                    newValue = [];
+                    newValue = null;
                     return false;
                 }
 
@@ -473,6 +474,45 @@ public class DocumentationGuideTests
         long visits = BinaryPrimitives.ReadInt64LittleEndian(db.Get("visits"u8));
 
         Assert.Equal(6, visits);
+    }
+
+    public sealed class SpanCounterMergeOperator : MergeOperator
+    {
+        public SpanCounterMergeOperator() : base("example.span-counter") { }
+
+        public override bool FullMerge(
+            ReadOnlySpan<byte> key, bool hasExistingValue, ReadOnlySpan<byte> existingValue,
+            MergeOperands operands, IBufferWriter<byte> newValue)
+        {
+            long total = hasExistingValue ? BinaryPrimitives.ReadInt64LittleEndian(existingValue) : 0;
+
+            for (int i = 0; i < operands.Count; i++)
+            {
+                total += BinaryPrimitives.ReadInt64LittleEndian(operands[i]);
+            }
+
+            BinaryPrimitives.WriteInt64LittleEndian(newValue.GetSpan(sizeof(long)), total);
+            newValue.Advance(sizeof(long));
+            return true;
+        }
+    }
+
+    [Fact]
+    public void WritingCallbacks_SpanMergeOperatorAccumulates()
+    {
+        var options = new DbOptions { CreateIfMissing = true };
+        options.MergeOperator = new SpanCounterMergeOperator();
+
+        string path = TestDb.InMemory(options);
+        using var db = RocksDb.Open(options, path);
+
+        db.Put("visits"u8, Delta(10));
+        db.Merge("visits"u8, Delta(1));
+        db.Merge("visits"u8, Delta(5));
+
+        long visits = BinaryPrimitives.ReadInt64LittleEndian(db.Get("visits"u8));
+
+        Assert.Equal(16, visits);
     }
 
     /// <summary>

@@ -59,6 +59,7 @@ public sealed partial class MicrosoftExtensionsLogger : Logger
     // IsEnabled is the filter, checked by the generated logging method.
     private readonly LogLevel? _minimum;
 
+    /// <summary>Creates a logger that forwards RocksDb's info log to <paramref name="logger"/>.</summary>
     /// <param name="logger">Where to send the log.</param>
     /// <param name="minimumLevel">
     /// The lowest RocksDb level to pass on, or <see langword="null"/> for the
@@ -93,6 +94,7 @@ public sealed partial class MicrosoftExtensionsLogger : Logger
         _ => LogLevel.Information,
     };
 
+    /// <inheritdoc/>
     public override void Log(InfoLogLevel logLevel, string message)
     {
         LogLevel level = ToLogLevel(logLevel);

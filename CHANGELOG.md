@@ -6,7 +6,7 @@ The package version is `<RocksDbVersion>.<Revision>`, so `11.8.1.1` wraps RocksD
 
 Breaking changes land only when `RocksDbVersion` changes. A revision bump alone, `11.8.1.1` to `11.8.1.2`, never breaks source or binary compatibility. A RocksDb version bump already means a different native library and a required re-test, which is the point at which API cleanup costs least.
 
-## 11.8.1.2
+## 11.8.1.3
 
 Same RocksDb version, so nothing here breaks source or binary compatibility.
 Everything below is either additive or internal, which is what a revision bump
@@ -84,7 +84,6 @@ is allowed to be.
   released with `close_base_db` rather than `rocksdb_close`, so surfacing it as
   a `RocksDb` would hand callers an object whose disposal closes the real
   database.
-
 - **Batched and copy-free reads on `Transaction`.** `MultiGet` reads a set of
   keys in one native call instead of one per key, with the same column-family
   overloads `RocksDb` has, including one family per key. `MultiGetForUpdate`
@@ -94,7 +93,6 @@ is allowed to be.
   Its locks are always exclusive, because the C API's batched form takes no
   shared-lock flag. `GetPinned` and `GetPinnedForUpdate` return a
   `PinnableSlice` rather than copying, matching the database's own.
-
 - **Two-phase commit on `Transaction`.** `Prepare` makes a transaction's writes
   durable without committing them, `Name` identifies it, and
   `TransactionDb.GetPreparedTransactions` hands back the transactions that were
@@ -105,46 +103,8 @@ is allowed to be.
   recovered transaction still holds its locks, so it has to be resolved rather
   than merely disposed.
 
-- **NativeAOT and trimming are supported, and verified rather than claimed.**
-  `IsAotCompatible` is set on the library, which implies `IsTrimmable` and turns
-  on both analysers for all three target frameworks. CI publishes two samples
-  with `PublishAot=true` and runs them — one of them driving a managed merge
-  operator through a function pointer — because the analysers cannot see a
-  native library that fails to load beside an AOT-published executable, or a
-  callback that faults once the runtime is gone.
-- **`EventListener.Subscribed`** narrows which of the ten events a listener is
-  told about, as `EventKinds` flags. The default is every event, so an existing
-  listener behaves exactly as before and cannot go silent by forgetting to
-  declare something it overrode. Narrowing is an optimisation: what it saves is
-  constructing the job-info object an event carries, which the benchmarks put at
-  roughly half the allocation of a listener taking five events.
-- **`LoadedOptions.LoadLatest`** reads the `OPTIONS-` file RocksDb writes into a
-  database directory and hands back the options it was last opened with, with
-  each column family's options separately. For reopening a database you did not
-  configure, where the alternative is to guess. Note the split: RocksDb builds
-  the database options from the file's DBOptions plus *default* column family
-  options, so a column-family setting — the write buffer size, compression, the
-  comparator — reads back as its default from `DatabaseOptions` and is only
-  correct in `ColumnFamilyOptions`.
-- **`MemoryConsumers` and `ApproximateMemoryUsage`** take one memory snapshot
-  spanning several databases and several caches at once. Only the aggregation is
-  new: the individual figures are already reachable through `Cache.Usage` and
-  property reads, and for a single database those remain the simpler answer.
-- **A benchmark project**, `RocksDb.Net.Benchmarks`, deliberately outside the
-  solution so the ordinary build does not pay for it. Not a CI gate: hosted
-  runners are too noisy for a throughput threshold, and a performance gate that
-  fails at random gets disabled and then discredits the checks that matter. Run
-  on demand, with results committed next to the machine and version they came
-  from.
-
 ### Fixed
 
-- **The native library resolver mishandled a single-file or AOT publish.**
-  `Assembly.Location` returns an empty string for an assembly embedded in one,
-  and the code survived only because asking for the directory of an empty path
-  returns null and fell through to `AppContext.BaseDirectory` — correct by
-  accident. Now handled deliberately. This is the path AOT actually takes: the
-  native library lands beside the executable rather than under `runtimes/`.
 - **`TransactionDb` and `OptimisticTransactionDb` listed the default column
   family but could not resolve it.** `ColumnFamilyNames` reported `default` and
   `GetColumnFamily("default")` threw `KeyNotFoundException` — with a message
@@ -153,7 +113,6 @@ is allowed to be.
   only reachable through the underlying non-transactional database, so this
   takes a base-database wrapper and releases it with `close_base_db`, which
   frees that wrapper alone and leaves the database open.
-
 - **`DropColumnFamily` left the dropped name registered.** The family was gone
   from the database but stayed in `ColumnFamilyNames`, and `GetColumnFamily`
   went on handing out a handle for it, so the listing and the lookup both
@@ -180,7 +139,10 @@ is allowed to be.
   disposed object cached, so every later lookup returned it. The default family
   is now resolved again instead. A named family cannot be reopened by name, so
   looking one up after its handle was disposed throws `ObjectDisposedException`
-  naming the family, at the lookup rather than at the next use.
+  naming the family, at the lookup rather than at the next use. That includes
+  `TryGetColumnFamily`, which used to return `true` with the disposed handle:
+  code that called it after disposing the handle now gets the exception from
+  the lookup instead of from its first use of the result.
 - **A transaction kept every iterator it had ever opened.** Disposed iterators
   were dropped from its list only at commit or rollback. They are now pruned as
   the list grows.
@@ -273,6 +235,58 @@ is allowed to be.
     longer touches two `ConcurrentDictionary` instances on every key it sees.
     About 10% faster on reads resolving merges through an operator written
     against the arrays.
+
+## 11.8.1.2
+
+Same RocksDb version, so nothing here breaks source or binary compatibility.
+Everything below is either additive or internal, which is what a revision bump
+is allowed to be.
+
+### Added
+
+- **NativeAOT and trimming are supported, and verified rather than claimed.**
+  `IsAotCompatible` is set on the library, which implies `IsTrimmable` and turns
+  on both analysers for all three target frameworks. CI publishes two samples
+  with `PublishAot=true` and runs them — one of them driving a managed merge
+  operator through a function pointer — because the analysers cannot see a
+  native library that fails to load beside an AOT-published executable, or a
+  callback that faults once the runtime is gone.
+- **`EventListener.Subscribed`** narrows which of the ten events a listener is
+  told about, as `EventKinds` flags. The default is every event, so an existing
+  listener behaves exactly as before and cannot go silent by forgetting to
+  declare something it overrode. Narrowing is an optimisation: what it saves is
+  constructing the job-info object an event carries, which the benchmarks put at
+  roughly half the allocation of a listener taking five events.
+- **`LoadedOptions.LoadLatest`** reads the `OPTIONS-` file RocksDb writes into a
+  database directory and hands back the options it was last opened with, with
+  each column family's options separately. For reopening a database you did not
+  configure, where the alternative is to guess. Note the split: RocksDb builds
+  the database options from the file's DBOptions plus *default* column family
+  options, so a column-family setting — the write buffer size, compression, the
+  comparator — reads back as its default from `DatabaseOptions` and is only
+  correct in `ColumnFamilyOptions`.
+- **`MemoryConsumers` and `ApproximateMemoryUsage`** take one memory snapshot
+  spanning several databases and several caches at once. Only the aggregation is
+  new: the individual figures are already reachable through `Cache.Usage` and
+  property reads, and for a single database those remain the simpler answer.
+- **A benchmark project**, `RocksDb.Net.Benchmarks`, deliberately outside the
+  solution so the ordinary build does not pay for it. Not a CI gate: hosted
+  runners are too noisy for a throughput threshold, and a performance gate that
+  fails at random gets disabled and then discredits the checks that matter. Run
+  on demand, with results committed next to the machine and version they came
+  from.
+
+### Fixed
+
+- **The native library resolver mishandled a single-file or AOT publish.**
+  `Assembly.Location` returns an empty string for an assembly embedded in one,
+  and the code survived only because asking for the directory of an empty path
+  returns null and fell through to `AppContext.BaseDirectory` — correct by
+  accident. Now handled deliberately. This is the path AOT actually takes: the
+  native library lands beside the executable rather than under `runtimes/`.
+
+### Changed
+
 - **Callbacks reach managed code through `[UnmanagedCallersOnly]` function
   pointers instead of marshalled delegates.** All 38
   `Marshal.GetFunctionPointerForDelegate` sites are gone, along with the
