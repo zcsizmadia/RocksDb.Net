@@ -202,6 +202,7 @@ public sealed class WriteBatchWithIndex : RocksDbHandle
         fixed (byte* k = key)
             value = NativeMethods.rocksdb_writebatch_wi_get_from_batch(
                 Handle, options.Handle, k, (nuint)key.Length, out length, ref err);
+        GC.KeepAlive(options);
 
         NativeMethods.ThrowOnError(err);
         return CopyAndFree(value, length);
@@ -219,6 +220,7 @@ public sealed class WriteBatchWithIndex : RocksDbHandle
         fixed (byte* k = key)
             value = NativeMethods.rocksdb_writebatch_wi_get_from_batch_cf(
                 Handle, options.Handle, cf.Handle, k, (nuint)key.Length, out length, ref err);
+        GC.KeepAlive(options);
 
         NativeMethods.ThrowOnError(err);
         return CopyAndFree(value, length);
@@ -253,6 +255,8 @@ public sealed class WriteBatchWithIndex : RocksDbHandle
             value = NativeMethods.rocksdb_writebatch_wi_get_from_batch_and_db(
                 Handle, db.Handle, (options ?? _defaultReadOptions).Handle,
                 k, (nuint)key.Length, out length, ref err);
+        GC.KeepAlive(db);
+        GC.KeepAlive(options);
 
         NativeMethods.ThrowOnError(err);
         return CopyAndFree(value, length);
@@ -272,6 +276,8 @@ public sealed class WriteBatchWithIndex : RocksDbHandle
             value = NativeMethods.rocksdb_writebatch_wi_get_from_batch_and_db_cf(
                 Handle, db.Handle, (options ?? _defaultReadOptions).Handle, cf.Handle,
                 k, (nuint)key.Length, out length, ref err);
+        GC.KeepAlive(db);
+        GC.KeepAlive(options);
 
         NativeMethods.ThrowOnError(err);
         return CopyAndFree(value, length);

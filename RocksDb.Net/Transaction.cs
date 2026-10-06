@@ -159,6 +159,7 @@ public sealed class Transaction : RocksDbHandle
         fixed (byte* k = key)
             value = NativeMethods.rocksdb_transaction_get(Handle, (options ?? _defaultReadOptions).Handle,
                 k, (nuint)key.Length, out length, ref err);
+        GC.KeepAlive(options);
 
         NativeMethods.ThrowOnError(err);
         return CopyAndFree(value, length);
@@ -175,6 +176,7 @@ public sealed class Transaction : RocksDbHandle
         fixed (byte* k = key)
             value = NativeMethods.rocksdb_transaction_get_cf(Handle, (options ?? _defaultReadOptions).Handle,
                 cf.Handle, k, (nuint)key.Length, out length, ref err);
+        GC.KeepAlive(options);
 
         NativeMethods.ThrowOnError(err);
         return CopyAndFree(value, length);
@@ -228,6 +230,7 @@ public sealed class Transaction : RocksDbHandle
         fixed (byte* k = key)
             value = NativeMethods.rocksdb_transaction_get_for_update(Handle, (options ?? _defaultReadOptions).Handle,
                 k, (nuint)key.Length, out length, exclusive ? (byte)1 : (byte)0, ref err);
+        GC.KeepAlive(options);
 
         NativeMethods.ThrowOnError(err);
         return CopyAndFree(value, length);
@@ -245,6 +248,7 @@ public sealed class Transaction : RocksDbHandle
         fixed (byte* k = key)
             value = NativeMethods.rocksdb_transaction_get_for_update_cf(Handle, (options ?? _defaultReadOptions).Handle,
                 cf.Handle, k, (nuint)key.Length, out length, exclusive ? (byte)1 : (byte)0, ref err);
+        GC.KeepAlive(options);
 
         NativeMethods.ThrowOnError(err);
         return CopyAndFree(value, length);
@@ -352,6 +356,7 @@ public sealed class Transaction : RocksDbHandle
         fixed (byte* k = key)
             slice = NativeMethods.rocksdb_transaction_get_pinned(
                 Handle, (options ?? _defaultReadOptions).Handle, k, (nuint)key.Length, ref err);
+        GC.KeepAlive(options);
 
         // A null return means either "not found" or "failed", so the error has
         // to be checked before deciding which.
@@ -370,6 +375,7 @@ public sealed class Transaction : RocksDbHandle
         fixed (byte* k = key)
             slice = NativeMethods.rocksdb_transaction_get_pinned_cf(
                 Handle, (options ?? _defaultReadOptions).Handle, cf.Handle, k, (nuint)key.Length, ref err);
+        GC.KeepAlive(options);
 
         NativeMethods.ThrowOnError(err);
 
@@ -389,6 +395,7 @@ public sealed class Transaction : RocksDbHandle
             slice = NativeMethods.rocksdb_transaction_get_pinned_for_update(
                 Handle, (options ?? _defaultReadOptions).Handle,
                 k, (nuint)key.Length, exclusive ? (byte)1 : (byte)0, ref err);
+        GC.KeepAlive(options);
 
         NativeMethods.ThrowOnError(err);
 
@@ -407,6 +414,7 @@ public sealed class Transaction : RocksDbHandle
             slice = NativeMethods.rocksdb_transaction_get_pinned_for_update_cf(
                 Handle, (options ?? _defaultReadOptions).Handle, cf.Handle,
                 k, (nuint)key.Length, exclusive ? (byte)1 : (byte)0, ref err);
+        GC.KeepAlive(options);
 
         NativeMethods.ThrowOnError(err);
 

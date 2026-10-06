@@ -34,7 +34,10 @@ public sealed class SstFileManager : RocksDbHandle
     {
         using Env? owned = env is null ? Env.Create() : null;
 
-        return new SstFileManager(NativeMethods.rocksdb_sst_file_manager_create((env ?? owned!).Handle));
+        nint handle = NativeMethods.rocksdb_sst_file_manager_create((env ?? owned!).Handle);
+        GC.KeepAlive(env);
+
+        return new SstFileManager(handle);
     }
 
     /// <summary>Total size of the files the manager is tracking, in bytes.</summary>

@@ -148,6 +148,8 @@ public sealed class LoadedOptions : IDisposable
             &names,
             &cfOptions,
             ref err);
+        GC.KeepAlive(effectiveEnv);
+        GC.KeepAlive(effectiveCache);
 
         NativeMethods.ThrowOnError(err);
 

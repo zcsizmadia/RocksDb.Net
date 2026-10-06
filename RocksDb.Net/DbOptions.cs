@@ -839,6 +839,7 @@ public sealed class DbOptions : RocksDbHandle
         {
             ArgumentNullException.ThrowIfNull(value);
             NativeMethods.rocksdb_options_set_block_based_table_factory(Handle, value.Handle);
+            GC.KeepAlive(value);
         }
     }
 
@@ -851,6 +852,7 @@ public sealed class DbOptions : RocksDbHandle
         {
             ArgumentNullException.ThrowIfNull(value);
             NativeMethods.rocksdb_options_set_row_cache(Handle, value.Handle);
+            GC.KeepAlive(value);
         }
     }
 
@@ -868,6 +870,7 @@ public sealed class DbOptions : RocksDbHandle
         {
             ArgumentNullException.ThrowIfNull(value);
             NativeMethods.rocksdb_options_set_ratelimiter(Handle, value.Handle);
+            GC.KeepAlive(value);
         }
     }
 
@@ -912,6 +915,7 @@ public sealed class DbOptions : RocksDbHandle
         {
             ArgumentNullException.ThrowIfNull(value);
             NativeMethods.rocksdb_options_set_blob_cache(Handle, value.Handle);
+            GC.KeepAlive(value);
         }
     }
 
@@ -931,6 +935,7 @@ public sealed class DbOptions : RocksDbHandle
         {
             ArgumentNullException.ThrowIfNull(value);
             NativeMethods.rocksdb_options_set_sst_file_manager(Handle, value.Handle);
+            GC.KeepAlive(value);
         }
     }
 
@@ -950,6 +955,7 @@ public sealed class DbOptions : RocksDbHandle
         {
             ArgumentNullException.ThrowIfNull(value);
             NativeMethods.rocksdb_options_set_sst_partitioner_factory(Handle, value.Handle);
+            GC.KeepAlive(value);
         }
     }
 
@@ -1040,6 +1046,7 @@ public sealed class DbOptions : RocksDbHandle
         {
             ArgumentNullException.ThrowIfNull(value);
             NativeMethods.rocksdb_options_set_universal_compaction_options(Handle, value.Handle);
+            GC.KeepAlive(value);
         }
     }
 
@@ -1057,6 +1064,7 @@ public sealed class DbOptions : RocksDbHandle
         {
             ArgumentNullException.ThrowIfNull(value);
             NativeMethods.rocksdb_options_set_fifo_compaction_options(Handle, value.Handle);
+            GC.KeepAlive(value);
         }
     }
 
@@ -1075,6 +1083,7 @@ public sealed class DbOptions : RocksDbHandle
         {
             ArgumentNullException.ThrowIfNull(value);
             NativeMethods.rocksdb_options_set_write_buffer_manager(Handle, value.Handle);
+            GC.KeepAlive(value);
         }
     }
 
@@ -1089,6 +1098,7 @@ public sealed class DbOptions : RocksDbHandle
             // does not leave RocksDb holding a pointer it believes it owns.
             value.AttachExclusively(nameof(PrefixExtractor));
             NativeMethods.rocksdb_options_set_prefix_extractor(Handle, value.Handle);
+            GC.KeepAlive(value);
         }
     }
 
@@ -1136,6 +1146,7 @@ public sealed class DbOptions : RocksDbHandle
             // does not leave RocksDb holding a pointer it believes it owns.
             value.AttachExclusively(nameof(CompactionFilterFactory));
             NativeMethods.rocksdb_options_set_compaction_filter_factory(Handle, value.Handle);
+            GC.KeepAlive(value);
         }
     }
 
@@ -1151,6 +1162,7 @@ public sealed class DbOptions : RocksDbHandle
             // does not leave RocksDb holding a pointer it believes it owns.
             value.AttachExclusively(nameof(MergeOperator));
             NativeMethods.rocksdb_options_set_merge_operator(Handle, value.Handle);
+            GC.KeepAlive(value);
         }
     }
 
@@ -1235,6 +1247,7 @@ public sealed class DbOptions : RocksDbHandle
 
         listener.AttachExclusively(nameof(AddEventListener));
         NativeMethods.rocksdb_options_add_eventlistener(Handle, listener.Handle);
+        GC.KeepAlive(listener);
 
         return this;
     }
@@ -2574,6 +2587,7 @@ public sealed class DbOptions : RocksDbHandle
     {
         ArgumentNullException.ThrowIfNull(factory);
         NativeMethods.rocksdb_options_set_file_checksum_gen_factory(Handle, factory.Handle);
+        GC.KeepAlive(factory);
         return this;
     }
 
