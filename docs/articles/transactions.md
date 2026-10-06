@@ -108,7 +108,7 @@ Dispose it promptly. It pins the block the value came from, and that block canno
 
 ## Surviving a crash
 
-An ordinary transaction lives in memory. If the process dies before it commits, the work is gone and there is nothing to find afterwards. Two-phase commit changes that:
+An ordinary transaction lives in memory. If the process dies before it commits, the work is gone and there is nothing to find afterwards. Two-phase commit changes that. It needs a `TransactionDb`; RocksDb refuses to prepare an optimistic transaction.
 
 ```csharp
 using Transaction txn = db.BeginTransaction();

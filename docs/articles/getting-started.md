@@ -160,9 +160,10 @@ Two settings are worth knowing about beyond turning it on.
 
 ## Where to go next
 
-- **[Ownership and lifetime](ownership.md)** for which object frees which native handle. Worth reading before you attach a comparator or logger, because the rules are not uniform.
+- **[Ownership and lifetime](ownership.md)** for which object frees which native handle. Worth reading before you attach a comparator, a logger or a `BlobCache`, because the rules are not uniform.
+- **[Transactions](transactions.md)** for reading and writing under concurrency, and which of the two transaction databases to choose.
 - **[Compaction filters](compaction-filters.md)** to transform or expire data as it is rewritten.
-- **[Ownership and lifetime](ownership.md)** again if you attach a `BlobCache`, since it is shared with RocksDb rather than handed over.
 - **[Writing callbacks](writing-callbacks.md)** for comparators, merge operators, loggers and event listeners.
 - **[Callbacks and exceptions](callbacks.md)** for what happens when one of those throws, which is not the same for all of them.
+- **[Logging and metrics](observability.md)** to see what RocksDb is doing: its info log through `ILogger`, and its statistics as metrics.
 - **[Samples](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples)** in the repository, one per feature area.

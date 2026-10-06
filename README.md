@@ -19,9 +19,10 @@ A modern C# wrapper for [RocksDb](https://rocksdb.org/), the high-performance em
 - **Modern .NET** — targets .NET 8, 9 and 10, uses `LibraryImport`, `ReadOnlySpan<byte>`, and `ref struct` iterators
 - **NativeAOT and trimming** — `IsAotCompatible`, no reflection, and callbacks reached through `[UnmanagedCallersOnly]` function pointers rather than marshalled delegates. CI publishes samples with `PublishAot=true` and runs them, one of them with a managed merge operator, so the claim is checked rather than asserted
 - **Idiomatic C# API** — `IDisposable` handles, properties, string overloads, LINQ-compatible iterators
-- **Column families** — create, drop, and operate on multiple column families, with metadata inspection
-- **Merge operators** — built-in `UInt64Add` and custom merge operator support
+- **Column families** — create, drop, and operate on multiple column families, with metadata inspection, and open them as a secondary or with a TTL per family
+- **Merge operators** — built-in `UInt64Add` and custom merge operators, with span forms that merge without allocating
 - **Compaction filters** — filter or transform key-value pairs during compaction
+- **Observability** — statistics and key properties as `System.Diagnostics.Metrics` instruments, and RocksDb's info log through `ILogger`
 - **Atomic writes** — `WriteBatch` and `WriteBatchWithIndex` for multi-key operations that apply all at once
 - **Transactions** — `TransactionDb` for pessimistic locking and `OptimisticTransactionDb` for conflict detection at commit, with batched and pinned reads, save points, and two-phase commit for transactions that must survive a crash
 - **Backups & checkpoints** — `BackupEngine` and `Checkpoint` for point-in-time snapshots
@@ -51,8 +52,11 @@ about the native ABI, and nothing would catch it at build or load time.
 ## Documentation
 
 - **[API reference](https://zcsizmadia.github.io/RocksDb.Net/)** — every public type and member, generated from the source.
+- **[Your first database](https://zcsizmadia.github.io/RocksDb.Net/articles/getting-started.html)** — keys and values, iteration, batches, durability and column families, for anyone new to RocksDb.
+- **[Transactions](https://zcsizmadia.github.io/RocksDb.Net/articles/transactions.html)** — pessimistic and optimistic transactions, the retry an optimistic one needs, and two-phase commit for work that must survive a crash.
 - **[Ownership and lifetime](https://zcsizmadia.github.io/RocksDb.Net/articles/ownership.html)** — which side frees each native handle. RocksDb is inconsistent about this and the wrapper follows it rather than hiding it, so this is worth reading before writing much code.
 - **[Callbacks and exceptions](https://zcsizmadia.github.io/RocksDb.Net/articles/callbacks.html)** — what happens when your comparator or merge operator throws, which thread each callback runs on, and why most options only take effect at open time.
+- **[Writing callbacks](https://zcsizmadia.github.io/RocksDb.Net/articles/writing-callbacks.html)** and **[Compaction filters](https://zcsizmadia.github.io/RocksDb.Net/articles/compaction-filters.html)** — comparators, merge operators, loggers, event listeners and filters, including the span forms that merge and filter without allocating.
 - **[Logging and metrics](https://zcsizmadia.github.io/RocksDb.Net/articles/observability.html)** — RocksDb's log through `ILogger`, its statistics as metrics, and what statistics cost.
 - **[Samples](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples)** — runnable examples, one per feature area.
 - **[Changelog](https://github.com/zcsizmadia/RocksDb.Net/blob/main/CHANGELOG.md)** — what changed, and how to migrate across a breaking release.
@@ -61,6 +65,7 @@ about the native ABI, and nothing would catch it at build or load time.
 
 - .NET 8.0, 9.0 or 10.0
 - [RocksDb native binaries](https://github.com/zcsizmadia/RocksDb.Net.Runtimes) (provided by the `RocksDb.Net.Runtimes` [NuGet package](https://www.nuget.org/packages/RocksDb.Net.Runtimes))
+- `Microsoft.Extensions.Logging.Abstractions` 8.0 or later, installed with the package, for `UseLogging`
 
 ## Quick Start
 

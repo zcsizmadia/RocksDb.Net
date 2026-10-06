@@ -8,7 +8,9 @@ namespace RocksDbNet;
 /// <summary>
 /// User-defined merge operator that enables read-modify-write semantics
 /// on values stored in RocksDb. Override <c>FullMerge</c> (and
-/// optionally <c>PartialMerge</c>) to implement custom merge logic.
+/// optionally <c>PartialMerge</c>) to implement custom merge logic, in either
+/// the array form or the span form, which reads the operands in place through
+/// <see cref="MergeOperands"/> and merges without allocating.
 /// </summary>
 /// <remarks>
 /// <para>

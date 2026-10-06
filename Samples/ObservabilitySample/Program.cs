@@ -80,7 +80,11 @@ Console.WriteLine("One collection of a few of the instruments:");
 listener.RecordObservableInstruments();
 
 db.Dispose();
-RocksDb.Destroy(new DbOptions(), dbPath);
+using (var destroyOptions = new DbOptions())
+{
+    RocksDb.Destroy(destroyOptions, dbPath);
+}
+
 return 0;
 
 static void Print(Instrument instrument, double value, ReadOnlySpan<KeyValuePair<string, object?>> tags)

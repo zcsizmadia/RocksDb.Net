@@ -29,7 +29,7 @@
       revision alone must not break source or binary compatibility. See
       CHANGELOG.md under Versioning.
     -->
-    <Revision>2</Revision>
+    <Revision>3</Revision>
 
     <!--
       The last version published to nuget.org. Packing compares the package
