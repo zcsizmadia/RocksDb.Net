@@ -71,6 +71,22 @@ public class DocumentationGuideTests
     }
 
     [Fact]
+    public void GettingStarted_ReadingWithoutCopying()
+    {
+        using var temp = new TempDb();
+        RocksDb db = temp.Db;
+
+        db.Put("visits"u8, BitConverter.GetBytes(41L));
+
+        db.TryGet("visits"u8, static v => BinaryPrimitives.ReadInt64LittleEndian(v), out long visits);
+
+        bool known = db.ContainsKey("visits"u8);
+
+        Assert.Equal(41, visits);
+        Assert.True(known);
+    }
+
+    [Fact]
     public void GettingStarted_Delete()
     {
         using var db = new TempDb();

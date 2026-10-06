@@ -247,6 +247,80 @@ internal static unsafe partial class NativeMethods
     }
 
     /// <summary>
+    /// Destroys the slice a pinned read returned, and says whether there was
+    /// one, which is whether the key was found.
+    /// </summary>
+    /// <remarks>
+    /// The existence check. The value is never copied, which is what makes it
+    /// cheaper than reading the value and throwing it away.
+    /// </remarks>
+    internal static bool DestroyPinned(nint slice)
+    {
+        if (slice == nint.Zero)
+        {
+            return false;
+        }
+
+        rocksdb_pinnableslice_destroy(slice);
+        return true;
+    }
+
+    /// <summary>
+    /// Hands the value a pinned read returned to <paramref name="decode"/> in
+    /// place, then destroys the slice. Returns false for a null slice.
+    /// </summary>
+    /// <remarks>
+    /// The slice is destroyed even when the decoder throws, and the exception
+    /// reaches the caller unchanged: the decoder runs on the caller's thread,
+    /// not inside a native callback, so nothing needs to stop it unwinding.
+    /// </remarks>
+    internal static bool DecodePinnedAndDestroy<T>(nint slice, ValueDecoder<T> decode, [MaybeNullWhen(false)] out T value)
+    {
+        if (slice == nint.Zero)
+        {
+            value = default;
+            return false;
+        }
+
+        try
+        {
+            value = decode(PinnedValue(slice));
+            return true;
+        }
+        finally
+        {
+            rocksdb_pinnableslice_destroy(slice);
+        }
+    }
+
+    /// <inheritdoc cref="DecodePinnedAndDestroy{T}(nint, ValueDecoder{T}, out T)"/>
+    internal static bool DecodePinnedAndDestroy<TState, T>(
+        nint slice, TState state, ValueDecoder<TState, T> decode, [MaybeNullWhen(false)] out T value)
+    {
+        if (slice == nint.Zero)
+        {
+            value = default;
+            return false;
+        }
+
+        try
+        {
+            value = decode(PinnedValue(slice), state);
+            return true;
+        }
+        finally
+        {
+            rocksdb_pinnableslice_destroy(slice);
+        }
+    }
+
+    private static ReadOnlySpan<byte> PinnedValue(nint slice)
+    {
+        byte* data = rocksdb_pinnableslice_value(slice, out nuint length);
+        return data is null ? [] : new ReadOnlySpan<byte>(data, checked((int)length));
+    }
+
+    /// <summary>
     /// Decodes a UTF-8 string the caller owns and frees it. Returns null for a null pointer.
     /// </summary>
     /// <inheritdoc cref="CopyAndFree" path="/remarks"/>

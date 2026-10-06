@@ -6,6 +6,26 @@ The package version is `<RocksDbVersion>.<Revision>`, so `11.8.1.1` wraps RocksD
 
 Breaking changes land only when `RocksDbVersion` changes. A revision bump alone, `11.8.1.1` to `11.8.1.2`, never breaks source or binary compatibility. A RocksDb version bump already means a different native library and a required re-test, which is the point at which API cleanup costs least.
 
+## Unreleased
+
+Same RocksDb version, so a revision bump: everything here is additive.
+
+### Added
+
+- **`ContainsKey`**, an exact existence check, on `RocksDb`, `TransactionDb`
+  and `Transaction`. `KeyMayExist` consults only the bloom filters and can
+  answer yes for an absent key; this is a real read, so it is always right,
+  and it reads through a pinned slice so the value is never copied. Unlike a
+  `Get` whose result is thrown away, it allocates nothing, and a failed read
+  throws rather than reporting the key absent.
+- **`TryGet<T>` with a `ValueDecoder<T>`**, which decodes a value in place
+  instead of copying it into an array first, on the same three types. A
+  `static` lambda allocates nothing, so reading a counter or a fixed-size
+  struct costs no allocation at all. An overload passes state to the decoder,
+  such as serializer options, without a closure. The span the decoder gets is
+  valid only until it returns; an exception from it reaches the caller after
+  the value has been released.
+
 ## 11.8.1.3
 
 Same RocksDb version, so nothing here breaks source or binary compatibility.
