@@ -18,10 +18,7 @@ public sealed class RocksDb : RocksDbHandle
 
     // Always non-null, so a column family created after open can be registered
     // whether or not the database was opened with any.
-    private readonly Dictionary<string, ColumnFamilyHandle> _columnFamilyHandles = [];
-
-    // Cached so that repeated calls do not each leak a wrapper struct.
-    private ColumnFamilyHandle? _defaultColumnFamily;
+    private readonly ColumnFamilyRegistry _columnFamilies = new();
     private readonly DbOptions _ownedOptions;
 
     // The descriptors a database was opened with, held for the database's
@@ -72,9 +69,6 @@ public sealed class RocksDb : RocksDbHandle
         options.AddHolder();
     }
 
-    /// <summary>Name RocksDb gives the column family that always exists.</summary>
-    private const string DefaultColumnFamilyName = "default";
-
     private RocksDb(nint handle, nint[] cfHandles, DbOptions options,
         IReadOnlyList<ColumnFamilyDescriptor>? descriptors = null)
         : base(handle)
@@ -102,7 +96,7 @@ public sealed class RocksDb : RocksDbHandle
         {
             ColumnFamilyHandle cfh = new(cf);
             cfh.SetParent(this);
-            _columnFamilyHandles[cfh.Name] = cfh;
+            _columnFamilies.Set(cfh.Name, cfh);
         }
     }
 
@@ -588,12 +582,7 @@ public sealed class RocksDb : RocksDbHandle
                 k, (nuint)key.Length, out vallen, ref err);
         }
         NativeMethods.ThrowOnError(err);
-        if (valNint == nint.Zero) return null;
-
-        byte* valPtr = (byte*)valNint;
-        byte[] result = new ReadOnlySpan<byte>(valPtr, checked((int)vallen)).ToArray();
-        NativeMethods.rocksdb_free(valNint);
-        return result;
+        return NativeMethods.CopyAndFree(valNint, vallen);
     }
 
     /// <summary>
@@ -772,12 +761,7 @@ public sealed class RocksDb : RocksDbHandle
             valNint = NativeMethods.rocksdb_get_cf(Handle, (options ?? _defaultReadOptions).Handle, cf.Handle,
                 k, (nuint)key.Length, out vallen, ref err);
         NativeMethods.ThrowOnError(err);
-        if (valNint == nint.Zero) return null;
-
-        byte* valPtr = (byte*)valNint;
-        byte[] result = new ReadOnlySpan<byte>(valPtr, checked((int)vallen)).ToArray();
-        NativeMethods.rocksdb_free(valNint);
-        return result;
+        return NativeMethods.CopyAndFree(valNint, vallen);
     }
 
     /// <summary>Convenience overload using a UTF-8 string key; returns the value as a string or <c>null</c>.</summary>
@@ -1047,18 +1031,7 @@ public sealed class RocksDb : RocksDbHandle
         // inside this loop, which is what the single-family version used to do,
         // leaked the values and error strings for every key after the first
         // failure.
-        var results = new byte[]?[n];
-        for (int i = 0; i < n; i++)
-        {
-            if (valPtrs[i] is not null)
-            {
-                results[i] = new ReadOnlySpan<byte>(valPtrs[i], checked((int)valSizes[i])).ToArray();
-                NativeMethods.rocksdb_free((nint)valPtrs[i]);
-            }
-        }
-
-        NativeMethods.ThrowFirstError(errs);
-        return results;
+        return NativeMethods.CopyAndFreeBatch(valPtrs, valSizes, errs);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1135,9 +1108,7 @@ public sealed class RocksDb : RocksDbHandle
     public Snapshot NewSnapshot()
     {
         nint handle = NativeMethods.rocksdb_create_snapshot(Handle);
-        var snapshot = new Snapshot(handle, this);
-        snapshot.SetParent(this);
-        return snapshot;
+        return new Snapshot(handle, this);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1347,7 +1318,7 @@ public sealed class RocksDb : RocksDbHandle
         NativeMethods.rocksdb_drop_column_family(Handle, cf.Handle, ref err);
         NativeMethods.ThrowOnError(err);
 
-        _columnFamilyHandles.Remove(name);
+        _columnFamilies.Remove(name);
     }
 
     /// <summary>
@@ -1355,15 +1326,17 @@ public sealed class RocksDb : RocksDbHandle
     /// Do <em>not</em> call Dispose on the
     /// returned handle — its lifetime is managed by the database.
     /// </summary>
+    /// <remarks>
+    /// Cached, because each call allocates a fresh
+    /// <c>rocksdb_column_family_handle_t</c>. If the cached handle has been
+    /// disposed anyway, a new one is resolved rather than the disposed one
+    /// handed back.
+    /// </remarks>
     public ColumnFamilyHandle GetDefaultColumnFamily()
-    {
-        // Cached, because each call allocates a fresh rocksdb_column_family_handle_t
-        // and the wrapper is non-owning, so every call used to leak one.
-        if (_defaultColumnFamily is not null)
-        {
-            return _defaultColumnFamily;
-        }
+        => _columnFamilies.GetDefault(CreateDefaultColumnFamily);
 
+    private ColumnFamilyHandle CreateDefaultColumnFamily()
+    {
         nint h = NativeMethods.rocksdb_get_default_column_family_handle(Handle);
         var cf = new ColumnFamilyHandle(h);
 
@@ -1375,8 +1348,6 @@ public sealed class RocksDb : RocksDbHandle
         // leaked one struct per database, which the caching below bounded to one
         // rather than removed.
         cf.SetParent(this);
-
-        _defaultColumnFamily = cf;
         return cf;
     }
 
@@ -1409,26 +1380,18 @@ public sealed class RocksDb : RocksDbHandle
     /// Looks up the handle for the column family called <paramref name="name"/>,
     /// returning false rather than throwing when there is none.
     /// </summary>
+    /// <exception cref="ObjectDisposedException">
+    /// The handle registered for <paramref name="name"/> has been disposed.
+    /// The default family is the exception: it is resolved again instead.
+    /// </exception>
     public bool TryGetColumnFamily(string name, [NotNullWhen(true)] out ColumnFamilyHandle? columnFamily)
     {
         ArgumentException.ThrowIfNullOrEmpty(name);
 
-        if (_columnFamilyHandles.TryGetValue(name, out ColumnFamilyHandle? cfh))
-        {
-            columnFamily = cfh;
-            return true;
-        }
-
         // Every database has a default family, even one opened without naming
-        // any, so resolve it on demand rather than reporting it as unknown.
-        if (name == DefaultColumnFamilyName)
-        {
-            columnFamily = GetDefaultColumnFamily();
-            return true;
-        }
-
-        columnFamily = null;
-        return false;
+        // any, so the registry resolves it on demand rather than reporting it
+        // as unknown.
+        return _columnFamilies.TryGet(name, CreateDefaultColumnFamily, out columnFamily);
     }
 
     /// <summary>Names of the column families this database knows about.</summary>
@@ -1442,10 +1405,7 @@ public sealed class RocksDb : RocksDbHandle
     /// listing disagreed with the lookup — including in the "Known families"
     /// message that lookup throws.
     /// </remarks>
-    public IReadOnlyCollection<string> ColumnFamilyNames
-        => _columnFamilyHandles.ContainsKey(DefaultColumnFamilyName)
-            ? [.. _columnFamilyHandles.Keys]
-            : [DefaultColumnFamilyName, .. _columnFamilyHandles.Keys];
+    public IReadOnlyCollection<string> ColumnFamilyNames => _columnFamilies.Names;
 
     /// <summary>
     /// Tracks a newly created column family so that
@@ -1455,7 +1415,7 @@ public sealed class RocksDb : RocksDbHandle
     private ColumnFamilyHandle RegisterColumnFamily(string name, ColumnFamilyHandle cf)
     {
         cf.SetParent(this);
-        _columnFamilyHandles.Add(name, cf);
+        _columnFamilies.Add(name, cf);
         return cf;
     }
 

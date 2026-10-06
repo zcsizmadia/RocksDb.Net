@@ -46,6 +46,10 @@ public sealed class Transaction : RocksDbHandle
     private readonly List<Iterator> _iterators = [];
     private readonly object _gate = new();
 
+    // The list length at which Track next drops disposed iterators.
+    private const int MinimumPruneAt = 16;
+    private int _pruneAt = MinimumPruneAt;
+
     /// <param name="handle">Native transaction handle.</param>
     /// <param name="owner">
     /// The database that began it — a <see cref="TransactionDb"/> or an
@@ -591,10 +595,34 @@ public sealed class Transaction : RocksDbHandle
     {
         lock (_gate)
         {
+            // Disposed iterators are dropped whenever the list doubles. It used
+            // to be cleared only by Commit and Rollback, so a long transaction
+            // that opened and disposed iterators as it went kept every one of
+            // them reachable until it ended. Pruning on growth rather than on
+            // each dispose keeps the cost amortised O(1) per iterator without
+            // the iterator having to know it is tracked.
+            if (_iterators.Count >= _pruneAt)
+            {
+                _iterators.RemoveAll(static it => it.IsDisposed);
+                _pruneAt = Math.Max(MinimumPruneAt, _iterators.Count * 2);
+            }
+
             _iterators.Add(iterator);
         }
 
         return iterator;
+    }
+
+    /// <summary>The number of iterators currently tracked, open or not yet pruned.</summary>
+    internal int TrackedIteratorCount
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _iterators.Count;
+            }
+        }
     }
 
     private void DisposeIterators()
@@ -735,31 +763,11 @@ public sealed class Transaction : RocksDbHandle
             }
         }
 
-        var results = new byte[]?[n];
-        for (int i = 0; i < n; i++)
-        {
-            if (valPtrs[i] is not null)
-            {
-                results[i] = new ReadOnlySpan<byte>(valPtrs[i], checked((int)valSizes[i])).ToArray();
-                NativeMethods.rocksdb_free((nint)valPtrs[i]);
-            }
-        }
-
-        NativeMethods.ThrowFirstError(errs);
-        return results;
+        return NativeMethods.CopyAndFreeBatch(valPtrs, valSizes, errs);
     }
 
-    private static unsafe byte[]? CopyAndFree(nint value, nuint length)
-    {
-        if (value == nint.Zero)
-        {
-            return null;
-        }
-
-        byte[] result = new ReadOnlySpan<byte>((byte*)value, checked((int)length)).ToArray();
-        NativeMethods.rocksdb_free(value);
-        return result;
-    }
+    private static byte[]? CopyAndFree(nint value, nuint length)
+        => NativeMethods.CopyAndFree(value, length);
 
     /// <summary>
     /// Copies a native UTF-8 string the caller owns, and frees it.
@@ -768,17 +776,8 @@ public sealed class Transaction : RocksDbHandle
     /// An unnamed transaction returns a zero-length name rather than a null
     /// pointer, so both are treated as "no name" and neither is an error.
     /// </remarks>
-    private static unsafe string CopyAndFreeUtf8(nint value, nuint length)
-    {
-        if (value == nint.Zero)
-        {
-            return string.Empty;
-        }
-
-        string result = Encoding.UTF8.GetString((byte*)value, checked((int)length));
-        NativeMethods.rocksdb_free(value);
-        return result;
-    }
+    private static string CopyAndFreeUtf8(nint value, nuint length)
+        => NativeMethods.CopyAndFreeUtf8(value, length) ?? string.Empty;
 
     protected override void DisposeHandle()
     {

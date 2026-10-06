@@ -163,6 +163,98 @@ internal static unsafe partial class NativeMethods
     }
 
     /// <summary>
+    /// Copies a value the caller owns into a managed array and frees it.
+    /// Returns null for a null pointer, which is how the reads report a missing key.
+    /// </summary>
+    /// <remarks>
+    /// The free is in a <c>finally</c>. The copy can throw, through the
+    /// checked length conversion for a value over 2 GB or an
+    /// <see cref="OutOfMemoryException"/> from the allocation, and the native
+    /// value used to leak when it did.
+    /// </remarks>
+    internal static byte[]? CopyAndFree(nint value, nuint length)
+    {
+        if (value == nint.Zero)
+        {
+            return null;
+        }
+
+        try
+        {
+            return new ReadOnlySpan<byte>((byte*)value, checked((int)length)).ToArray();
+        }
+        finally
+        {
+            rocksdb_free(value);
+        }
+    }
+
+    /// <summary>
+    /// Decodes a UTF-8 string the caller owns and frees it. Returns null for a null pointer.
+    /// </summary>
+    /// <inheritdoc cref="CopyAndFree" path="/remarks"/>
+    internal static string? CopyAndFreeUtf8(nint value, nuint length)
+    {
+        if (value == nint.Zero)
+        {
+            return null;
+        }
+
+        try
+        {
+            return System.Text.Encoding.UTF8.GetString((byte*)value, checked((int)length));
+        }
+        finally
+        {
+            rocksdb_free(value);
+        }
+    }
+
+    /// <summary>
+    /// Copies and frees every value a batched read returned, frees every error,
+    /// and then throws for the first error if there was one.
+    /// </summary>
+    /// <remarks>
+    /// Every native allocation is released whatever happens. Each value is
+    /// copied and freed on its own, so a copy that throws part-way through
+    /// still frees the values after it and the error strings, and the first
+    /// exception is rethrown once they have been.
+    /// </remarks>
+    internal static byte[]?[] CopyAndFreeBatch(byte*[] values, nuint[] lengths, nint[] errs)
+    {
+        var results = new byte[]?[values.Length];
+        Exception? copyFailure = null;
+
+        for (int i = 0; i < values.Length; i++)
+        {
+            try
+            {
+                results[i] = CopyAndFree((nint)values[i], lengths[i]);
+            }
+            catch (Exception e)
+            {
+                copyFailure ??= e;
+            }
+        }
+
+        if (copyFailure is not null)
+        {
+            foreach (nint err in errs)
+            {
+                if (err != nint.Zero)
+                {
+                    rocksdb_free(err);
+                }
+            }
+
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(copyFailure);
+        }
+
+        ThrowFirstError(errs);
+        return results;
+    }
+
+    /// <summary>
     /// Reads a native UTF-8 string pointer (not owned) into a managed string.
     /// </summary>
     internal static string? PtrToStringUTF8(byte* ptr, nuint len)

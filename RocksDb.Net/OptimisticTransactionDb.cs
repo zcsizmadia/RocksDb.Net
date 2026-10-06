@@ -53,15 +53,11 @@ namespace RocksDbNet;
 /// </remarks>
 public sealed class OptimisticTransactionDb : RocksDbHandle
 {
-    private const string DefaultColumnFamilyName = "default";
-
     private static readonly ReadOptions _defaultReadOptions = new();
     private static readonly WriteOptions _defaultWriteOptions = new();
 
-    private readonly Dictionary<string, ColumnFamilyHandle> _columnFamilyHandles = [];
+    private readonly ColumnFamilyRegistry _columnFamilies = new();
     private readonly DbOptions _ownedOptions;
-
-    private ColumnFamilyHandle? _defaultColumnFamily;
 
     private OptimisticTransactionDb(nint handle, DbOptions options)
         : base(handle)
@@ -86,7 +82,7 @@ public sealed class OptimisticTransactionDb : RocksDbHandle
         {
             var cfh = new ColumnFamilyHandle(cfHandles[i]);
             cfh.SetParent(this);
-            _columnFamilyHandles[descriptors[i].Name] = cfh;
+            _columnFamilies.Set(descriptors[i].Name, cfh);
         }
     }
 
@@ -273,26 +269,15 @@ public sealed class OptimisticTransactionDb : RocksDbHandle
     /// Looks up a column family, returning false rather than throwing when
     /// there is none.
     /// </summary>
+    /// <inheritdoc cref="RocksDb.TryGetColumnFamily" path="/exception"/>
     public bool TryGetColumnFamily(string name, [NotNullWhen(true)] out ColumnFamilyHandle? columnFamily)
     {
         ArgumentException.ThrowIfNullOrEmpty(name);
 
-        if (_columnFamilyHandles.TryGetValue(name, out ColumnFamilyHandle? cfh))
-        {
-            columnFamily = cfh;
-            return true;
-        }
-
         // Every database has a default family, even one opened without naming
-        // any, so resolve it on demand rather than reporting it as unknown.
-        if (name == DefaultColumnFamilyName)
-        {
-            columnFamily = GetDefaultColumnFamily();
-            return true;
-        }
-
-        columnFamily = null;
-        return false;
+        // any, so the registry resolves it on demand rather than reporting it
+        // as unknown.
+        return _columnFamilies.TryGet(name, CreateDefaultColumnFamily, out columnFamily);
     }
 
     /// <summary>
@@ -302,12 +287,10 @@ public sealed class OptimisticTransactionDb : RocksDbHandle
     /// </summary>
     /// <inheritdoc cref="TransactionDb.GetDefaultColumnFamily" path="/remarks"/>
     public ColumnFamilyHandle GetDefaultColumnFamily()
-    {
-        if (_defaultColumnFamily is not null)
-        {
-            return _defaultColumnFamily;
-        }
+        => _columnFamilies.GetDefault(CreateDefaultColumnFamily);
 
+    private ColumnFamilyHandle CreateDefaultColumnFamily()
+    {
         nint baseDb = NativeMethods.rocksdb_optimistictransactiondb_get_base_db(Handle);
         nint h;
         try
@@ -325,8 +308,6 @@ public sealed class OptimisticTransactionDb : RocksDbHandle
 
         var cf = new ColumnFamilyHandle(h);
         cf.SetParent(this);
-
-        _defaultColumnFamily = cf;
         return cf;
     }
 
@@ -336,10 +317,7 @@ public sealed class OptimisticTransactionDb : RocksDbHandle
     /// the database was opened, and <see cref="GetColumnFamily"/> resolves it
     /// either way.
     /// </remarks>
-    public IReadOnlyCollection<string> ColumnFamilyNames
-        => _columnFamilyHandles.ContainsKey(DefaultColumnFamilyName)
-            ? [.. _columnFamilyHandles.Keys]
-            : [DefaultColumnFamilyName, .. _columnFamilyHandles.Keys];
+    public IReadOnlyCollection<string> ColumnFamilyNames => _columnFamilies.Names;
 
     // ── Properties and checkpoints ───────────────────────────────────────────
 

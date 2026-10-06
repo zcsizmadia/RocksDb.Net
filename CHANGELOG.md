@@ -109,6 +109,34 @@ is allowed to be.
   the lookup, and free to reuse. Note that reading through a handle to a
   dropped family still succeeds — RocksDb keeps the data alive until the last
   handle to it is destroyed, and that is unchanged.
+- **Disposed snapshots stayed referenced until the database closed.** Each
+  snapshot was registered with its database twice, once by its constructor and
+  once by `NewSnapshot`, and disposal removed one of the two entries. A
+  long-lived database that took snapshots routinely kept every one it had ever
+  taken. Registration now ignores a repeat.
+- **The column family registry was not thread-safe.** It was a bare dictionary
+  that creating or dropping a family wrote while lookups and
+  `ColumnFamilyNames` on other threads read it, which a dictionary does not
+  support. It is now locked, on all three database types, and the default
+  family is resolved once even when several threads ask for it first at the
+  same time.
+- **A disposed column family handle was handed out again.** Disposing the
+  handle `GetDefaultColumnFamily` or `GetColumnFamily` returned left the
+  disposed object cached, so every later lookup returned it. The default family
+  is now resolved again instead. A named family cannot be reopened by name, so
+  looking one up after its handle was disposed throws `ObjectDisposedException`
+  naming the family, at the lookup rather than at the next use.
+- **A transaction kept every iterator it had ever opened.** Disposed iterators
+  were dropped from its list only at commit or rollback. They are now pruned as
+  the list grows.
+- **A native value leaked if copying it threw.** The reads freed the value
+  after copying it, so a value over 2 GB or an out-of-memory failure during the
+  copy leaked it, and in `MultiGet` every value after it too. The free is now in
+  a `finally`, and the batched reads free every value and error string before
+  rethrowing.
+- **Event listener status messages were decoded as ANSI.** On Windows that
+  means the system code page, which garbled any non-ASCII character, such as one
+  in a database path. They are UTF-8, like every other string RocksDb returns.
 
 ### Changed
 

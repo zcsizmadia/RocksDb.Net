@@ -339,17 +339,8 @@ public sealed class WriteBatchWithIndex : RocksDbHandle
 
     private static readonly ReadOptions _defaultReadOptions = new();
 
-    private static unsafe byte[]? CopyAndFree(nint value, nuint length)
-    {
-        if (value == nint.Zero)
-        {
-            return null;
-        }
-
-        byte[] result = new ReadOnlySpan<byte>((byte*)value, checked((int)length)).ToArray();
-        NativeMethods.rocksdb_free(value);
-        return result;
-    }
+    private static byte[]? CopyAndFree(nint value, nuint length)
+        => NativeMethods.CopyAndFree(value, length);
 
     protected override void DisposeHandle()
     {

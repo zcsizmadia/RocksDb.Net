@@ -31,16 +31,12 @@ namespace RocksDbNet;
 /// </remarks>
 public sealed class TransactionDb : RocksDbHandle
 {
-    private const string DefaultColumnFamilyName = "default";
-
     private static readonly ReadOptions _defaultReadOptions = new();
     private static readonly WriteOptions _defaultWriteOptions = new();
     private static readonly FlushOptions _defaultFlushOptions = new();
 
-    private readonly Dictionary<string, ColumnFamilyHandle> _columnFamilyHandles = [];
+    private readonly ColumnFamilyRegistry _columnFamilies = new();
     private readonly DbOptions _ownedOptions;
-
-    private ColumnFamilyHandle? _defaultColumnFamily;
 
     private TransactionDb(nint handle, DbOptions options)
         : base(handle)
@@ -81,7 +77,7 @@ public sealed class TransactionDb : RocksDbHandle
         {
             var cfh = new ColumnFamilyHandle(cfHandles[i]);
             cfh.SetParent(this);
-            _columnFamilyHandles[descriptors[i].Name] = cfh;
+            _columnFamilies.Set(descriptors[i].Name, cfh);
         }
     }
 
@@ -455,7 +451,7 @@ public sealed class TransactionDb : RocksDbHandle
 
         var cf = new ColumnFamilyHandle(handle);
         cf.SetParent(this);
-        _columnFamilyHandles.Add(name, cf);
+        _columnFamilies.Add(name, cf);
         return cf;
     }
 
@@ -476,29 +472,17 @@ public sealed class TransactionDb : RocksDbHandle
     /// Looks up a column family handle, returning false rather than throwing
     /// when there is none.
     /// </summary>
+    /// <inheritdoc cref="RocksDb.TryGetColumnFamily" path="/exception"/>
     public bool TryGetColumnFamily(string name, [NotNullWhen(true)] out ColumnFamilyHandle? columnFamily)
     {
         ArgumentException.ThrowIfNullOrEmpty(name);
 
-        if (_columnFamilyHandles.TryGetValue(name, out ColumnFamilyHandle? cf))
-        {
-            columnFamily = cf;
-            return true;
-        }
-
         // Every database has a default family, even one opened without naming
-        // any, so resolve it on demand rather than reporting it as unknown.
-        // Without this the listing and the lookup disagreed: ColumnFamilyNames
-        // reported "default" and asking for it threw, with a message that
-        // listed it among the known families.
-        if (name == DefaultColumnFamilyName)
-        {
-            columnFamily = GetDefaultColumnFamily();
-            return true;
-        }
-
-        columnFamily = null;
-        return false;
+        // any, so the registry resolves it on demand rather than reporting it
+        // as unknown. Without that the listing and the lookup disagreed:
+        // ColumnFamilyNames reported "default" and asking for it threw, with a
+        // message that listed it among the known families.
+        return _columnFamilies.TryGet(name, CreateDefaultColumnFamily, out columnFamily);
     }
 
     /// <summary>
@@ -523,12 +507,10 @@ public sealed class TransactionDb : RocksDbHandle
     /// </para>
     /// </remarks>
     public ColumnFamilyHandle GetDefaultColumnFamily()
-    {
-        if (_defaultColumnFamily is not null)
-        {
-            return _defaultColumnFamily;
-        }
+        => _columnFamilies.GetDefault(CreateDefaultColumnFamily);
 
+    private ColumnFamilyHandle CreateDefaultColumnFamily()
+    {
         nint baseDb = NativeMethods.rocksdb_transactiondb_get_base_db(Handle);
         nint h;
         try
@@ -549,16 +531,11 @@ public sealed class TransactionDb : RocksDbHandle
         // rocksdb_column_family_handle_destroy honours that by deleting only
         // the wrapper and leaving the column family alone.
         cf.SetParent(this);
-
-        _defaultColumnFamily = cf;
         return cf;
     }
 
     /// <inheritdoc cref="RocksDb.ColumnFamilyNames"/>
-    public IReadOnlyCollection<string> ColumnFamilyNames
-        => _columnFamilyHandles.ContainsKey(DefaultColumnFamilyName)
-            ? [.. _columnFamilyHandles.Keys]
-            : [DefaultColumnFamilyName, .. _columnFamilyHandles.Keys];
+    public IReadOnlyCollection<string> ColumnFamilyNames => _columnFamilies.Names;
 
     // ── Maintenance ──────────────────────────────────────────────────────────
 
@@ -642,17 +619,8 @@ public sealed class TransactionDb : RocksDbHandle
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
-    private static unsafe byte[]? CopyAndFree(nint value, nuint length)
-    {
-        if (value == nint.Zero)
-        {
-            return null;
-        }
-
-        byte[] result = new ReadOnlySpan<byte>((byte*)value, checked((int)length)).ToArray();
-        NativeMethods.rocksdb_free(value);
-        return result;
-    }
+    private static byte[]? CopyAndFree(nint value, nuint length)
+        => NativeMethods.CopyAndFree(value, length);
 
     protected override void DisposeHandle()
     {
