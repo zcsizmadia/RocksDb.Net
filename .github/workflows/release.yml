@@ -83,7 +83,7 @@ jobs:
           echo "SHA=$SHA" >> "$GITHUB_ENV"
 
       - name: Download nupkg built from the tagged commit
-        uses: dawidd6/action-download-artifact@v24
+        uses: dawidd6/action-download-artifact@v27
         with:
           workflow: build.yml
           workflow_conclusion: success
