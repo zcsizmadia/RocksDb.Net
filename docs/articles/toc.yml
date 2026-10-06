@@ -12,3 +12,5 @@
   href: callbacks.md
 - name: Logging and metrics
   href: observability.md
+- name: Compared with rocksdb-sharp
+  href: comparison.md
