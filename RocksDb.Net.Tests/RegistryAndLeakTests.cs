@@ -59,7 +59,12 @@ public class RegistryAndLeakTests
     public async Task ColumnFamilyRegistry_ToleratesConcurrentCreateAndLookup()
     {
         using var db = new TempDb();
-        using var cfOptions = new DbOptions();
+
+        // A small write buffer, because each family's memtable reserves arena
+        // space sized from it. At the 64 MB default, two hundred families came
+        // to enough native memory to fail a process-wide leak test running
+        // alongside this one.
+        using var cfOptions = new DbOptions { WriteBufferSize = 64 * 1024 };
 
         const int Families = 200;
         using var done = new CancellationTokenSource();
