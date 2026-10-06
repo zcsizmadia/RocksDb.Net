@@ -23,7 +23,7 @@
     <RocksDbVersion>11.8.1</RocksDbVersion>
 
     <!--
-      The package version is <RocksDbVersion>.<Revision>, so 11.8.1.2 wraps
+      The package version is <RocksDbVersion>.<Revision>, so 11.8.1.3 wraps
       RocksDb 11.8.1. Bump this for a release that does not change the native
       version; breaking changes wait for a RocksDbVersion bump, because a
       revision alone must not break source or binary compatibility. See
@@ -43,7 +43,7 @@
       would report every one of them. The first release of the new version
       then becomes the baseline again. See RocksDb.Net.csproj.
     -->
-    <PackageValidationBaselineVersion>11.8.1.2</PackageValidationBaselineVersion>
+    <PackageValidationBaselineVersion>11.8.1.3</PackageValidationBaselineVersion>
 
     <!--
       VersionPrefix rather than Version, so that a prerelease can be built by
