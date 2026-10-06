@@ -38,6 +38,10 @@ public sealed class TransactionDb : RocksDbHandle
     private readonly ColumnFamilyRegistry _columnFamilies = new();
     private readonly DbOptions _ownedOptions;
 
+    // The options of every column family, kept alive until the database has
+    // closed. See ColumnFamilyOptionsKeepAlive.
+    private readonly ColumnFamilyOptionsKeepAlive _columnFamilyOptions = new();
+
     private TransactionDb(nint handle, DbOptions options)
         : base(handle)
     {
@@ -72,6 +76,7 @@ public sealed class TransactionDb : RocksDbHandle
         // flushing the memtable and deleting files. The hold makes the release
         // wait for whoever lets go last, which is what it is for.
         options.AddHolder();
+        _columnFamilyOptions.Add(descriptors);
 
         for (int i = 0; i < cfHandles.Length; i++)
         {
@@ -449,6 +454,8 @@ public sealed class TransactionDb : RocksDbHandle
         nint handle = NativeMethods.rocksdb_transactiondb_create_column_family(Handle, options.Handle, name, ref err);
         NativeMethods.ThrowOnError(err);
 
+        _columnFamilyOptions.Add(options);
+
         var cf = new ColumnFamilyHandle(handle);
         cf.SetParent(this);
         _columnFamilies.Add(name, cf);
@@ -641,5 +648,8 @@ public sealed class TransactionDb : RocksDbHandle
         // defers to this instead of destroying a comparator under a live
         // database.
         _ownedOptions.ReleaseHolder();
+
+        // Likewise every column family's options, for the same reason.
+        _columnFamilyOptions.Release();
     }
 }

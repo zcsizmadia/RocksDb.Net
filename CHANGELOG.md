@@ -137,6 +137,23 @@ is allowed to be.
 - **Event listener status messages were decoded as ANSI.** On Windows that
   means the system code page, which garbled any non-ASCII character, such as one
   in a database path. They are UTF-8, like every other string RocksDb returns.
+- **Column family options could be destroyed under a live database.** The
+  database held the options it was opened with, but not the options of its
+  column families, which keep calling the comparator, merge operator and
+  compaction filter those options own. Disposing the options passed to
+  `CreateColumnFamily`, which a `using` block does, destroyed a comparator the
+  column family went on calling. `TransactionDb` and `OptimisticTransactionDb`
+  did not even keep a reference to their descriptors, so an abandoned
+  descriptor's finalizer did the same. All three now keep every column family's
+  options alive until they close. A disposal asked for in the meantime is
+  deferred and then performed; options you did not dispose are left alone, so
+  they can still be handed to the next database.
+- **Disposing something an iterator or read options still read through freed
+  it.** An iterator's `ReadOptions`, the indexed write batch under an overlay
+  iterator, and a snapshot attached with `ReadOptions.SetSnapshot` were each
+  released immediately when disposed, though the native iterator or options
+  still pointed into them. Those disposals are now deferred until the reader
+  lets go. Closing a database still releases its snapshots, whatever holds them.
 
 ### Changed
 

@@ -21,35 +21,9 @@ public sealed class RocksDb : RocksDbHandle
     private readonly ColumnFamilyRegistry _columnFamilies = new();
     private readonly DbOptions _ownedOptions;
 
-    // The descriptors a database was opened with, held for the database's
-    // lifetime.
-    //
-    // ColumnFamilyDescriptor disposes the options it created from its own
-    // finalizer. After Open returned, the descriptor list was unreachable, so
-    // that finalizer ran at the next collection and destroyed the comparator,
-    // compaction filter and logger attached to a column family's options while
-    // the database was still calling them. Holding the descriptors here stops
-    // that, because they cannot become unreachable before the database does.
-    //
-    // Held, and deliberately never disposed from here. A descriptor and the
-    // options it owns belong to the caller, who may hand the same list to a
-    // second database: creating one, closing it, then reopening read-only with
-    // the same descriptors is ordinary code. Disposing those options as a side
-    // effect of closing one database would destroy objects the caller still
-    // owns and is about to reuse.
-    //
-    // That was tried, and it faulted with an access violation. The cause is
-    // exactly the above: a disposed DbOptions reports a null handle, RocksDb
-    // requires every pointer argument to be non-null, so the second open
-    // dereferenced null. It looked like a teardown-ordering problem because
-    // the crash landed in whichever test ran next, which is why the Open
-    // overloads now reject disposed options outright rather than passing a
-    // null pointer into native code.
-    //
-    // So these options are released when the descriptors are themselves
-    // collected. Not deterministic, but correct: only the caller knows when a
-    // descriptor is finished with.
-    private readonly List<ColumnFamilyDescriptor> _descriptors = [];
+    // The options of every column family, kept alive until the database has
+    // closed. See ColumnFamilyOptionsKeepAlive.
+    private readonly ColumnFamilyOptionsKeepAlive _columnFamilyOptions = new();
 
     private RocksDb(nint handle, DbOptions options)
         : base(handle)
@@ -89,7 +63,7 @@ public sealed class RocksDb : RocksDbHandle
 
         if (descriptors is not null)
         {
-            _descriptors.AddRange(descriptors);
+            _columnFamilyOptions.Add(descriptors);
         }
 
         foreach (var cf in cfHandles)
@@ -1125,6 +1099,7 @@ public sealed class RocksDb : RocksDbHandle
         nint handle = NativeMethods.rocksdb_create_column_family(Handle, options.Handle, name, ref err);
         NativeMethods.ThrowOnError(err);
 
+        _columnFamilyOptions.Add(options);
         return RegisterColumnFamily(name, new ColumnFamilyHandle(handle));
     }
 
@@ -1167,6 +1142,7 @@ public sealed class RocksDb : RocksDbHandle
             Handle, options.Handle, name, (importOptions ?? owned!).Handle, metadata.Handle, ref err);
         NativeMethods.ThrowOnError(err);
 
+        _columnFamilyOptions.Add(options);
         return RegisterColumnFamily(name, new ColumnFamilyHandle(handle));
     }
 
@@ -1263,6 +1239,8 @@ public sealed class RocksDb : RocksDbHandle
             return [];
         }
 
+        _columnFamilyOptions.Add(options);
+
         try
         {
             // The count RocksDb reported, not the count asked for.
@@ -1294,6 +1272,7 @@ public sealed class RocksDb : RocksDbHandle
         nint handle = NativeMethods.rocksdb_create_column_family_with_ttl(Handle, options.Handle, name, ttlSeconds, ref err);
         NativeMethods.ThrowOnError(err);
 
+        _columnFamilyOptions.Add(options);
         return RegisterColumnFamily(name, new ColumnFamilyHandle(handle));
     }
 
@@ -2810,5 +2789,8 @@ public sealed class RocksDb : RocksDbHandle
         // that a caller who disposed the options early defers to this rather
         // than destroying a comparator under a live database.
         _ownedOptions.ReleaseHolder();
+
+        // Likewise every column family's options, for the same reason.
+        _columnFamilyOptions.Release();
     }
 }

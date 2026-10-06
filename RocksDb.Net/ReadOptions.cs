@@ -85,11 +85,44 @@ public sealed class ReadOptions : RocksDbHandle
     }
 
     /// <summary>Attaches a snapshot so reads reflect a consistent point-in-time view.</summary>
+    /// <param name="snapshot">The snapshot to read at, or <see langword="null"/> to read the latest state.</param>
+    /// <remarks>
+    /// <para>
+    /// These options keep the snapshot alive while it is attached. Disposing the
+    /// snapshot first is deferred until it is detached, by passing
+    /// <see langword="null"/> or another snapshot here, or until these options
+    /// are disposed. Without that, reading through the options after disposing
+    /// the snapshot read at a released one.
+    /// </para>
+    /// <para>
+    /// A snapshot keeps compaction from discarding the data it can see, so
+    /// detach it or dispose the options once you are done with them, rather
+    /// than leaving it to the finalizer. Closing the database releases its
+    /// snapshots regardless.
+    /// </para>
+    /// </remarks>
     public ReadOptions SetSnapshot(Snapshot? snapshot)
     {
-        NativeMethods.rocksdb_readoptions_set_snapshot(Handle, snapshot?.Handle ?? nint.Zero);
+        // Taken before the native call and before the old one is let go, so a
+        // failure leaves the previous snapshot attached and still held.
+        snapshot?.AddKeepAlive();
+
+        try
+        {
+            NativeMethods.rocksdb_readoptions_set_snapshot(Handle, snapshot?.Handle ?? nint.Zero);
+        }
+        catch
+        {
+            snapshot?.ReleaseKeepAlive();
+            throw;
+        }
+
+        Interlocked.Exchange(ref _snapshot, snapshot)?.ReleaseKeepAlive();
         return this;
     }
+
+    // The attached snapshot, kept alive while it is. See SetSnapshot.
+    private Snapshot? _snapshot;
 
     /// <summary>
     /// Sets the upper bound for iteration; the iterator will not return keys &gt;= this key.
@@ -670,5 +703,7 @@ public sealed class ReadOptions : RocksDbHandle
 
         _lowerBound.Free();
         _lowerBound = default;
+
+        Interlocked.Exchange(ref _snapshot, null)?.ReleaseKeepAlive();
     }
 }
