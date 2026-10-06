@@ -589,7 +589,29 @@ public abstract class RocksDbHandle : IDisposable
     {
         ArgumentNullException.ThrowIfNull(parent);
 
+        // A repeat is ignored rather than registered twice. The child list
+        // removes one entry per release, so a second registration was never
+        // taken out again: every snapshot used to be registered both by its
+        // constructor and by NewSnapshot, and each one stayed referenced by
+        // the database until it closed.
+        if (ReferenceEquals(_parent, parent))
+        {
+            return;
+        }
+
         _parent = parent;
         parent.AddChild(this);
+    }
+
+    /// <summary>The number of open handles registered with this one as their parent.</summary>
+    internal int ChildCount
+    {
+        get
+        {
+            lock (_childGate)
+            {
+                return _children?.Count ?? 0;
+            }
+        }
     }
 }

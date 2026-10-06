@@ -68,9 +68,11 @@ public abstract class MergeOperator : RocksDbHandle
             if (!self.FullMerge(keySpan, hasExistingValue, existingValueSpan, operandsList, out byte[]? newVal)
                 || newVal is null)
             {
-                // If no success, return a null pointer and set newValLen to 0
-                // This indicates to RocksDb that the merge operation failed, and in that case RocksDb will not use the returned value,
-                // and the delete_value callback will not be called.
+                // Failure: a null pointer, zero length and success = 0. RocksDb
+                // still assigns the (empty) result and calls delete_value on
+                // it unconditionally, failure or not, so the null pointer has
+                // to be something DeleteValue frees safely, which
+                // FreeHGlobal(0) is.
                 *newValLen = 0;
                 *success = 0;
                 return nint.Zero;
@@ -117,9 +119,8 @@ public abstract class MergeOperator : RocksDbHandle
 
             if (!self.PartialMerge(keySpan, operandsList, out byte[]? newVal) || newVal is null)
             {
-                // If no success, return a null pointer and set newValLen to 0
-                // This indicates to RocksDb that the merge operation failed, and in that case RocksDb will not use the returned value,
-                // and the delete_value callback will not be called.
+                // Failure, as in FullMerge: delete_value is still called on
+                // the null pointer, which FreeHGlobal(0) handles.
 
                 *newValLen = 0;
                 *success = (byte)0;

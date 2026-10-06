@@ -722,12 +722,13 @@ public abstract class EventListener : RocksDbHandle
 
         // The status arrives through SaveError, which strdups the message, so it
         // has to be freed once copied. Leaked one string per failing compaction.
+        // Decoded as UTF-8: see CreateBackgroundErrorInfo.
         nint errptr = default;
         NativeMethods.rocksdb_compactionjobinfo_status(info, ref errptr);
         string? status = "OK";
         if (errptr != nint.Zero)
         {
-            status = Marshal.PtrToStringAnsi(errptr);
+            status = Marshal.PtrToStringUTF8(errptr);
             NativeMethods.rocksdb_free(errptr);
         }
 
@@ -834,7 +835,7 @@ public abstract class EventListener : RocksDbHandle
         string? status = "OK";
         if (errStr != nint.Zero)
         {
-            status = Marshal.PtrToStringAnsi(errStr);
+            status = Marshal.PtrToStringUTF8(errStr);
             NativeMethods.rocksdb_free(errStr);
         }
 
@@ -881,10 +882,11 @@ public abstract class EventListener : RocksDbHandle
         nint errptr = default;
         NativeMethods.rocksdb_status_ptr_get_error(statusPtr, ref errptr);
 
-        // Standard RocksDb C error strings are allocated via strdup and must be freed,
-        // but in this specific callback context, check if your NativeMethods.PtrToStringUTF8 
-        // handles the lifecycle or if you need Marshal.PtrToStringAnsi.
-        var message = errptr != nint.Zero ? Marshal.PtrToStringAnsi(errptr) : null;
+        // Allocated by SaveError with strdup, so it is freed below once copied.
+        // UTF-8 rather than ANSI, like every other string from RocksDb: ANSI
+        // means the system code page on Windows, which garbled any non-ASCII
+        // character, such as one in a database path quoted in the message.
+        var message = errptr != nint.Zero ? Marshal.PtrToStringUTF8(errptr) : null;
 
         // After capturing the string, we MUST free the memory allocated by SaveError in c.cc
         if (errptr != nint.Zero)
