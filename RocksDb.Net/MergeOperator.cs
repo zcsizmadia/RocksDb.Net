@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -6,8 +7,8 @@ namespace RocksDbNet;
 
 /// <summary>
 /// User-defined merge operator that enables read-modify-write semantics
-/// on values stored in RocksDb. Override <see cref="FullMerge"/> (and
-/// optionally <see cref="PartialMerge"/>) to implement custom merge logic.
+/// on values stored in RocksDb. Override <c>FullMerge</c> (and
+/// optionally <c>PartialMerge</c>) to implement custom merge logic.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -61,30 +62,33 @@ public abstract class MergeOperator : RocksDbHandle
         {
             var self = SelfFromState(state);
             var keySpan = new ReadOnlySpan<byte>(key, checked((int)keyLen));
-            var operandsList = CreateOperands(operands, operandsLen, numOperands);
             bool hasExistingValue = existingVal != null;
             var existingValueSpan = hasExistingValue ? new ReadOnlySpan<byte>(existingVal, checked((int)existingValLen)) : default;
 
-            if (!self.FullMerge(keySpan, hasExistingValue, existingValueSpan, operandsList, out byte[]? newVal)
-                || newVal is null)
+            // The result goes into this thread's scratch buffer, which RocksDb
+            // copies before anything else runs here; see CallbackScratch.
+            CallbackScratch result = CallbackScratch.Acquire();
+            try
             {
-                // Failure: a null pointer, zero length and success = 0. RocksDb
-                // still assigns the (empty) result and calls delete_value on
-                // it unconditionally, failure or not, so the null pointer has
-                // to be something DeleteValue frees safely, which
-                // FreeHGlobal(0) is.
-                *newValLen = 0;
-                *success = 0;
-                return nint.Zero;
+                if (!self.FullMerge(keySpan, hasExistingValue, existingValueSpan,
+                        new MergeOperands(operands, operandsLen, numOperands), result))
+                {
+                    // Failure: a null pointer, zero length and success = 0.
+                    // RocksDb still assigns the (empty) result and calls
+                    // delete_value on it unconditionally, failure or not.
+                    *newValLen = 0;
+                    *success = 0;
+                    return nint.Zero;
+                }
+
+                *newValLen = (nuint)result.WrittenCount;
+                *success = 1;
+                return (nint)result.Pointer;
             }
-
-            nint buf = Marshal.AllocHGlobal(newVal.Length);
-            Marshal.Copy(newVal, 0, buf, newVal.Length);
-
-            *newValLen = (nuint)newVal.Length;
-            *success = 1;
-
-            return buf;
+            finally
+            {
+                CallbackScratch.Release();
+            }
         }
         catch (Exception ex)
         {
@@ -115,25 +119,26 @@ public abstract class MergeOperator : RocksDbHandle
         {
             var self = SelfFromState(state);
             var keySpan = new ReadOnlySpan<byte>(key, checked((int)keyLen));
-            var operandsList = CreateOperands(operands, operandsLen, numOperands);
 
-            if (!self.PartialMerge(keySpan, operandsList, out byte[]? newVal) || newVal is null)
+            CallbackScratch result = CallbackScratch.Acquire();
+            try
             {
-                // Failure, as in FullMerge: delete_value is still called on
-                // the null pointer, which FreeHGlobal(0) handles.
+                if (!self.PartialMerge(keySpan, new MergeOperands(operands, operandsLen, numOperands), result))
+                {
+                    // Failure, as in FullMerge.
+                    *newValLen = 0;
+                    *success = (byte)0;
+                    return nint.Zero;
+                }
 
-                *newValLen = 0;
-                *success = (byte)0;
-                return nint.Zero;
+                *newValLen = (nuint)result.WrittenCount;
+                *success = (byte)1;
+                return (nint)result.Pointer;
             }
-
-            nint buf = Marshal.AllocHGlobal(newVal.Length);
-            Marshal.Copy(newVal, 0, buf, newVal.Length);
-
-            *newValLen = (nuint)newVal.Length;
-            *success = (byte)1;
-
-            return buf;
+            finally
+            {
+                CallbackScratch.Release();
+            }
         }
         catch (Exception ex)
         {
@@ -152,14 +157,11 @@ public abstract class MergeOperator : RocksDbHandle
         nint state,
         nint value, nuint valueLen)
     {
-        try
-        {
-            Marshal.FreeHGlobal(value);
-        }
-        catch (Exception ex)
-        {
-            RocksDbCallbacks.Report("DeleteValue", ex, state);
-        }
+        // Nothing to free. The value is this thread's scratch buffer, which is
+        // reused by the next merge rather than released after each one. The
+        // slot is still installed, because RocksDb calls free() on the value
+        // instead when it is null, and free() on scratch memory would be a
+        // double free when the buffer is next reused.
     }
 
     private static MergeOperator SelfFromState(nint state) => GetSelfFromPinnedIntPtr<MergeOperator>(state);
@@ -199,44 +201,16 @@ public abstract class MergeOperator : RocksDbHandle
             (nint)(delegate* unmanaged[Cdecl]<nint, nint>)&GetNameFromPinnedIntPtrSafe);
     }
 
-    /// <summary>
-    /// Copies the operands out of the native arrays.
-    /// </summary>
-    /// <remarks>
-    /// Materialised rather than yielded. RocksDb builds these arrays as
-    /// call-scoped locals, so a lazy sequence that an override stored and
-    /// enumerated later read freed memory. Making it eager costs one array
-    /// allocation and nothing else: each operand was already copied into a
-    /// managed array here, so the same bytes move either way, and an operator
-    /// that reads all of its operands, which is nearly all of them, pays the
-    /// same as before.
-    /// </remarks>
-    private static IReadOnlyList<byte[]> CreateOperands(nint operands, nint operandsLen, int numOperands)
-    {
-        var result = new byte[numOperands][];
-
-        for (int i = 0; i < numOperands; i++)
-        {
-            // Get the pointer to the operand
-            nint operandPtr = Marshal.ReadIntPtr(operands, i * nint.Size);
-
-            // The lengths are a `const size_t*`, so the element width is the
-            // pointer width, not 8. Reading them as Int64 put every index after
-            // the first at the wrong offset on 32-bit, which win-x86 is, fusing
-            // pairs of lengths and reading past the end of the array.
-            nuint operandLen = (nuint)Marshal.ReadIntPtr(operandsLen, i * nint.Size);
-
-            // Copy the operand data into a managed byte array
-            byte[] operandData = new byte[operandLen];
-            Marshal.Copy(operandPtr, operandData, 0, checked((int)operandLen));
-
-            result[i] = operandData;
-        }
-
-        return result;
-    }
-
-    // ── Abstract methods ───────────────────────────────────────────────
+    // ── Merge methods ───────────────────────────────────────────────────────
+    //
+    // Two forms of each. The span forms read the operands in place and write
+    // the result into a buffer RocksDb copies from, so a merge allocates
+    // nothing; override those where merges are hot. The array forms are the
+    // original API: each operand is copied into a managed array, which may be
+    // kept beyond the call, and the result is returned as one. By default each
+    // span form calls the array form, so an operator written against the
+    // array forms behaves exactly as it always has. Override one form of
+    // FullMerge, not both.
 
     /// <summary>
     /// Called to merge all accumulated operands with the existing value for a key.
@@ -250,11 +224,50 @@ public abstract class MergeOperator : RocksDbHandle
     /// </param>
     /// <param name="newValue">Output: the result of the merge.</param>
     /// <returns><c>true</c> if the merge succeeded; <c>false</c> to signal failure.</returns>
-    public abstract bool FullMerge(ReadOnlySpan<byte> key, bool hasExistingValue, ReadOnlySpan<byte> existingValue, IReadOnlyList<byte[]> operands, out byte[]? newValue);
+    /// <exception cref="NotSupportedException">
+    /// Neither form of <c>FullMerge</c> is overridden. Reported through
+    /// <see cref="RocksDbCallbacks.UnhandledException"/>, and the merge fails.
+    /// </exception>
+    public virtual bool FullMerge(ReadOnlySpan<byte> key, bool hasExistingValue, ReadOnlySpan<byte> existingValue, IReadOnlyList<byte[]> operands, out byte[]? newValue)
+        => throw new NotSupportedException(
+            $"{GetType().Name} overrides neither form of FullMerge. Override one of them.");
+
+    /// <summary>
+    /// Merges all accumulated operands with the existing value for a key,
+    /// without copying either.
+    /// </summary>
+    /// <param name="key">The key being merged. Valid for the duration of the call.</param>
+    /// <param name="hasExistingValue"><c>true</c> if the key has a pre-existing value.</param>
+    /// <param name="existingValue">The current value, valid only when <paramref name="hasExistingValue"/> is <c>true</c>.</param>
+    /// <param name="operands">The operands, oldest first, read in place. See <see cref="MergeOperands"/>.</param>
+    /// <param name="newValue">
+    /// Where to write the result. Valid only for the duration of the call: do
+    /// not keep it.
+    /// </param>
+    /// <returns><c>true</c> if the merge succeeded; <c>false</c> to signal failure.</returns>
+    /// <remarks>
+    /// The default copies the operands into arrays and calls the array form,
+    /// then writes its result. Override this instead to merge without
+    /// allocating.
+    /// </remarks>
+    public virtual bool FullMerge(
+        ReadOnlySpan<byte> key, bool hasExistingValue, ReadOnlySpan<byte> existingValue,
+        MergeOperands operands, IBufferWriter<byte> newValue)
+    {
+        ArgumentNullException.ThrowIfNull(newValue);
+
+        if (!FullMerge(key, hasExistingValue, existingValue, operands.ToArrays(), out byte[]? result) || result is null)
+        {
+            return false;
+        }
+
+        newValue.Write(result);
+        return true;
+    }
 
     /// <summary>
     /// Optional partial merge: combines a subset of operands before a full
-    /// merge. Return <c>false</c> to fall back to <see cref="FullMerge"/>.
+    /// merge. Return <c>false</c> to fall back to <c>FullMerge</c>.
     /// </summary>
     /// <param name="key">The key being merged.</param>
     /// <param name="operands">
@@ -264,7 +277,7 @@ public abstract class MergeOperator : RocksDbHandle
     /// <param name="newValue">Output: the combined operand.</param>
     /// <returns>
     /// <see langword="true"/> if the operands were combined;
-    /// <see langword="false"/> to leave it to <see cref="FullMerge"/>.
+    /// <see langword="false"/> to leave it to <c>FullMerge</c>.
     /// </returns>
     public virtual bool PartialMerge(
         ReadOnlySpan<byte> key, IReadOnlyList<byte[]> operands, out byte[]? newValue)
@@ -274,6 +287,30 @@ public abstract class MergeOperator : RocksDbHandle
         // there to satisfy a non-nullable out parameter.
         newValue = null;
         return false;
+    }
+
+    /// <summary>
+    /// Optional partial merge, without copying the operands or the result.
+    /// </summary>
+    /// <param name="key">The key being merged. Valid for the duration of the call.</param>
+    /// <param name="operands">The operands to combine, oldest first, read in place.</param>
+    /// <param name="newValue">Where to write the combined operand. Valid only for the duration of the call.</param>
+    /// <returns>
+    /// <see langword="true"/> if the operands were combined;
+    /// <see langword="false"/> to leave it to <c>FullMerge</c>.
+    /// </returns>
+    /// <remarks>The default calls the array form, as for <c>FullMerge</c>.</remarks>
+    public virtual bool PartialMerge(ReadOnlySpan<byte> key, MergeOperands operands, IBufferWriter<byte> newValue)
+    {
+        ArgumentNullException.ThrowIfNull(newValue);
+
+        if (!PartialMerge(key, operands.ToArrays(), out byte[]? result) || result is null)
+        {
+            return false;
+        }
+
+        newValue.Write(result);
+        return true;
     }
 
     protected override void DisposeHandle()

@@ -14,6 +14,18 @@ is allowed to be.
 
 ### Added
 
+- **Span forms of the merge operator and compaction filter.**
+  `MergeOperator.FullMerge` and `PartialMerge` gain overloads that read the
+  operands in place, through the new `MergeOperands` `ref struct`, and write
+  the result into an `IBufferWriter<byte>`; `CompactionFilter.Filter` gains
+  one that writes a replacement value the same way. An operator written
+  against them merges without allocating: on reads that each resolve ten
+  operands, 31 KB against 477 KB for the same operator written against the
+  arrays. The array forms remain and are what the span forms call by default,
+  so existing operators and filters behave exactly as before. They are now
+  virtual rather than abstract, so a new one can override only the span form;
+  one that overrides neither fails its merges, or keeps every entry, with the
+  reason reported through `RocksDbCallbacks.UnhandledException`.
 - **`OptimisticTransactionDb`.** A database whose transactions detect conflicts
   at commit instead of locking. `TransactionDb` locks every key as it is
   written and holds it until the transaction ends, so a second writer waits for
@@ -197,6 +209,12 @@ is allowed to be.
     not measurably change. The set is a short allowlist in the generator,
     pinned by a test, because a function on it that blocked or called back
     into managed code would be undefined behaviour rather than a slow call.
+  - Merge operator and compaction filter results go back to RocksDb through a
+    per-thread native buffer that is reused, rather than a fresh
+    `AllocHGlobal` per merge or changed value, and the compaction filter no
+    longer touches two `ConcurrentDictionary` instances on every key it sees.
+    About 10% faster on reads resolving merges through an operator written
+    against the arrays.
 - **Callbacks reach managed code through `[UnmanagedCallersOnly]` function
   pointers instead of marshalled delegates.** All 38
   `Marshal.GetFunctionPointerForDelegate` sites are gone, along with the
