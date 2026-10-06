@@ -35,6 +35,24 @@ A modern C# wrapper for [RocksDb](https://rocksdb.org/), the high-performance em
 - **WAL filter** — inspect, rewrite or skip records during recovery
 - **Cross-platform** — ships native binaries via the `RocksDb.Net.Runtimes` package
 
+## Compared with rocksdb-sharp
+
+[rocksdb-sharp](https://github.com/curiosity-ai/rocksdb-sharp), the `RocksDB` package, is the other maintained .NET binding.
+
+**rocksdb-sharp is the better fit if you need:**
+
+- .NET Framework or netstandard;
+- built-in WAL replication and Raft clustering.
+
+**This library targets .NET 8 and later, and is the better fit for:**
+
+- NativeAOT and trimming;
+- transactions and backups as wrapper classes rather than raw native calls;
+- callbacks whose exceptions are caught;
+- metrics and logging through the standard .NET abstractions.
+
+[The full comparison](https://zcsizmadia.github.io/RocksDb.Net/articles/comparison.html) also covers platforms, packaging, versioning, and moving from one library to the other.
+
 ## Versioning
 
 The package version is `<RocksDbVersion>.<Revision>`, so `11.8.1.1` wraps RocksDb 11.8.1.
@@ -58,6 +76,7 @@ about the native ABI, and nothing would catch it at build or load time.
 - **[Callbacks and exceptions](https://zcsizmadia.github.io/RocksDb.Net/articles/callbacks.html)** — what happens when your comparator or merge operator throws, which thread each callback runs on, and why most options only take effect at open time.
 - **[Writing callbacks](https://zcsizmadia.github.io/RocksDb.Net/articles/writing-callbacks.html)** and **[Compaction filters](https://zcsizmadia.github.io/RocksDb.Net/articles/compaction-filters.html)** — comparators, merge operators, loggers, event listeners and filters, including the span forms that merge and filter without allocating.
 - **[Logging and metrics](https://zcsizmadia.github.io/RocksDb.Net/articles/observability.html)** — RocksDb's log through `ILogger`, its statistics as metrics, and what statistics cost.
+- **[Compared with rocksdb-sharp](https://zcsizmadia.github.io/RocksDb.Net/articles/comparison.html)** — how this library differs from the other maintained .NET binding, and when to choose which.
 - **[Samples](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples)** — runnable examples, one per feature area.
 - **[Changelog](https://github.com/zcsizmadia/RocksDb.Net/blob/main/CHANGELOG.md)** — what changed, and how to migrate across a breaking release.
 

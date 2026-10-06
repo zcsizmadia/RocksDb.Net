@@ -36,6 +36,7 @@ string? value = db.GetString("key");
 - **[Writing callbacks](articles/writing-callbacks.md)** for comparators, merge operators, loggers and event listeners, and **[Compaction filters](articles/compaction-filters.md)** for transforming data as it is rewritten.
 - **[Callbacks and exceptions](articles/callbacks.md)** for what happens when one of those throws, which differs per callback and in one case terminates the process.
 - **[Logging and metrics](articles/observability.md)** for RocksDb's info log through `ILogger`, its statistics and key properties as `System.Diagnostics.Metrics` instruments, and what statistics cost.
+- **[Compared with rocksdb-sharp](articles/comparison.md)** if you are choosing between the two .NET bindings, or moving from one to the other.
 - **[Samples](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples)** in the repository, one per feature area.
 
 ## Versioning
