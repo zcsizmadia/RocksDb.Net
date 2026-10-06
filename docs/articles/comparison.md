@@ -51,7 +51,7 @@ Several of these protections exist because a test reproduced the crash they prev
 
 **Observability.** `RocksDbMetrics` exports RocksDb's statistics and key properties as `System.Diagnostics.Metrics` instruments, for OpenTelemetry, Prometheus or `dotnet-counters`. `DbOptions.UseLogging` sends RocksDb's info log to an `ILogger`. In rocksdb-sharp, statistics come back as a string, and the info log setter takes a native logger pointer. See [Logging and metrics](observability.md).
 
-**Fewer copies on the read path.** Reads go through pinned slices, so a value is copied once rather than three times. Merge operators and compaction filters have span forms that do not allocate. `TryGetInto` reads straight into a buffer you own. Both libraries offer span-based keys and values; rocksdb-sharp also has a typed `Get<T>` with a span deserializer.
+**Fewer copies on the read path.** Reads go through pinned slices, so a value is copied once rather than three times. Merge operators and compaction filters have span forms that do not allocate. `TryGetInto` reads straight into a buffer you own, and `TryGet<T>` decodes a value in place through a `ValueDecoder<T>`, so a `static` decoder reads a value without allocating at all. rocksdb-sharp's nearest equivalent is `Get<T>` with a span deserializer. Its `HasKey` reads and then discards the value, while `ContainsKey` here never copies it.
 
 **How it is tested and released:**
 
@@ -70,6 +70,8 @@ The two APIs look alike at the top level, and the same database files work with 
 | `db.Remove(key)` | `db.Delete(key)` |
 | `db.Get(key, cf, readOptions)` with optional parameters | Separate overloads, with the options last: `db.Get(key, cf, options)` |
 | `GetFixedSizeValue(key, span)` | `TryGetInto(key, span, out int length)`, which also reports the length a too-small buffer needed |
+| `HasKey(key)` | `ContainsKey(key)`, which throws on a failed read rather than returning `false` |
+| `Get<T>(key, ISpanDeserializer<T>)` | `TryGet(key, static v => ..., out T value)`, with a state overload for a decoder that needs context |
 | `MergeOperators.Create(name, partial, full)` | A subclass of `MergeOperator`, overriding `FullMerge` and optionally `PartialMerge` |
 | Raw native calls for transactions and backups | `TransactionDb`, `OptimisticTransactionDb`, `BackupEngine` |
 
