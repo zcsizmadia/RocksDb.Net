@@ -1143,6 +1143,116 @@ public sealed class RocksDb : RocksDbHandle
         return KeyMayExist(utf8.First, cf, options);
     }
 
+    // ── Exact existence, and reads decoded in place ──────────────────────────
+
+    /// <summary>
+    /// Returns whether <paramref name="key"/> exists, exactly, without copying
+    /// its value.
+    /// </summary>
+    /// <remarks>
+    /// Unlike <c>KeyMayExist</c>, which consults only the bloom filters and can
+    /// answer yes for a key that is absent, this is a real read and is never
+    /// wrong. It costs the same as reading the value, less the copy: the value
+    /// is located and pinned, then released unread.
+    /// </remarks>
+    /// <exception cref="RocksDbException">The read failed, as opposed to finding nothing.</exception>
+    public bool ContainsKey(ReadOnlySpan<byte> key, ReadOptions? options = null)
+        => NativeMethods.DestroyPinned(GetPinnedHandle(key, options));
+
+    /// <inheritdoc cref="ContainsKey(ReadOnlySpan{byte}, ReadOptions?)"/>
+    public bool ContainsKey(ReadOnlySpan<byte> key, ColumnFamilyHandle cf, ReadOptions? options = null)
+        => NativeMethods.DestroyPinned(GetPinnedHandle(key, cf, options));
+
+    /// <summary>Returns whether the UTF-8 encoded <paramref name="key"/> exists, exactly.</summary>
+    /// <inheritdoc cref="ContainsKey(ReadOnlySpan{byte}, ReadOptions?)" path="/remarks"/>
+    public bool ContainsKey(string key, ReadOptions? options = null)
+    {
+        using var utf8 = PooledUtf8.Encode(key);
+        return ContainsKey(utf8.First, options);
+    }
+
+    /// <summary>Returns whether the UTF-8 encoded <paramref name="key"/> exists in <paramref name="cf"/>, exactly.</summary>
+    /// <inheritdoc cref="ContainsKey(ReadOnlySpan{byte}, ReadOptions?)" path="/remarks"/>
+    public bool ContainsKey(string key, ColumnFamilyHandle cf, ReadOptions? options = null)
+    {
+        using var utf8 = PooledUtf8.Encode(key);
+        return ContainsKey(utf8.First, cf, options);
+    }
+
+    /// <summary>
+    /// Reads <paramref name="key"/> and decodes its value in place, without
+    /// copying it into a managed array.
+    /// </summary>
+    /// <typeparam name="T">What the value decodes to.</typeparam>
+    /// <param name="key">The key to read.</param>
+    /// <param name="decode">
+    /// Turns the value into a <typeparamref name="T"/>. The span it is given is
+    /// valid only until it returns. Not called when the key is absent.
+    /// </param>
+    /// <param name="value">The decoded value, when the key was found.</param>
+    /// <param name="options">Read options, or <see langword="null"/> for the defaults.</param>
+    /// <returns><see langword="true"/> if the key was found.</returns>
+    /// <remarks>
+    /// <para>
+    /// The value is read through a pinned slice and released once
+    /// <paramref name="decode"/> returns, or throws; an exception from the
+    /// decoder reaches the caller unchanged. Compared with decoding the array
+    /// <c>Get</c> returns, this saves allocating and copying the value.
+    /// </para>
+    /// <para>
+    /// A <c>static</c> lambda allocates nothing. A decoder that needs state,
+    /// such as serializer options, can take it through the overload with a
+    /// state argument instead of capturing it.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="RocksDbException">The read failed, as opposed to finding nothing.</exception>
+    public bool TryGet<T>(ReadOnlySpan<byte> key, ValueDecoder<T> decode, [MaybeNullWhen(false)] out T value,
+        ReadOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(decode);
+        return NativeMethods.DecodePinnedAndDestroy(GetPinnedHandle(key, options), decode, out value);
+    }
+
+    /// <inheritdoc cref="TryGet{T}(ReadOnlySpan{byte}, ValueDecoder{T}, out T, ReadOptions?)"/>
+    public bool TryGet<T>(ReadOnlySpan<byte> key, ColumnFamilyHandle cf, ValueDecoder<T> decode,
+        [MaybeNullWhen(false)] out T value, ReadOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(decode);
+        return NativeMethods.DecodePinnedAndDestroy(GetPinnedHandle(key, cf, options), decode, out value);
+    }
+
+    /// <summary>
+    /// Reads <paramref name="key"/> and decodes its value in place, passing
+    /// <paramref name="state"/> to the decoder rather than having it captured.
+    /// </summary>
+    /// <typeparam name="TState">The state the decoder needs.</typeparam>
+    /// <typeparam name="T">What the value decodes to.</typeparam>
+    /// <param name="key">The key to read.</param>
+    /// <param name="state">Passed to <paramref name="decode"/> unchanged.</param>
+    /// <param name="decode">
+    /// Turns the value into a <typeparamref name="T"/>. The span it is given is
+    /// valid only until it returns. Not called when the key is absent.
+    /// </param>
+    /// <param name="value">The decoded value, when the key was found.</param>
+    /// <param name="options">Read options, or <see langword="null"/> for the defaults.</param>
+    /// <returns><see langword="true"/> if the key was found.</returns>
+    /// <inheritdoc cref="TryGet{T}(ReadOnlySpan{byte}, ValueDecoder{T}, out T, ReadOptions?)" path="/remarks"/>
+    /// <exception cref="RocksDbException">The read failed, as opposed to finding nothing.</exception>
+    public bool TryGet<TState, T>(ReadOnlySpan<byte> key, TState state, ValueDecoder<TState, T> decode,
+        [MaybeNullWhen(false)] out T value, ReadOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(decode);
+        return NativeMethods.DecodePinnedAndDestroy(GetPinnedHandle(key, options), state, decode, out value);
+    }
+
+    /// <inheritdoc cref="TryGet{TState, T}(ReadOnlySpan{byte}, TState, ValueDecoder{TState, T}, out T, ReadOptions?)"/>
+    public bool TryGet<TState, T>(ReadOnlySpan<byte> key, ColumnFamilyHandle cf, TState state,
+        ValueDecoder<TState, T> decode, [MaybeNullWhen(false)] out T value, ReadOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(decode);
+        return NativeMethods.DecodePinnedAndDestroy(GetPinnedHandle(key, cf, options), state, decode, out value);
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Iterator
     // ─────────────────────────────────────────────────────────────────────────

@@ -45,6 +45,26 @@ string? text = db.GetString("key");
 
 Both return `null` for a key that is not present, which is distinct from a key whose value is an empty array. RocksDb stores empty values happily, so `Get` returning a zero-length array means the key exists with no value.
 
+### Reading without copying
+
+`Get` copies the value into a new array. When you only need to decode it or check it exists, you can skip the copy:
+
+```csharp
+db.Put("visits"u8, BitConverter.GetBytes(41L));
+
+// Decode in place. The span is valid only inside the lambda.
+db.TryGet("visits"u8, static v => BinaryPrimitives.ReadInt64LittleEndian(v), out long visits);
+
+// Does the key exist? Exact, and the value is never copied.
+bool known = db.ContainsKey("visits"u8);
+```
+
+A `static` lambda allocates nothing, so neither call allocates at all. A decoder that needs something from outside, such as `JsonSerializerOptions`, can take it through the overload with a state argument instead of capturing it.
+
+`ContainsKey` is a real read and always right. `KeyMayExist` is cheaper, because it consults only the bloom filters, but it can say yes for a key that is not there. Use it to skip reads that would certainly miss, not to decide whether a key exists.
+
+Two more ways to read without allocating: `TryGetInto` copies into a buffer you already own, and `GetPinned` hands back the value in place for as long as you hold it.
+
 ## Deleting
 
 ```csharp
