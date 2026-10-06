@@ -22,6 +22,19 @@ public static class StatisticsEnumGenerator
 
     /// <summary>Generates the file content.</summary>
     public static string Generate(CEnum tickers, CEnum histograms, string version, string url)
+        => Generate(tickers, histograms, version, url, tickerNames: null, histogramNames: null);
+
+    /// <summary>
+    /// Generates the enums and, given RocksDb's name tables, the lookup from
+    /// each value to its dotted name.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// A member has no name in its table. Generation stops rather than letting
+    /// a counter added in a RocksDb release export under a made-up name.
+    /// </exception>
+    public static string Generate(
+        CEnum tickers, CEnum histograms, string version, string url,
+        IReadOnlyDictionary<string, string>? tickerNames, IReadOnlyDictionary<string, string>? histogramNames)
     {
         var sb = new StringBuilder();
 
@@ -41,7 +54,8 @@ public static class StatisticsEnumGenerator
         sb.AppendLine( "//");
         sb.AppendLine( "// Modified from the original: the C++ enum members have been renamed to");
         sb.AppendLine( "// this library's casing and their comments reproduced as XML");
-        sb.AppendLine( "// documentation. The numeric values are RocksDb's own. No RocksDb");
+        sb.AppendLine( "// documentation. The numeric values are RocksDb's own, and so are the");
+        sb.AppendLine( "// dotted statistic names, taken from monitoring/statistics.cc. No RocksDb");
         sb.AppendLine( "// implementation code is included or reproduced here.");
         sb.AppendLine( "// </auto-generated>");
         sb.AppendLine();
@@ -74,7 +88,60 @@ public static class StatisticsEnumGenerator
             "A distribution collected by the statistics subsystem.",
             "Pass one to <see cref=\"DbOptions.GetHistogramData(Histogram)\"/>.");
 
+        if (tickerNames is not null && histogramNames is not null)
+        {
+            sb.AppendLine();
+            EmitNames(sb, tickers, histograms, tickerNames, histogramNames);
+        }
+
         return sb.ToString();
+    }
+
+    private static void EmitNames(
+        StringBuilder sb, CEnum tickers, CEnum histograms,
+        IReadOnlyDictionary<string, string> tickerNames, IReadOnlyDictionary<string, string> histogramNames)
+    {
+        sb.AppendLine( "/// <summary>");
+        sb.AppendLine( "/// RocksDb's own name for each statistic, such as <c>rocksdb.block.cache.miss</c>.");
+        sb.AppendLine( "/// </summary>");
+        sb.AppendLine( "/// <remarks>");
+        sb.AppendLine( "/// The names its statistics dump, its documentation and existing dashboards");
+        sb.AppendLine( "/// use, taken from <c>monitoring/statistics.cc</c> rather than written here.");
+        sb.AppendLine( "/// </remarks>");
+        sb.AppendLine( "internal static class StatisticsNames");
+        sb.AppendLine( "{");
+
+        EmitLookup(sb, "Ticker", tickers, tickerNames);
+        sb.AppendLine();
+        EmitLookup(sb, "Histogram", histograms, histogramNames);
+
+        sb.AppendLine( "}");
+    }
+
+    private static void EmitLookup(StringBuilder sb, string type, CEnum source, IReadOnlyDictionary<string, string> names)
+    {
+        sb.AppendLine($"    internal static string Of({type} value) => value switch");
+        sb.AppendLine( "    {");
+
+        foreach (CEnumMember member in source.Members)
+        {
+            if (Sentinels.Contains(member.Name))
+            {
+                continue;
+            }
+
+            if (!names.TryGetValue(member.Name, out string? name))
+            {
+                throw new InvalidOperationException(
+                    $"{source.Name}::{member.Name} has no name in statistics.cc. The metrics export " +
+                    "reports under RocksDb's names, so the generator stops rather than invent one.");
+            }
+
+            sb.AppendLine($"        {type}.{CppEnumParser.ToPascalCase(member.Name)} => \"{name}\",");
+        }
+
+        sb.AppendLine( "        _ => throw new ArgumentOutOfRangeException(nameof(value), value, null),");
+        sb.AppendLine( "    };");
     }
 
     private static void Emit(StringBuilder sb, string name, CEnum source, string summary, string remarks)

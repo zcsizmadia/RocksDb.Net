@@ -29,6 +29,7 @@ A modern C# wrapper for [RocksDb](https://rocksdb.org/), the high-performance em
 - **Bloom/Ribbon filters** — configurable filter policies for point lookups
 - **Large values** — integrated BlobDB stores values above a threshold outside the SST files, with their own cache and garbage collection
 - **Event listeners** — observe flush, compaction, ingestion and background error events, with table properties and compaction statistics
+- **Logging and metrics** — RocksDb's info log through `Microsoft.Extensions.Logging`, and its statistics and key properties as `System.Diagnostics.Metrics` instruments under RocksDb's own names, ready for OpenTelemetry, Prometheus or `dotnet-counters`
 - **Write-ahead log** — list log files, and stream changes with `GetUpdatesSince` for replication
 - **WAL filter** — inspect, rewrite or skip records during recovery
 - **Cross-platform** — ships native binaries via the `RocksDb.Net.Runtimes` package
@@ -52,6 +53,7 @@ about the native ABI, and nothing would catch it at build or load time.
 - **[API reference](https://zcsizmadia.github.io/RocksDb.Net/)** — every public type and member, generated from the source.
 - **[Ownership and lifetime](https://zcsizmadia.github.io/RocksDb.Net/articles/ownership.html)** — which side frees each native handle. RocksDb is inconsistent about this and the wrapper follows it rather than hiding it, so this is worth reading before writing much code.
 - **[Callbacks and exceptions](https://zcsizmadia.github.io/RocksDb.Net/articles/callbacks.html)** — what happens when your comparator or merge operator throws, which thread each callback runs on, and why most options only take effect at open time.
+- **[Logging and metrics](https://zcsizmadia.github.io/RocksDb.Net/articles/observability.html)** — RocksDb's log through `ILogger`, its statistics as metrics, and what statistics cost.
 - **[Samples](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples)** — runnable examples, one per feature area.
 - **[Changelog](https://github.com/zcsizmadia/RocksDb.Net/blob/main/CHANGELOG.md)** — what changed, and how to migrate across a breaking release.
 
@@ -199,6 +201,22 @@ var histogram = options.GetHistogramData(Histogram.DbWrite);
 Console.WriteLine(histogram?.Count);
 ```
 
+### Logging and metrics
+
+```csharp
+var options = new DbOptions { CreateIfMissing = true }
+    .UseLogging(loggerFactory)      // RocksDb's info log, under the "RocksDb" category
+    .EnableStatistics();            // needed for tickers and histograms, and costs throughput
+
+using var db = RocksDb.Open(options, "observed_db");
+
+// Statistics and key properties as System.Diagnostics.Metrics instruments on the
+// "RocksDb.Net" meter. Nothing is read until a collector asks.
+using var metrics = RocksDbMetrics.Register(db, new RocksDbMetricsOptions { DatabaseName = "observed_db" });
+```
+
+RocksDb writes several hundred lines at `Information` each time a database opens, so keep the `RocksDb` category at `Warning` in production. See [Logging and metrics](https://zcsizmadia.github.io/RocksDb.Net/articles/observability.html) for what is exported and what statistics cost.
+
 ### Live files and approximate sizes
 
 ```csharp
@@ -324,6 +342,7 @@ The [`Samples/`](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples) di
 | [EventListenerSample](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples/EventListenerSample) | Observing database events |
 | [ReadOnlyAndSecondarySample](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples/ReadOnlyAndSecondarySample) | Read-only and secondary instances |
 | [TuningAndStatsSample](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples/TuningAndStatsSample) | Performance tuning and statistics |
+| [ObservabilitySample](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples/ObservabilitySample) | Logging through `ILogger` and statistics as metrics |
 
 Run any sample with:
 

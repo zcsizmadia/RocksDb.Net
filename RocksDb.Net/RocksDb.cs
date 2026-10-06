@@ -2886,8 +2886,47 @@ public sealed class RocksDb : RocksDbHandle
         NativeMethods.rocksdb_close(Handle);
     }
 
+    // Taken by observers that read the database from a thread of their own,
+    // which is the metrics export, and by close before anything is released.
+    // An observer therefore either finishes its read before the database
+    // closes or finds it closed and reads nothing. Ordinary calls do not take
+    // it: disposal racing a call is documented as the caller's to prevent,
+    // and two interlocked operations per read is too high a price for that.
+    // A metrics scrape is neither frequent nor the caller's to schedule.
+    private readonly object _observerGate = new();
+    private bool _observersClosed;
+
+    /// <summary>
+    /// Runs <paramref name="read"/> unless the database has started closing,
+    /// holding off the close until it returns.
+    /// </summary>
+    /// <returns>Whether <paramref name="read"/> ran.</returns>
+    internal bool TryObserve(Action<RocksDb> read)
+    {
+        lock (_observerGate)
+        {
+            if (_observersClosed || IsDisposed)
+            {
+                return false;
+            }
+
+            read(this);
+            return true;
+        }
+    }
+
+    /// <summary>The options the database was opened with, for its statistics.</summary>
+    internal DbOptions OpenOptions => _ownedOptions;
+
     protected override void DisposeUnmanagedResources()
     {
+        // Before anything is released, so an observer mid-read finishes first
+        // and none starts afterwards.
+        lock (_observerGate)
+        {
+            _observersClosed = true;
+        }
+
         // Column family handles, iterators and snapshots must all be destroyed
         // before the database handle is closed, because their native destructors
         // reach into database internals. Every one of them registered this as

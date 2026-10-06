@@ -125,7 +125,7 @@ public class ChildHandleReleaseTests
 
         db.Db.Put("a", "1");
 
-        long before = GC.GetTotalMemory(forceFullCollection: true);
+        int before = db.Db.ChildCount;
 
         for (int i = 0; i < 20_000; i++)
         {
@@ -133,13 +133,11 @@ public class ChildHandleReleaseTests
             iterator.SeekToFirst();
         }
 
-        long grew = GC.GetTotalMemory(forceFullCollection: true) - before;
-
-        // Twenty thousand retained iterators would be megabytes. A few hundred
-        // kilobytes of ordinary noise is not.
-        Assert.True(
-            grew < 4L * 1024 * 1024,
-            $"managed memory grew by {grew / 1024} KB over 20,000 disposed iterators, so the parent kept them");
+        // Counted on the parent rather than measured on the heap. This used to
+        // compare GC.GetTotalMemory before and after, which is process-wide, so
+        // tests allocating in parallel moved it: a macOS run measured 4.2 MB of
+        // growth with nothing retained. The count is exact.
+        Assert.Equal(before, db.Db.ChildCount);
     }
 
     /// <summary>

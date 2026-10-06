@@ -6,6 +6,11 @@ updates:
       interval: "weekly"
       day: "sunday"
     open-pull-requests-limit: 25
+    ignore:
+      # Held at the lowest version every target framework accepts, because a
+      # library sets the floor for its consumers. Patches still come through.
+      - dependency-name: "Microsoft.Extensions.Logging.Abstractions"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
   - package-ecosystem: "github-actions"
     directory: "/"

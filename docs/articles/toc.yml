@@ -10,3 +10,5 @@
   href: compaction-filters.md
 - name: Callbacks and exceptions
   href: callbacks.md
+- name: Logging and metrics
+  href: observability.md

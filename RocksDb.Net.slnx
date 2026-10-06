@@ -17,6 +17,7 @@
     <Project Path="Samples/EventListenerSample/EventListenerSample.csproj" />
     <Project Path="Samples/IteratorSample/IteratorSample.csproj" />
     <Project Path="Samples/MergeOperatorSample/MergeOperatorSample.csproj" />
+    <Project Path="Samples/ObservabilitySample/ObservabilitySample.csproj" />
     <Project Path="Samples/ReadOnlyAndSecondarySample/ReadOnlyAndSecondarySample.csproj" />
     <Project Path="Samples/SnapshotSample/SnapshotSample.csproj" />
     <Project Path="Samples/SstFileWriterSample/SstFileWriterSample.csproj" />

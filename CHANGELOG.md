@@ -14,6 +14,24 @@ is allowed to be.
 
 ### Added
 
+- **Statistics as `System.Diagnostics.Metrics` instruments.**
+  `RocksDbMetrics.Register(db)` exports every ticker and histogram, under
+  RocksDb's own names such as `rocksdb.block.cache.miss`, plus the properties
+  operators usually watch, on a meter called `RocksDb.Net` tagged `db.name`.
+  OpenTelemetry, Prometheus exporters and `dotnet-counters` read them directly.
+  Everything is observable, so nothing is read until a collector asks; the
+  property gauges need no statistics at all. A collection that races the
+  database closing either completes first or reports nothing. The names come
+  from RocksDb's `monitoring/statistics.cc` through the generator, so they
+  follow RocksDb version bumps.
+- **RocksDb's info log through `Microsoft.Extensions.Logging`.**
+  `DbOptions.UseLogging(loggerFactory)`, or `MicrosoftExtensionsLogger`
+  directly, sends the log to an `ILogger` with RocksDb's levels mapped onto
+  `LogLevel`. The package now depends on
+  `Microsoft.Extensions.Logging.Abstractions` 8.0, its first dependency beyond
+  the native runtimes; it is held at the lowest version every target framework
+  accepts. RocksDb writes several hundred lines at `Information` each time a
+  database opens, so keep the `RocksDb` category at `Warning` in production.
 - **Span forms of the merge operator and compaction filter.**
   `MergeOperator.FullMerge` and `PartialMerge` gain overloads that read the
   operands in place, through the new `MergeOperands` `ref struct`, and write
