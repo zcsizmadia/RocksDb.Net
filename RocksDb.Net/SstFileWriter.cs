@@ -105,6 +105,25 @@ public sealed class SstFileWriter : RocksDbHandle
         NativeMethods.ThrowOnError(err);
     }
 
+    /// <summary>
+    /// Writes a range tombstone covering keys from <paramref name="beginKey"/>
+    /// up to, but not including, <paramref name="endKey"/>.
+    /// </summary>
+    /// <remarks>
+    /// Ingesting the file deletes that range from the database, the bulk
+    /// counterpart of <see cref="RocksDb.DeleteRange(ReadOnlySpan{byte}, ReadOnlySpan{byte}, WriteOptions?)"/>.
+    /// Unlike point entries, range tombstones need not be added in key order.
+    /// </remarks>
+    public unsafe void DeleteRange(ReadOnlySpan<byte> beginKey, ReadOnlySpan<byte> endKey)
+    {
+        nint err = default;
+        fixed (byte* b = beginKey)
+        fixed (byte* e = endKey)
+            NativeMethods.rocksdb_sstfilewriter_delete_range(
+                Handle, b, (nuint)beginKey.Length, e, (nuint)endKey.Length, ref err);
+        NativeMethods.ThrowOnError(err);
+    }
+
     /// <summary>Writes a deletion record for <paramref name="key"/>.</summary>
     public unsafe void Delete(ReadOnlySpan<byte> key)
     {

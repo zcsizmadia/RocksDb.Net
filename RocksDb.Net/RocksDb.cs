@@ -125,55 +125,11 @@ public sealed class RocksDb : RocksDbHandle
     /// </remarks>
     public static unsafe RocksDb Open(DbOptions options, string path, IReadOnlyList<ColumnFamilyDescriptor> columnFamilies)
     {
-        ArgumentNullException.ThrowIfNull(options);
-        options.ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrEmpty(path);
-        ArgumentNullException.ThrowIfNull(columnFamilies);
 
-        int count = columnFamilies.Count;
-        nint[] cfHandles = new nint[count];
-        foreach (ColumnFamilyDescriptor descriptor in columnFamilies)
-        {
-            ArgumentNullException.ThrowIfNull(descriptor);
-
-            // A disposed DbOptions reports a null handle, and RocksDb requires
-            // every pointer argument to be non-null, so passing one through
-            // dereferences null inside the native open. Reusing a descriptor list
-            // for a second database is how this happens, and the access violation
-            // it produced named neither the descriptor nor the reuse.
-            descriptor.Options.ThrowIfDisposed();
-        }
-
-        nint[] cfOptions = [.. columnFamilies.Select(cf => cf.Options.Handle)];
-        byte[][] cfNameBytes = [.. columnFamilies.Select(cf => Encoding.UTF8.GetBytes(cf.Name + '\0'))];
-
-        nint handle;
-        nint err = default;
-        var pins = new GCHandle[count];
-        var namePtrs = new byte*[count];
-        try
-        {
-            for (int i = 0; i < count; i++)
-            {
-                pins[i] = GCHandle.Alloc(cfNameBytes[i], GCHandleType.Pinned);
-                namePtrs[i] = (byte*)pins[i].AddrOfPinnedObject();
-            }
-
-            fixed (byte** namesPtr = namePtrs)
-            fixed (nint* optsPtr = cfOptions)
-            fixed (nint* handlesPtr = cfHandles)
-                handle = NativeMethods.rocksdb_open_column_families(
-                    options.Handle, path, count,
-                    namesPtr, optsPtr, handlesPtr, ref err);
-        }
-        finally
-        {
-            for (int i = 0; i < count; i++)
-                if (pins[i].IsAllocated) pins[i].Free();
-        }
-        NativeMethods.ThrowOnError(err);
-
-        return new RocksDb(handle, cfHandles, options, columnFamilies);
+        return OpenColumnFamilies(options, columnFamilies,
+            (nint dbOptions, int count, byte** names, nint* cfOptions, nint* handles, ref nint err)
+                => NativeMethods.rocksdb_open_column_families(dbOptions, path, count, names, cfOptions, handles, ref err));
     }
 
     /// <summary>Opens an existing database in read-only mode.</summary>
@@ -207,9 +163,141 @@ public sealed class RocksDb : RocksDbHandle
     /// </remarks>
     public static unsafe RocksDb OpenReadOnly(DbOptions options, string path, IReadOnlyList<ColumnFamilyDescriptor> columnFamilies, bool errorIfWalExists = false)
     {
+        ArgumentException.ThrowIfNullOrEmpty(path);
+
+        return OpenColumnFamilies(options, columnFamilies,
+            (nint dbOptions, int count, byte** names, nint* cfOptions, nint* handles, ref nint err)
+                => NativeMethods.rocksdb_open_for_read_only_column_families(
+                    dbOptions, path, count, names, cfOptions, handles, errorIfWalExists ? (byte)1 : (byte)0, ref err));
+    }
+
+    /// <summary>
+    /// Opens the database as a secondary instance that can catch up to the primary.
+    /// </summary>
+    public static RocksDb OpenAsSecondary(DbOptions options, string path, string secondaryPath)
+    {
         ArgumentNullException.ThrowIfNull(options);
         options.ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrEmpty(path);
+        ArgumentException.ThrowIfNullOrEmpty(secondaryPath);
+
+        nint err = default;
+        nint handle = NativeMethods.rocksdb_open_as_secondary(options.Handle, path, secondaryPath, ref err);
+        NativeMethods.ThrowOnError(err);
+
+        return new RocksDb(handle, options);
+    }
+
+    /// <summary>
+    /// Opens the database as a secondary instance with an explicit set of
+    /// column families. The <c>"default"</c> column family must be included.
+    /// </summary>
+    /// <param name="options">Options for the database. The returned database takes ownership of them.</param>
+    /// <param name="path">The primary's directory.</param>
+    /// <param name="secondaryPath">
+    /// A directory of the secondary's own, for its info log and the manifest
+    /// it tails. It must not be the primary's.
+    /// </param>
+    /// <param name="columnFamilies">
+    /// The families to open. Unlike a primary, a secondary may open a subset
+    /// of them, as long as the default family is among them.
+    /// </param>
+    /// <remarks>
+    /// Without this a database with column families could not be opened as a
+    /// secondary at all, since RocksDb otherwise opens only the default
+    /// family. Call <see cref="TryCatchUpWithPrimary"/> to see the primary's
+    /// later writes.
+    /// </remarks>
+    public static unsafe RocksDb OpenAsSecondary(
+        DbOptions options, string path, string secondaryPath, IReadOnlyList<ColumnFamilyDescriptor> columnFamilies)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(path);
+        ArgumentException.ThrowIfNullOrEmpty(secondaryPath);
+
+        return OpenColumnFamilies(options, columnFamilies,
+            (nint dbOptions, int count, byte** names, nint* cfOptions, nint* handles, ref nint err)
+                => NativeMethods.rocksdb_open_as_secondary_column_families(
+                    dbOptions, path, secondaryPath, count, names, cfOptions, handles, ref err));
+    }
+
+    /// <summary>Opens the database with a TTL (time-to-live) compaction filter.</summary>
+    public static RocksDb OpenWithTtl(DbOptions options, string path, int ttlSeconds)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        options.ThrowIfDisposed();
+        ArgumentException.ThrowIfNullOrEmpty(path);
+
+        nint err = default;
+        nint handle = NativeMethods.rocksdb_open_with_ttl(options.Handle, path, ttlSeconds, ref err);
+        NativeMethods.ThrowOnError(err);
+
+        return new RocksDb(handle, options);
+    }
+
+    /// <summary>
+    /// Opens a TTL database with an explicit set of column families, each
+    /// with its own time-to-live.
+    /// </summary>
+    /// <param name="options">Options for the database. The returned database takes ownership of them.</param>
+    /// <param name="path">The database directory.</param>
+    /// <param name="columnFamilies">The families to open, including <c>"default"</c>.</param>
+    /// <param name="ttlSeconds">
+    /// The time-to-live of each family in seconds, in the same order as
+    /// <paramref name="columnFamilies"/>. Zero or less means entries never
+    /// expire.
+    /// </param>
+    /// <remarks>
+    /// As with <see cref="OpenWithTtl(DbOptions, string, int)"/>, expiry is
+    /// applied by compaction, so an expired entry can still be read until a
+    /// compaction reaches it.
+    /// </remarks>
+    /// <exception cref="ArgumentException">The two lists are of different lengths.</exception>
+    public static unsafe RocksDb OpenWithTtl(
+        DbOptions options, string path, IReadOnlyList<ColumnFamilyDescriptor> columnFamilies, IReadOnlyList<int> ttlSeconds)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(path);
+        ArgumentNullException.ThrowIfNull(columnFamilies);
+        ArgumentNullException.ThrowIfNull(ttlSeconds);
+
+        if (ttlSeconds.Count != columnFamilies.Count)
+        {
+            throw new ArgumentException(
+                $"One TTL per column family is required: {columnFamilies.Count} families, {ttlSeconds.Count} TTLs.",
+                nameof(ttlSeconds));
+        }
+
+        int[] ttls = [.. ttlSeconds];
+
+        return OpenColumnFamilies(options, columnFamilies,
+            (nint dbOptions, int count, byte** names, nint* cfOptions, nint* handles, ref nint err) =>
+            {
+                fixed (int* t = ttls)
+                {
+                    return NativeMethods.rocksdb_open_column_families_with_ttl(
+                        dbOptions, path, count, names, cfOptions, handles, t, ref err);
+                }
+            });
+    }
+
+    /// <summary>The native open, given everything a column-family open needs pinned.</summary>
+    private unsafe delegate nint ColumnFamilyOpen(
+        nint dbOptions, int count, byte** names, nint* cfOptions, nint* handles, ref nint err);
+
+    /// <summary>
+    /// What every open with an explicit column-family list shares: checking the
+    /// options and descriptors, pinning the names, and wrapping the handles
+    /// RocksDb returns.
+    /// </summary>
+    /// <remarks>
+    /// The options' handle is read here and passed in, rather than read inside
+    /// each caller's lambda, so the options stay referenced by this method
+    /// until the database that takes them over exists.
+    /// </remarks>
+    private static unsafe RocksDb OpenColumnFamilies(
+        DbOptions options, IReadOnlyList<ColumnFamilyDescriptor> columnFamilies, ColumnFamilyOpen open)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        options.ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(columnFamilies);
 
         int count = columnFamilies.Count;
@@ -244,10 +332,7 @@ public sealed class RocksDb : RocksDbHandle
             fixed (byte** namesPtr = namePtrs)
             fixed (nint* optsPtr = cfOptions)
             fixed (nint* handlesPtr = cfHandles)
-                handle = NativeMethods.rocksdb_open_for_read_only_column_families(
-                    options.Handle, path, count,
-                    namesPtr, optsPtr, handlesPtr,
-                    errorIfWalExists ? (byte)1 : (byte)0, ref err);
+                handle = open(options.Handle, count, namesPtr, optsPtr, handlesPtr, ref err);
         }
         finally
         {
@@ -257,37 +342,6 @@ public sealed class RocksDb : RocksDbHandle
         NativeMethods.ThrowOnError(err);
 
         return new RocksDb(handle, cfHandles, options, columnFamilies);
-    }
-
-    /// <summary>
-    /// Opens the database as a secondary instance that can catch up to the primary.
-    /// </summary>
-    public static RocksDb OpenAsSecondary(DbOptions options, string path, string secondaryPath)
-    {
-        ArgumentNullException.ThrowIfNull(options);
-        options.ThrowIfDisposed();
-        ArgumentException.ThrowIfNullOrEmpty(path);
-        ArgumentException.ThrowIfNullOrEmpty(secondaryPath);
-
-        nint err = default;
-        nint handle = NativeMethods.rocksdb_open_as_secondary(options.Handle, path, secondaryPath, ref err);
-        NativeMethods.ThrowOnError(err);
-
-        return new RocksDb(handle, options);
-    }
-
-    /// <summary>Opens the database with a TTL (time-to-live) compaction filter.</summary>
-    public static RocksDb OpenWithTtl(DbOptions options, string path, int ttlSeconds)
-    {
-        ArgumentNullException.ThrowIfNull(options);
-        options.ThrowIfDisposed();
-        ArgumentException.ThrowIfNullOrEmpty(path);
-
-        nint err = default;
-        nint handle = NativeMethods.rocksdb_open_with_ttl(options.Handle, path, ttlSeconds, ref err);
-        NativeMethods.ThrowOnError(err);
-
-        return new RocksDb(handle, options);
     }
 
     /// <summary>Destroys the database files at <paramref name="path"/>. Irreversible.</summary>

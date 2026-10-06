@@ -996,6 +996,164 @@ public sealed class DbOptions : RocksDbHandle
     }
 
     /// <summary>
+    /// Places one column family's files across several directories, each with
+    /// a size target, independently of the rest of the database.
+    /// </summary>
+    /// <param name="paths">The directories, in the order RocksDb should fill them.</param>
+    /// <remarks>
+    /// <see cref="SetDbPaths"/> for a single column family, set on the options
+    /// that family is created or opened with. The usual reason is to keep one
+    /// hot family on a fast device while the others share slower storage.
+    /// RocksDb copies the values, so the <see cref="DbPath"/> objects stay
+    /// yours to dispose.
+    /// </remarks>
+    public unsafe DbOptions SetColumnFamilyPaths(IReadOnlyList<DbPath> paths)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+
+        if (paths.Count == 0)
+        {
+            throw new ArgumentException("At least one path is required.", nameof(paths));
+        }
+
+        nint[] handles = new nint[paths.Count];
+        for (int i = 0; i < paths.Count; i++)
+        {
+            ArgumentNullException.ThrowIfNull(paths[i]);
+            handles[i] = paths[i].Handle;
+        }
+
+        fixed (nint* p = handles)
+            NativeMethods.rocksdb_options_set_cf_paths(Handle, p, (nuint)paths.Count);
+        GC.KeepAlive(paths);
+
+        return this;
+    }
+
+    /// <summary>Sets the compression used at each level, from level 0 down.</summary>
+    /// <param name="levels">
+    /// One entry per level. Levels past the end of the list use its last entry.
+    /// </param>
+    /// <remarks>
+    /// The usual layout leaves the first levels uncompressed or cheaply
+    /// compressed, since their data is rewritten soon, and spends CPU on the
+    /// bottom level, where most data ends up and stays: for example
+    /// <c>[None, None, Lz4, Lz4, Lz4, Lz4, Zstd]</c>. Overrides
+    /// <see cref="Compression"/> for the levels it covers.
+    /// </remarks>
+    public unsafe DbOptions SetCompressionPerLevel(IReadOnlyList<Compression> levels)
+    {
+        ArgumentNullException.ThrowIfNull(levels);
+
+        int[] values = [.. levels.Select(c => (int)c)];
+        fixed (int* p = values)
+            NativeMethods.rocksdb_options_set_compression_per_level(Handle, p, (nuint)values.Length);
+
+        return this;
+    }
+
+    /// <summary>
+    /// Sets the compression level and dictionary size, the settings the
+    /// individual <c>CompressionOptions</c> properties do not cover.
+    /// </summary>
+    /// <param name="level">
+    /// The compressor's own level, such as 1 to 22 for zstd. Use
+    /// <see cref="DefaultCompressionLevel"/> for the compressor's default.
+    /// </param>
+    /// <param name="maxDictBytes">
+    /// Size of the dictionary trained per file for dictionary compression, or 0
+    /// to disable it.
+    /// </param>
+    /// <param name="windowBits">zlib's window size; ignored by the other compressors.</param>
+    /// <param name="strategy">zlib's strategy; ignored by the other compressors.</param>
+    public DbOptions SetCompressionOptions(
+        int level, int maxDictBytes = 0, int windowBits = DefaultZlibWindowBits, int strategy = 0)
+    {
+        NativeMethods.rocksdb_options_set_compression_options(Handle, windowBits, level, strategy, maxDictBytes);
+        return this;
+    }
+
+    /// <summary>
+    /// Sets the compression level and dictionary size for the bottommost level
+    /// only.
+    /// </summary>
+    /// <param name="level">The compressor's level. See <see cref="SetCompressionOptions"/>.</param>
+    /// <param name="maxDictBytes">Dictionary size, or 0 to disable dictionary compression.</param>
+    /// <param name="windowBits">zlib's window size; ignored by the other compressors.</param>
+    /// <param name="strategy">zlib's strategy; ignored by the other compressors.</param>
+    /// <param name="enabled">
+    /// Whether these settings apply. Until something enables them, the
+    /// bottommost level uses the ordinary compression options.
+    /// </param>
+    /// <remarks>
+    /// The bottommost level holds most of the data and is rewritten least, so
+    /// it is where a high zstd level and a dictionary pay for themselves.
+    /// </remarks>
+    public DbOptions SetBottommostCompressionOptions(
+        int level, int maxDictBytes = 0, int windowBits = DefaultZlibWindowBits, int strategy = 0, bool enabled = true)
+    {
+        NativeMethods.rocksdb_options_set_bottommost_compression_options(
+            Handle, windowBits, level, strategy, maxDictBytes, enabled ? (byte)1 : (byte)0);
+        return this;
+    }
+
+    /// <summary>Bytes of sample data used to train the bottommost level's zstd dictionary.</summary>
+    /// <param name="bytes">The sample size.</param>
+    /// <param name="enabled">Whether the bottommost compression options apply.</param>
+    public DbOptions SetBottommostCompressionOptionsZstdMaxTrainBytes(int bytes, bool enabled = true)
+    {
+        NativeMethods.rocksdb_options_set_bottommost_compression_options_zstd_max_train_bytes(
+            Handle, bytes, enabled ? (byte)1 : (byte)0);
+        return this;
+    }
+
+    /// <summary>
+    /// Maximum bytes buffered while building the bottommost level's
+    /// compression dictionary, or 0 for no limit.
+    /// </summary>
+    /// <param name="bytes">The limit.</param>
+    /// <param name="enabled">Whether the bottommost compression options apply.</param>
+    public DbOptions SetBottommostCompressionOptionsMaxDictBufferBytes(ulong bytes, bool enabled = true)
+    {
+        NativeMethods.rocksdb_options_set_bottommost_compression_options_max_dict_buffer_bytes(
+            Handle, bytes, enabled ? (byte)1 : (byte)0);
+        return this;
+    }
+
+    /// <summary>
+    /// The level RocksDb treats as "the compressor's default", which each
+    /// compressor maps to its own default.
+    /// </summary>
+    public const int DefaultCompressionLevel = 32767;
+
+    /// <summary>RocksDb's default zlib window size.</summary>
+    public const int DefaultZlibWindowBits = -14;
+
+    /// <summary>
+    /// Per-level adjustments to <see cref="MaxBytesForLevelMultiplier"/>, from
+    /// level 1 down.
+    /// </summary>
+    /// <param name="multipliers">
+    /// One factor per level, each multiplied into that level's target size on
+    /// top of the ordinary multiplier. Missing levels use 1.
+    /// </param>
+    /// <remarks>
+    /// Only used when <see cref="LevelCompactionDynamicLevelBytes"/> is off,
+    /// since dynamic level sizing computes the targets itself.
+    /// </remarks>
+    public unsafe DbOptions SetMaxBytesForLevelMultiplierAdditional(IReadOnlyList<int> multipliers)
+    {
+        ArgumentNullException.ThrowIfNull(multipliers);
+
+        int[] values = [.. multipliers];
+        fixed (int* p = values)
+            NativeMethods.rocksdb_options_set_max_bytes_for_level_multiplier_additional(
+                Handle, p, (nuint)values.Length);
+
+        return this;
+    }
+
+    /// <summary>
     /// Parses RocksDb's own options syntax and applies it on top of these
     /// options.
     /// </summary>

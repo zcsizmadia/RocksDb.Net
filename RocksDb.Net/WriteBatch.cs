@@ -16,6 +16,43 @@ public sealed unsafe class WriteBatch : RocksDbHandle
     {
     }
 
+    /// <summary>Creates an empty write batch with per-key integrity protection.</summary>
+    /// <param name="reservedBytes">Bytes to reserve up front, or 0.</param>
+    /// <param name="protectionBytesPerKey">
+    /// 8 to keep a checksum for every key and value in the batch, verified as
+    /// the batch is applied, so memory corruption between building a batch and
+    /// writing it is caught rather than persisted. 0, the default elsewhere,
+    /// turns it off. RocksDb accepts no other value.
+    /// </param>
+    /// <remarks>
+    /// The batch's maximum size is deliberately not offered. RocksDb enforces
+    /// it by failing the write that would exceed it, and the C API discards
+    /// that failure, so a capped batch would drop writes silently.
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException">An argument is out of range.</exception>
+    public WriteBatch(int reservedBytes, int protectionBytesPerKey)
+        : base(NativeMethods.rocksdb_writebatch_create_with_params(
+            reserved_bytes: CheckReserved(reservedBytes),
+            max_bytes: 0,
+            protection_bytes_per_key: CheckProtection(protectionBytesPerKey),
+            default_cf_ts_sz: 0))
+    {
+    }
+
+    internal static nuint CheckReserved(int reservedBytes)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(reservedBytes);
+        return (nuint)reservedBytes;
+    }
+
+    // RocksDb asserts on any other value in a debug build and misbehaves in a
+    // release one, so it is checked here rather than passed through.
+    internal static nuint CheckProtection(int protectionBytesPerKey)
+        => protectionBytesPerKey is 0 or 8
+            ? (nuint)protectionBytesPerKey
+            : throw new ArgumentOutOfRangeException(
+                nameof(protectionBytesPerKey), protectionBytesPerKey, "Must be 0 or 8.");
+
     /// <summary>
     /// Wraps a batch RocksDb allocated, such as the one
     /// <see cref="WalIterator"/> produces for each WAL record.

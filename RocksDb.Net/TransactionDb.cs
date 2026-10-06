@@ -374,6 +374,101 @@ public sealed class TransactionDb : RocksDbHandle
     public byte[]? Get(ReadOnlySpan<byte> key, ColumnFamilyHandle cf, ReadOptions? options = null)
         => NativeMethods.CopyPinnedAndDestroy(GetPinnedHandle(key, cf, options));
 
+    /// <summary>
+    /// Reads several keys from the default column family in one call, outside
+    /// any transaction.
+    /// </summary>
+    /// <returns>One entry per key, <see langword="null"/> where the key is absent.</returns>
+    /// <remarks>
+    /// Sees committed data only, and takes no locks. Use
+    /// <see cref="Transaction.MultiGet(IReadOnlyList{byte[]}, ReadOptions?)"/> to
+    /// see a transaction's own writes, or <see cref="Transaction.MultiGetForUpdate(IReadOnlyList{byte[]}, ReadOptions?)"/>
+    /// to lock what was read.
+    /// </remarks>
+    public byte[]?[] MultiGet(IReadOnlyList<byte[]> keys, ReadOptions? options = null)
+        => MultiGetCore(keys, columnFamilies: null, options);
+
+    /// <summary>Reads several keys from <paramref name="cf"/> in one call.</summary>
+    /// <inheritdoc cref="MultiGet(IReadOnlyList{byte[]}, ReadOptions?)" path="/returns"/>
+    /// <inheritdoc cref="MultiGet(IReadOnlyList{byte[]}, ReadOptions?)" path="/remarks"/>
+    public byte[]?[] MultiGet(IReadOnlyList<byte[]> keys, ColumnFamilyHandle cf, ReadOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+        ArgumentNullException.ThrowIfNull(cf);
+
+        nint[] handles = new nint[keys.Count];
+        Array.Fill(handles, cf.Handle);
+
+        return MultiGetCore(keys, handles, options);
+    }
+
+    /// <summary>
+    /// Reads several keys in one call, each from the column family at the same
+    /// position in <paramref name="columnFamilies"/>.
+    /// </summary>
+    /// <inheritdoc cref="MultiGet(IReadOnlyList{byte[]}, ReadOptions?)" path="/returns"/>
+    /// <exception cref="ArgumentException">The two lists are of different lengths.</exception>
+    public byte[]?[] MultiGet(
+        IReadOnlyList<byte[]> keys, IReadOnlyList<ColumnFamilyHandle> columnFamilies, ReadOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+        ArgumentNullException.ThrowIfNull(columnFamilies);
+
+        if (keys.Count != columnFamilies.Count)
+        {
+            throw new ArgumentException(
+                $"One column family per key is required: {keys.Count} keys, {columnFamilies.Count} families.",
+                nameof(columnFamilies));
+        }
+
+        nint[] handles = new nint[columnFamilies.Count];
+        for (int i = 0; i < handles.Length; i++)
+        {
+            ColumnFamilyHandle cf = columnFamilies[i]
+                ?? throw new ArgumentException("Column family handles cannot be null.", nameof(columnFamilies));
+            handles[i] = cf.Handle;
+        }
+
+        return MultiGetCore(keys, handles, options);
+    }
+
+    /// <summary>
+    /// Shared implementation. A null <paramref name="columnFamilies"/> reads from
+    /// the default family; otherwise it holds one handle per key.
+    /// </summary>
+    private unsafe byte[]?[] MultiGetCore(IReadOnlyList<byte[]> keys, nint[]? columnFamilies, ReadOptions? options)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+
+        int n = keys.Count;
+        if (n == 0)
+        {
+            return [];
+        }
+
+        using var batch = new NativeKeyBatch(keys);
+        nint opts = (options ?? _defaultReadOptions).Handle;
+
+        fixed (nint* cfp = columnFamilies)
+        {
+            if (columnFamilies is null)
+            {
+                NativeMethods.rocksdb_transactiondb_multi_get(
+                    Handle, opts, (nuint)n, batch.Keys, batch.KeySizes,
+                    (byte**)batch.Values, batch.ValueSizes, (byte**)batch.Errors);
+            }
+            else
+            {
+                NativeMethods.rocksdb_transactiondb_multi_get_cf(
+                    Handle, opts, cfp, (nuint)n, batch.Keys, batch.KeySizes,
+                    (byte**)batch.Values, batch.ValueSizes, (byte**)batch.Errors);
+            }
+        }
+
+        GC.KeepAlive(options);
+        return NativeMethods.CopyAndFreeBatch(batch, pinned: false);
+    }
+
     /// <summary>Reads a UTF-8 key as a string, or <see langword="null"/> if absent.</summary>
     public string? GetString(string key, ReadOptions? options = null)
     {
@@ -586,6 +681,53 @@ public sealed class TransactionDb : RocksDbHandle
         NativeMethods.rocksdb_transactiondb_flush_cf(Handle, (options ?? _defaultFlushOptions).Handle, cf.Handle, ref err);
         GC.KeepAlive(options);
         NativeMethods.ThrowOnError(err);
+    }
+
+    /// <summary>Flushes the specified column families together.</summary>
+    /// <remarks>
+    /// As with <see cref="RocksDb.Flush(IReadOnlyList{ColumnFamilyHandle}, FlushOptions?)"/>,
+    /// an empty list flushes nothing.
+    /// </remarks>
+    public unsafe void Flush(IReadOnlyList<ColumnFamilyHandle> columnFamilies, FlushOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(columnFamilies);
+
+        if (columnFamilies.Count == 0)
+        {
+            return;
+        }
+
+        nint[] handles = new nint[columnFamilies.Count];
+        for (int i = 0; i < handles.Length; i++)
+        {
+            ColumnFamilyHandle cf = columnFamilies[i]
+                ?? throw new ArgumentException("Column family handles cannot be null.", nameof(columnFamilies));
+            handles[i] = cf.Handle;
+        }
+
+        nint err = default;
+        fixed (nint* ptr = handles)
+            NativeMethods.rocksdb_transactiondb_flush_cfs(
+                Handle, (options ?? _defaultFlushOptions).Handle, ptr, handles.Length, ref err);
+        GC.KeepAlive(options);
+        NativeMethods.ThrowOnError(err);
+    }
+
+    /// <summary>Creates a checkpoint object for this database.</summary>
+    /// <remarks>
+    /// The same on-disk snapshot <see cref="Checkpoint.Create(RocksDb)"/> takes
+    /// of an ordinary database. Committed transactions are in it; one still in
+    /// progress is not, since nothing it wrote is in the database until it
+    /// commits. Dispose the checkpoint before this database: it registers as a
+    /// child, so the ordering is enforced rather than merely documented.
+    /// </remarks>
+    public Checkpoint CreateCheckpoint()
+    {
+        nint err = default;
+        nint handle = NativeMethods.rocksdb_transactiondb_checkpoint_object_create(Handle, ref err);
+        NativeMethods.ThrowOnError(err);
+
+        return Checkpoint.FromHandle(handle, this);
     }
 
     /// <summary>Flushes the write-ahead log.</summary>
