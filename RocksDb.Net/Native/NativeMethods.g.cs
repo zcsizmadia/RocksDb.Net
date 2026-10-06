@@ -663,6 +663,7 @@ internal static unsafe partial class NativeMethods
 
     [LibraryImport(LibName)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    [SuppressGCTransition]
     internal static partial byte rocksdb_iter_valid(nint iterator);
 
     [LibraryImport(LibName)]
@@ -697,10 +698,12 @@ internal static unsafe partial class NativeMethods
 
     [LibraryImport(LibName)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    [SuppressGCTransition]
     internal static partial byte* rocksdb_iter_key(nint iterator, out nuint klen);
 
     [LibraryImport(LibName)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    [SuppressGCTransition]
     internal static partial byte* rocksdb_iter_value(nint iterator, out nuint vlen);
 
     [LibraryImport(LibName)]
@@ -1079,6 +1082,7 @@ internal static unsafe partial class NativeMethods
 
     [LibraryImport(LibName)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    [SuppressGCTransition]
     internal static partial int rocksdb_writebatch_count(nint writebatch);
 
     [LibraryImport(LibName)]
@@ -1296,6 +1300,7 @@ internal static unsafe partial class NativeMethods
 
     [LibraryImport(LibName)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    [SuppressGCTransition]
     internal static partial byte* rocksdb_writebatch_data(nint writebatch, out nuint size);
 
     [LibraryImport(LibName)]

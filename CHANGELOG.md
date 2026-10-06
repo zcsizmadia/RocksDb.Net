@@ -189,6 +189,14 @@ is allowed to be.
     disposed in read order is 12% faster and allocates 25% less.
   - `PinnableSlice.Value` and `Length` read the pointer and length once
     instead of crossing into native code on every access.
+  - The iterator's `IsValid`, `Key` and `Value`, and `WriteBatch.Count` and
+    its data accessor, skip the GC transition. They only return state the
+    native object already holds. The three iterator accessors together cost
+    about 20% less, but that is a nanosecond and a half per entry against the
+    hundred-odd a step of a scan costs in RocksDb itself, so a full scan does
+    not measurably change. The set is a short allowlist in the generator,
+    pinned by a test, because a function on it that blocked or called back
+    into managed code would be undefined behaviour rather than a slow call.
 - **Callbacks reach managed code through `[UnmanagedCallersOnly]` function
   pointers instead of marshalled delegates.** All 38
   `Marshal.GetFunctionPointerForDelegate` sites are gone, along with the
