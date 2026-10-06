@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -29,7 +29,7 @@ public enum FilterDecision
     /// <summary>
     /// Preserve the entry but replace its value with the byte array written
     /// to the <c>newValue</c> out parameter of
-    /// <see cref="CompactionFilter.Filter"/>.
+    /// <c>Filter</c>.
     /// </summary>
     ChangeValue,
 }
@@ -53,7 +53,7 @@ public readonly struct CompactionFilterContext
 }
 
 /// <summary>
-/// User-defined compaction filter. Override <see cref="Filter"/> to inspect
+/// User-defined compaction filter. Override <c>Filter</c> to inspect
 /// or modify key-value pairs during table-file creation (compaction / flush).
 /// </summary>
 /// <remarks>
@@ -65,7 +65,7 @@ public readonly struct CompactionFilterContext
 /// </para>
 /// <para>
 /// <b>Thread safety:</b> When a single instance is registered and
-/// multi-threaded compaction is active, <see cref="Filter"/> may be called
+/// multi-threaded compaction is active, <c>Filter</c> may be called
 /// from multiple threads concurrently. Either make your override thread-safe
 /// or use <see cref="CompactionFilterFactory"/> to create a separate instance
 /// per compaction job.
@@ -79,33 +79,13 @@ public abstract class CompactionFilter : RocksDbHandle
     // that used to hold the delegates alive are gone with them; what keeps this
     // object reachable is the GCHandle from PinGarbageCollector.
 
-    // Per-thread scratch space for the new-value buffer.
-    // The C++ rocksdb_compactionfilter_t::Filter() method immediately copies
-    // *new_value via std::string::assign after the callback returns — there is
-    // no matching free() in the C layer. We therefore keep at most one
-    // outstanding buffer per managed thread and release the previous one on the
-    // next callback from that same thread.
-    private readonly ConcurrentDictionary<int, nint> _lastNewValueBufsByThread = new();
-    private readonly ConcurrentDictionary<nint, byte> _newValueBufs = new();
-
-    /// <summary>Releases every outstanding new-value buffer.</summary>
-    /// <remarks>
-    /// Called from two places, and both are needed. A filter the caller owns
-    /// releases them when it is disposed; a filter RocksDb owns, which is any
-    /// filter a factory produced, is never disposed by the wrapper and
-    /// releases them from its native destructor callback instead.
-    /// </remarks>
-    private void FreeNewValueBuffers()
-    {
-        _lastNewValueBufsByThread.Clear();
-
-        foreach (nint buf in _newValueBufs.Keys)
-        {
-            Marshal.FreeHGlobal(buf);
-        }
-
-        _newValueBufs.Clear();
-    }
+    // A replacement value is written into this thread's CallbackScratch
+    // buffer. rocksdb_compactionfilter_t::Filter() copies *new_value with
+    // std::string::assign straight after the callback returns, and has no
+    // matching free(), so the buffer only has to last until the next callback
+    // on the thread. It used to be a fresh AllocHGlobal per changed value,
+    // tracked per thread in two ConcurrentDictionary instances that every key
+    // touched, changed or not.
 
     // ── Static callbacks ─────────────────────────────────────────────────────
     // Using static methods avoids unsafe-lambda syntax issues.
@@ -117,14 +97,6 @@ public abstract class CompactionFilter : RocksDbHandle
         {
             var self = GetSelfFromPinnedIntPtr<CompactionFilter>(state);
             self.TransferOwnership();
-
-            // A filter RocksDb owns, which is every filter a factory
-            // produced, never has DisposeUnmanagedResources called on it, so
-            // this destructor callback is the only place its new-value
-            // buffers can be released. Without it each compaction job leaked
-            // one buffer per thread that changed a value.
-            self.FreeNewValueBuffers();
-
             self.UnpinGarbageCollector();
         }
         catch (Exception ex)
@@ -153,50 +125,35 @@ public abstract class CompactionFilter : RocksDbHandle
             var keySpan = new ReadOnlySpan<byte>(key, checked((int)keyLen));
             var valSpan = new ReadOnlySpan<byte>(val, checked((int)valLen));
 
-            // Release the buffer returned to C++ on the previous call from this
-            // managed thread. C++ has already copied it via std::string::assign.
-            int threadId = Environment.CurrentManagedThreadId;
-            if (self._lastNewValueBufsByThread.TryRemove(threadId, out nint lastNewValueBuf) && lastNewValueBuf != IntPtr.Zero)
+            CallbackScratch replacement = CallbackScratch.Acquire();
+            try
             {
-                Marshal.FreeHGlobal(lastNewValueBuf);
-                self._newValueBufs.TryRemove(lastNewValueBuf, out _);
-            }
+                FilterDecision decision = self.Filter(level, keySpan, valSpan, replacement);
 
-            FilterDecision decision = self.Filter(level, keySpan, valSpan, out byte[]? newVal);
-
-            // `is not null`, not `is { Length: > 0 }`. Requiring a positive
-            // length meant that replacing a value with an empty one was
-            // silently ignored and the old value kept, even though RocksDb
-            // accepts an empty replacement. A filter that blanks a value had no
-            // way to say so, and got no error either.
-            if (decision == FilterDecision.ChangeValue && newVal is not null)
-            {
-                // At least one byte, so the pointer handed to RocksDb is always
-                // valid and non-null even for an empty replacement. RocksDb
-                // does a std::string::assign of the reported length, and while
-                // a zero count would not dereference the pointer, passing a
-                // real allocation avoids depending on that.
-                nint buf = Marshal.AllocHGlobal(Math.Max(newVal.Length, 1));
-                self._lastNewValueBufsByThread[threadId] = buf;
-                self._newValueBufs.TryAdd(buf, 0);
-
-                if (newVal.Length > 0)
+                if (decision == FilterDecision.ChangeValue)
                 {
-                    Marshal.Copy(newVal, 0, buf, newVal.Length);
+                    // Never a null pointer, even for an empty replacement:
+                    // RocksDb does a std::string::assign of the reported
+                    // length, and while a zero count would not dereference the
+                    // pointer, handing over a real allocation avoids depending
+                    // on that.
+                    *newValue = replacement.Pointer;
+                    *newValueLen = (nuint)replacement.WrittenCount;
+                    *valueChanged = 1;
+                }
+                else
+                {
+                    *valueChanged = 0;
                 }
 
-                *newValue = (byte*)buf;
-                *newValueLen = (nuint)newVal.Length;
-                *valueChanged = 1;
+                // C API: return non-zero to remove the key, 0 to keep it.
+                // ChangeValue keeps the key (return 0) with *valueChanged = 1.
+                return decision == FilterDecision.Remove ? (byte)1 : (byte)0;
             }
-            else
+            finally
             {
-                *valueChanged = 0;
+                CallbackScratch.Release();
             }
-
-            // C API: return non-zero to remove the key, 0 to keep it.
-            // ChangeValue keeps the key (return 0) with *valueChanged = 1.
-            return decision == FilterDecision.Remove ? (byte)1 : (byte)0;
         }
         catch (Exception ex)
         {
@@ -250,11 +207,71 @@ public abstract class CompactionFilter : RocksDbHandle
     /// <see cref="FilterDecision.Remove"/>, or
     /// <see cref="FilterDecision.ChangeValue"/>.
     /// </returns>
-    protected abstract FilterDecision Filter(
+    /// <exception cref="NotSupportedException">
+    /// Neither form of <c>Filter</c> is overridden. Reported through
+    /// <see cref="RocksDbCallbacks.UnhandledException"/>, and the entry is kept.
+    /// </exception>
+    protected virtual FilterDecision Filter(
         int level,
         ReadOnlySpan<byte> key,
         ReadOnlySpan<byte> existingValue,
-        out byte[]? newValue);
+        out byte[]? newValue)
+        => throw new NotSupportedException(
+            $"{GetType().Name} overrides neither form of Filter. Override one of them.");
+
+    /// <summary>
+    /// Called for each key-value pair during table-file creation, writing any
+    /// replacement value into a buffer rather than returning an array.
+    /// </summary>
+    /// <param name="level">The SST level of the file being created.</param>
+    /// <param name="key">The key. Valid only for the duration of this call.</param>
+    /// <param name="existingValue">The current value. Valid only for the duration of this call.</param>
+    /// <param name="newValue">
+    /// Where to write the replacement when returning
+    /// <see cref="FilterDecision.ChangeValue"/>; nothing written means an
+    /// empty value. Ignored for other decisions. Valid only for the duration
+    /// of this call: do not keep it.
+    /// </param>
+    /// <returns>The decision for this entry.</returns>
+    /// <remarks>
+    /// <para>
+    /// The default calls the array form and copies its replacement in, so a
+    /// filter written against that form behaves as it always has. Override
+    /// this one instead to replace values without allocating; override one
+    /// form, not both.
+    /// </para>
+    /// <para>
+    /// For the array form, <see cref="FilterDecision.ChangeValue"/> with a
+    /// null replacement keeps the entry unchanged, as it always did.
+    /// </para>
+    /// </remarks>
+    protected virtual FilterDecision Filter(
+        int level,
+        ReadOnlySpan<byte> key,
+        ReadOnlySpan<byte> existingValue,
+        IBufferWriter<byte> newValue)
+    {
+        ArgumentNullException.ThrowIfNull(newValue);
+
+        FilterDecision decision = Filter(level, key, existingValue, out byte[]? replacement);
+
+        if (decision != FilterDecision.ChangeValue)
+        {
+            return decision;
+        }
+
+        // `is not null`, not `is { Length: > 0 }`. Requiring a positive length
+        // once meant that replacing a value with an empty one was silently
+        // ignored and the old value kept, even though RocksDb accepts an empty
+        // replacement.
+        if (replacement is null)
+        {
+            return FilterDecision.Keep;
+        }
+
+        newValue.Write(replacement);
+        return FilterDecision.ChangeValue;
+    }
 
     protected override void DisposeHandle()
     {
@@ -268,13 +285,4 @@ public abstract class CompactionFilter : RocksDbHandle
         }
     }
 
-    protected override void DisposeUnmanagedResources()
-    {
-        base.DisposeUnmanagedResources();
-
-        // Free up all the newValue allocations which were not freed yet.
-        // This is a safety net in case the filter was disposed before all threads finished using it.
-
-        FreeNewValueBuffers();
-    }
 }
