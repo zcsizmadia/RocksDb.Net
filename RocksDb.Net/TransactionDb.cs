@@ -212,6 +212,12 @@ public sealed class TransactionDb : RocksDbHandle
     /// locked against every other writer.
     /// </para>
     /// <para>
+    /// A prepared transaction this process already holds is returned as the
+    /// same <see cref="Transaction"/> object, whether it came from
+    /// <see cref="BeginTransaction"/> or from an earlier call to this method.
+    /// It is still one transaction, so it is resolved and disposed once.
+    /// </para>
+    /// <para>
     /// An empty list is the normal result. A database that was closed cleanly
     /// has nothing outstanding.
     /// </para>
@@ -242,6 +248,26 @@ public sealed class TransactionDb : RocksDbHandle
             // that will destroy them.
             for (nuint i = 0; i < count; i++)
             {
+                // RocksDb hands back a new handle for every prepared transaction,
+                // including ones a Transaction here already wraps: one prepared by
+                // this process, or recovered by an earlier call. Wrapping that
+                // handle as well would give the transaction two owners, and
+                // destroying each deletes it, so the second was a double free.
+                nint native = Transaction.NativeOf(handles[i]);
+                Transaction? held = FindChild<Transaction>(t => t.Native == native);
+
+                if (held is not null)
+                {
+                    // The duplicate handle is deliberately not freed. It is one
+                    // pointer allocated with C++ new, and the C API's only call
+                    // that frees it, rocksdb_transaction_destroy, deletes the
+                    // transaction with it. rocksdb_free would be free() on memory
+                    // from new. A pointer per held transaction per call is the
+                    // cost, against heap corruption.
+                    transactions.Add(held);
+                    continue;
+                }
+
                 transactions.Add(new Transaction(handles[i], this));
             }
 

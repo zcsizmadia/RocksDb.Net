@@ -61,8 +61,34 @@ internal sealed unsafe class CallbackScratch : IBufferWriter<byte>
 
         CallbackScratch scratch = buffers[t_depth++];
         scratch._written = 0;
+        scratch.ShrinkIfLarge();
         return scratch;
     }
+
+    // Above this, a buffer is given back rather than kept for the next result.
+    // Ordinary merge results and replacement values are far smaller, so they
+    // still reuse one allocation. Without a cap, one very large result left
+    // that much native memory held by every thread that ever produced one,
+    // RocksDb's compaction threads included, for the life of the process. Now
+    // it is held until that thread's next callback, the earliest point at
+    // which RocksDb is known to have copied it.
+    internal const int RetainedCapacityLimit = 1024 * 1024;
+
+    // Safe here and only here: the previous result in this buffer belonged to
+    // a callback that has returned, and RocksDb copied it before anything else
+    // ran on this thread. See the class remarks.
+    private void ShrinkIfLarge()
+    {
+        if (_capacity > RetainedCapacityLimit)
+        {
+            NativeMemory.Free(_buffer);
+            _buffer = null;
+            _capacity = 0;
+        }
+    }
+
+    /// <summary>The native memory this buffer currently holds.</summary>
+    internal int Capacity => _capacity;
 
     /// <summary>
     /// Gives the buffer back. Its contents stay intact until this thread's

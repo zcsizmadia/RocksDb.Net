@@ -291,4 +291,84 @@ public class TwoPhaseCommitTests
 
         held.Rollback();
     }
+
+    /// <summary>
+    /// Listing the prepared transactions while this process still holds one
+    /// returns the object it holds, not a second owner of the same transaction.
+    /// </summary>
+    /// <remarks>
+    /// RocksDb allocates a new C handle around every prepared transaction on
+    /// every call, and destroying a handle deletes the transaction. Wrapping
+    /// that handle too meant disposing both, or closing the database, deleted
+    /// one transaction twice. The database is closed here with everything still
+    /// undisposed, which is where the second delete used to land.
+    /// </remarks>
+    [Fact]
+    public void ListingPreparedTransactions_ReturnsTheOneAlreadyHeld()
+    {
+        using var dir = new TempDir();
+        using var dbOpts = NewDbOptions();
+        using var txnOpts = new TransactionDbOptions();
+        TransactionDb db = TransactionDb.Open(dbOpts, txnOpts, dir.Path);
+
+        Transaction held = db.BeginTransaction();
+        held.Put("k", "prepared");
+        held.Name = "coordinator-sweep";
+        held.Prepare();
+
+        Assert.Same(held, Assert.Single(db.GetPreparedTransactions()));
+        Assert.Same(held, Assert.Single(db.GetPreparedTransactions()));
+
+        db.Dispose();
+
+        Assert.True(held.IsDisposed);
+    }
+
+    /// <summary>
+    /// The recovery shape of the same thing: asking twice after a reopen
+    /// returns the transaction recovered the first time, and resolving it once
+    /// resolves it for both lists.
+    /// </summary>
+    [Fact]
+    public void ListingPreparedTransactionsTwice_AfterReopening_ReturnsTheSameObjects()
+    {
+        using var dir = new TempDir();
+
+        using (var dbOpts = NewDbOptions())
+        using (var txnOpts = new TransactionDbOptions())
+        using (TransactionDb db = TransactionDb.Open(dbOpts, txnOpts, dir.Path))
+        {
+            foreach (string name in new[] { "order-1", "order-2" })
+            {
+                using Transaction txn = db.BeginTransaction();
+                txn.Put(name, "pending");
+                txn.Name = name;
+                txn.Prepare();
+            }
+        }
+
+        using (var dbOpts = NewDbOptions())
+        using (var txnOpts = new TransactionDbOptions())
+        using (TransactionDb db = TransactionDb.Open(dbOpts, txnOpts, dir.Path))
+        {
+            IReadOnlyList<Transaction> first = db.GetPreparedTransactions();
+            IReadOnlyList<Transaction> second = db.GetPreparedTransactions();
+
+            Assert.Equal(2, first.Count);
+            Assert.Equal(2, second.Count);
+
+            Dictionary<string, Transaction> byName = first.ToDictionary(t => t.Name);
+            Assert.All(second, t => Assert.Same(byName[t.Name], t));
+
+            foreach (Transaction txn in first)
+            {
+                txn.Commit();
+                txn.Dispose();
+            }
+
+            Assert.Empty(db.GetPreparedTransactions());
+            Assert.Equal("pending", db.GetString("order-1"));
+            Assert.Equal("pending", db.GetString("order-2"));
+        }
+    }
 }
