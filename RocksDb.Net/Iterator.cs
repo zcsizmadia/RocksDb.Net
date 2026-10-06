@@ -93,11 +93,19 @@ public sealed class Iterator : RocksDbHandle
 
     /// <summary>Seeks using a UTF-8 encoded string key.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Seek(string key) => Seek(Encoding.UTF8.GetBytes(key));
+    public void Seek(string key)
+    {
+        using var utf8 = PooledUtf8.Encode(key);
+        Seek(utf8.First);
+    }
 
     /// <summary>Seeks using a UTF-8 encoded string key (SeekForPrev direction).</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void SeekForPrev(string key) => SeekForPrev(Encoding.UTF8.GetBytes(key));
+    public void SeekForPrev(string key)
+    {
+        using var utf8 = PooledUtf8.Encode(key);
+        SeekForPrev(utf8.First);
+    }
 
     /// <summary>Moves to the next entry. Call <see cref="IsValid"/> before reading key/value.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

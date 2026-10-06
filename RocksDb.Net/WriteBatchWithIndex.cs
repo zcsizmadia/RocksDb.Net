@@ -58,11 +58,17 @@ public sealed class WriteBatchWithIndex : RocksDbHandle
 
     /// <summary>Convenience overload using UTF-8 string key and value.</summary>
     public WriteBatchWithIndex Put(string key, string value)
-        => Put(Encoding.UTF8.GetBytes(key), Encoding.UTF8.GetBytes(value));
+    {
+        using var utf8 = PooledUtf8.Encode(key, value);
+        return Put(utf8.First, utf8.Second);
+    }
 
     /// <summary>Convenience overload using UTF-8 string key and value in a specific column family.</summary>
     public WriteBatchWithIndex Put(string key, string value, ColumnFamilyHandle cf)
-        => Put(Encoding.UTF8.GetBytes(key), Encoding.UTF8.GetBytes(value), cf);
+    {
+        using var utf8 = PooledUtf8.Encode(key, value);
+        return Put(utf8.First, utf8.Second, cf);
+    }
 
     // ── Merge ────────────────────────────────────────────────────────────────
 
@@ -105,10 +111,18 @@ public sealed class WriteBatchWithIndex : RocksDbHandle
     }
 
     /// <summary>Convenience overload using a UTF-8 string key.</summary>
-    public WriteBatchWithIndex Delete(string key) => Delete(Encoding.UTF8.GetBytes(key));
+    public WriteBatchWithIndex Delete(string key)
+    {
+        using var utf8 = PooledUtf8.Encode(key);
+        return Delete(utf8.First);
+    }
 
     /// <summary>Convenience overload using a UTF-8 string key in a column family.</summary>
-    public WriteBatchWithIndex Delete(string key, ColumnFamilyHandle cf) => Delete(Encoding.UTF8.GetBytes(key), cf);
+    public WriteBatchWithIndex Delete(string key, ColumnFamilyHandle cf)
+    {
+        using var utf8 = PooledUtf8.Encode(key);
+        return Delete(utf8.First, cf);
+    }
 
     // ── SingleDelete ─────────────────────────────────────────────────────────
 
@@ -288,7 +302,8 @@ public sealed class WriteBatchWithIndex : RocksDbHandle
     {
         ArgumentException.ThrowIfNullOrEmpty(key);
 
-        byte[]? value = GetFromBatchAndDb(db, Encoding.UTF8.GetBytes(key), options);
+        using var utf8 = PooledUtf8.Encode(key);
+        byte[]? value = GetFromBatchAndDb(db, utf8.First, options);
         return value is null ? null : Encoding.UTF8.GetString(value);
     }
 

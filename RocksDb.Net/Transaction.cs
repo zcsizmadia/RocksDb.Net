@@ -90,11 +90,17 @@ public sealed class Transaction : RocksDbHandle
 
     /// <summary>Queues a write of a UTF-8 key and value.</summary>
     public void Put(string key, string value)
-        => Put(Encoding.UTF8.GetBytes(key), Encoding.UTF8.GetBytes(value));
+    {
+        using var utf8 = PooledUtf8.Encode(key, value);
+        Put(utf8.First, utf8.Second);
+    }
 
     /// <inheritdoc cref="Put(string, string)"/>
     public void Put(string key, string value, ColumnFamilyHandle cf)
-        => Put(Encoding.UTF8.GetBytes(key), Encoding.UTF8.GetBytes(value), cf);
+    {
+        using var utf8 = PooledUtf8.Encode(key, value);
+        Put(utf8.First, utf8.Second, cf);
+    }
 
     /// <summary>Queues a delete of <paramref name="key"/>, taking a lock on it.</summary>
     public unsafe void Delete(ReadOnlySpan<byte> key)
@@ -117,7 +123,11 @@ public sealed class Transaction : RocksDbHandle
     }
 
     /// <inheritdoc cref="Delete(ReadOnlySpan{byte})"/>
-    public void Delete(string key) => Delete(Encoding.UTF8.GetBytes(key));
+    public void Delete(string key)
+    {
+        using var utf8 = PooledUtf8.Encode(key);
+        Delete(utf8.First);
+    }
 
     /// <summary>Queues a merge operation on <paramref name="key"/>.</summary>
     public unsafe void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
@@ -151,49 +161,25 @@ public sealed class Transaction : RocksDbHandle
     /// This takes no lock. Use <see cref="GetForUpdate(ReadOnlySpan{byte}, bool, ReadOptions?)"/>
     /// for a read that a later write in the same transaction depends on.
     /// </remarks>
-    public unsafe byte[]? Get(ReadOnlySpan<byte> key, ReadOptions? options = null)
-    {
-        nint err = default;
-        nint value;
-        nuint length;
-        fixed (byte* k = key)
-            value = NativeMethods.rocksdb_transaction_get(Handle, (options ?? _defaultReadOptions).Handle,
-                k, (nuint)key.Length, out length, ref err);
-        GC.KeepAlive(options);
-
-        NativeMethods.ThrowOnError(err);
-        return CopyAndFree(value, length);
-    }
+    public byte[]? Get(ReadOnlySpan<byte> key, ReadOptions? options = null)
+        => NativeMethods.CopyPinnedAndDestroy(GetPinnedHandle(key, options));
 
     /// <inheritdoc cref="Get(ReadOnlySpan{byte}, ReadOptions?)"/>
-    public unsafe byte[]? Get(ReadOnlySpan<byte> key, ColumnFamilyHandle cf, ReadOptions? options = null)
-    {
-        ArgumentNullException.ThrowIfNull(cf);
-
-        nint err = default;
-        nint value;
-        nuint length;
-        fixed (byte* k = key)
-            value = NativeMethods.rocksdb_transaction_get_cf(Handle, (options ?? _defaultReadOptions).Handle,
-                cf.Handle, k, (nuint)key.Length, out length, ref err);
-        GC.KeepAlive(options);
-
-        NativeMethods.ThrowOnError(err);
-        return CopyAndFree(value, length);
-    }
+    public byte[]? Get(ReadOnlySpan<byte> key, ColumnFamilyHandle cf, ReadOptions? options = null)
+        => NativeMethods.CopyPinnedAndDestroy(GetPinnedHandle(key, cf, options));
 
     /// <summary>Reads a UTF-8 key as a string, or <see langword="null"/> if absent.</summary>
     public string? GetString(string key, ReadOptions? options = null)
     {
-        byte[]? value = Get(Encoding.UTF8.GetBytes(key), options);
-        return value is null ? null : Encoding.UTF8.GetString(value);
+        using var utf8 = PooledUtf8.Encode(key);
+        return NativeMethods.DecodePinnedAndDestroy(GetPinnedHandle(utf8.First, options));
     }
 
     /// <inheritdoc cref="GetString(string, ReadOptions?)"/>
     public string? GetString(string key, ColumnFamilyHandle cf, ReadOptions? options = null)
     {
-        byte[]? value = Get(Encoding.UTF8.GetBytes(key), cf, options);
-        return value is null ? null : Encoding.UTF8.GetString(value);
+        using var utf8 = PooledUtf8.Encode(key);
+        return NativeMethods.DecodePinnedAndDestroy(GetPinnedHandle(utf8.First, cf, options));
     }
 
     /// <summary>
@@ -222,19 +208,8 @@ public sealed class Transaction : RocksDbHandle
     /// not bugs.
     /// </para>
     /// </remarks>
-    public unsafe byte[]? GetForUpdate(ReadOnlySpan<byte> key, bool exclusive = true, ReadOptions? options = null)
-    {
-        nint err = default;
-        nint value;
-        nuint length;
-        fixed (byte* k = key)
-            value = NativeMethods.rocksdb_transaction_get_for_update(Handle, (options ?? _defaultReadOptions).Handle,
-                k, (nuint)key.Length, out length, exclusive ? (byte)1 : (byte)0, ref err);
-        GC.KeepAlive(options);
-
-        NativeMethods.ThrowOnError(err);
-        return CopyAndFree(value, length);
-    }
+    public byte[]? GetForUpdate(ReadOnlySpan<byte> key, bool exclusive = true, ReadOptions? options = null)
+        => NativeMethods.CopyPinnedAndDestroy(GetPinnedForUpdateHandle(key, exclusive, options));
 
     /// <inheritdoc cref="GetForUpdate(ReadOnlySpan{byte}, bool, ReadOptions?)"/>
     public unsafe byte[]? GetForUpdate(
@@ -257,8 +232,8 @@ public sealed class Transaction : RocksDbHandle
     /// <summary>Reads and locks a UTF-8 key.</summary>
     public string? GetStringForUpdate(string key, bool exclusive = true, ReadOptions? options = null)
     {
-        byte[]? value = GetForUpdate(Encoding.UTF8.GetBytes(key), exclusive, options);
-        return value is null ? null : Encoding.UTF8.GetString(value);
+        using var utf8 = PooledUtf8.Encode(key);
+        return NativeMethods.DecodePinnedAndDestroy(GetPinnedForUpdateHandle(utf8.First, exclusive, options));
     }
 
     // ── Batched reads ────────────────────────────────────────────────────────
@@ -349,58 +324,20 @@ public sealed class Transaction : RocksDbHandle
     /// which cannot be evicted from the block cache while it lives. See
     /// <see cref="PinnableSlice"/>.
     /// </remarks>
-    public unsafe PinnableSlice? GetPinned(ReadOnlySpan<byte> key, ReadOptions? options = null)
-    {
-        nint err = default;
-        nint slice;
-        fixed (byte* k = key)
-            slice = NativeMethods.rocksdb_transaction_get_pinned(
-                Handle, (options ?? _defaultReadOptions).Handle, k, (nuint)key.Length, ref err);
-        GC.KeepAlive(options);
-
-        // A null return means either "not found" or "failed", so the error has
-        // to be checked before deciding which.
-        NativeMethods.ThrowOnError(err);
-
-        return slice == nint.Zero ? null : new PinnableSlice(slice, this);
-    }
+    public PinnableSlice? GetPinned(ReadOnlySpan<byte> key, ReadOptions? options = null)
+        => Wrap(GetPinnedHandle(key, options));
 
     /// <inheritdoc cref="GetPinned(ReadOnlySpan{byte}, ReadOptions?)"/>
-    public unsafe PinnableSlice? GetPinned(ReadOnlySpan<byte> key, ColumnFamilyHandle cf, ReadOptions? options = null)
-    {
-        ArgumentNullException.ThrowIfNull(cf);
-
-        nint err = default;
-        nint slice;
-        fixed (byte* k = key)
-            slice = NativeMethods.rocksdb_transaction_get_pinned_cf(
-                Handle, (options ?? _defaultReadOptions).Handle, cf.Handle, k, (nuint)key.Length, ref err);
-        GC.KeepAlive(options);
-
-        NativeMethods.ThrowOnError(err);
-
-        return slice == nint.Zero ? null : new PinnableSlice(slice, this);
-    }
+    public PinnableSlice? GetPinned(ReadOnlySpan<byte> key, ColumnFamilyHandle cf, ReadOptions? options = null)
+        => Wrap(GetPinnedHandle(key, cf, options));
 
     /// <summary>
     /// Reads a key without copying the value, and locks it.
     /// </summary>
     /// <inheritdoc cref="GetPinned(ReadOnlySpan{byte}, ReadOptions?)" path="/remarks"/>
-    public unsafe PinnableSlice? GetPinnedForUpdate(
+    public PinnableSlice? GetPinnedForUpdate(
         ReadOnlySpan<byte> key, bool exclusive = true, ReadOptions? options = null)
-    {
-        nint err = default;
-        nint slice;
-        fixed (byte* k = key)
-            slice = NativeMethods.rocksdb_transaction_get_pinned_for_update(
-                Handle, (options ?? _defaultReadOptions).Handle,
-                k, (nuint)key.Length, exclusive ? (byte)1 : (byte)0, ref err);
-        GC.KeepAlive(options);
-
-        NativeMethods.ThrowOnError(err);
-
-        return slice == nint.Zero ? null : new PinnableSlice(slice, this);
-    }
+        => Wrap(GetPinnedForUpdateHandle(key, exclusive, options));
 
     /// <inheritdoc cref="GetPinnedForUpdate(ReadOnlySpan{byte}, bool, ReadOptions?)"/>
     public unsafe PinnableSlice? GetPinnedForUpdate(
@@ -419,6 +356,57 @@ public sealed class Transaction : RocksDbHandle
         NativeMethods.ThrowOnError(err);
 
         return slice == nint.Zero ? null : new PinnableSlice(slice, this);
+    }
+
+    private PinnableSlice? Wrap(nint slice) => slice == nint.Zero ? null : new PinnableSlice(slice, this);
+
+    // The native pinned reads. The copying reads go through these too, rather
+    // than through rocksdb_transaction_get, which is a pinned read underneath
+    // that then copies the value twice; see NativeMethods.CopyPinnedAndDestroy.
+    // Each returns zero when the key is absent, and the caller owns the slice.
+
+    private unsafe nint GetPinnedHandle(ReadOnlySpan<byte> key, ReadOptions? options)
+    {
+        nint err = default;
+        nint slice;
+        fixed (byte* k = key)
+            slice = NativeMethods.rocksdb_transaction_get_pinned(
+                Handle, (options ?? _defaultReadOptions).Handle, k, (nuint)key.Length, ref err);
+        GC.KeepAlive(options);
+
+        // A null return means either "not found" or "failed", so the error has
+        // to be checked before deciding which.
+        NativeMethods.ThrowOnError(err);
+        return slice;
+    }
+
+    private unsafe nint GetPinnedHandle(ReadOnlySpan<byte> key, ColumnFamilyHandle cf, ReadOptions? options)
+    {
+        ArgumentNullException.ThrowIfNull(cf);
+
+        nint err = default;
+        nint slice;
+        fixed (byte* k = key)
+            slice = NativeMethods.rocksdb_transaction_get_pinned_cf(
+                Handle, (options ?? _defaultReadOptions).Handle, cf.Handle, k, (nuint)key.Length, ref err);
+        GC.KeepAlive(options);
+
+        NativeMethods.ThrowOnError(err);
+        return slice;
+    }
+
+    private unsafe nint GetPinnedForUpdateHandle(ReadOnlySpan<byte> key, bool exclusive, ReadOptions? options)
+    {
+        nint err = default;
+        nint slice;
+        fixed (byte* k = key)
+            slice = NativeMethods.rocksdb_transaction_get_pinned_for_update(
+                Handle, (options ?? _defaultReadOptions).Handle,
+                k, (nuint)key.Length, exclusive ? (byte)1 : (byte)0, ref err);
+        GC.KeepAlive(options);
+
+        NativeMethods.ThrowOnError(err);
+        return slice;
     }
 
     // ── Iteration ────────────────────────────────────────────────────────────
@@ -709,69 +697,44 @@ public sealed class Transaction : RocksDbHandle
             return [];
         }
 
-        byte*[] keyPtrs = new byte*[n];
-        nuint[] keySizes = new nuint[n];
-        byte*[] valPtrs = new byte*[n];
-        nuint[] valSizes = new nuint[n];
-        nint[] errs = new nint[n];
+        using var batch = new NativeKeyBatch(keys);
 
-        var pins = new GCHandle[n];
-        try
+        nint opts = (options ?? _defaultReadOptions).Handle;
+        byte** kp = batch.Keys;
+        nuint* ks = batch.KeySizes;
+        byte** vp = (byte**)batch.Values;
+        nuint* vs = batch.ValueSizes;
+        nint* ep = batch.Errors;
+
+        fixed (nint* cfp = columnFamilies)
         {
-            for (int i = 0; i < n; i++)
+            if (columnFamilies is null)
             {
-                ArgumentNullException.ThrowIfNull(keys[i]);
-                pins[i] = GCHandle.Alloc(keys[i], GCHandleType.Pinned);
-                keyPtrs[i] = (byte*)pins[i].AddrOfPinnedObject();
-                keySizes[i] = (nuint)keys[i].Length;
-            }
-
-            nint opts = (options ?? _defaultReadOptions).Handle;
-
-            fixed (byte** kp = keyPtrs)
-            fixed (nuint* ks = keySizes)
-            fixed (byte** vp = valPtrs)
-            fixed (nuint* vs = valSizes)
-            fixed (nint* ep = errs)
-            fixed (nint* cfp = columnFamilies)
-            {
-                if (columnFamilies is null)
+                if (forUpdate)
                 {
-                    if (forUpdate)
-                    {
-                        NativeMethods.rocksdb_transaction_multi_get_for_update(
-                            Handle, opts, (nuint)n, kp, ks, vp, vs, (byte**)ep);
-                    }
-                    else
-                    {
-                        NativeMethods.rocksdb_transaction_multi_get(
-                            Handle, opts, (nuint)n, kp, ks, vp, vs, (byte**)ep);
-                    }
-                }
-                else if (forUpdate)
-                {
-                    NativeMethods.rocksdb_transaction_multi_get_for_update_cf(
-                        Handle, opts, cfp, (nuint)n, kp, ks, vp, vs, (byte**)ep);
+                    NativeMethods.rocksdb_transaction_multi_get_for_update(
+                        Handle, opts, (nuint)n, kp, ks, vp, vs, (byte**)ep);
                 }
                 else
                 {
-                    NativeMethods.rocksdb_transaction_multi_get_cf(
-                        Handle, opts, cfp, (nuint)n, kp, ks, vp, vs, (byte**)ep);
+                    NativeMethods.rocksdb_transaction_multi_get(
+                        Handle, opts, (nuint)n, kp, ks, vp, vs, (byte**)ep);
                 }
             }
-        }
-        finally
-        {
-            for (int i = 0; i < n; i++)
+            else if (forUpdate)
             {
-                if (pins[i].IsAllocated)
-                {
-                    pins[i].Free();
-                }
+                NativeMethods.rocksdb_transaction_multi_get_for_update_cf(
+                    Handle, opts, cfp, (nuint)n, kp, ks, vp, vs, (byte**)ep);
+            }
+            else
+            {
+                NativeMethods.rocksdb_transaction_multi_get_cf(
+                    Handle, opts, cfp, (nuint)n, kp, ks, vp, vs, (byte**)ep);
             }
         }
 
-        return NativeMethods.CopyAndFreeBatch(valPtrs, valSizes, errs);
+        GC.KeepAlive(options);
+        return NativeMethods.CopyAndFreeBatch(batch, pinned: false);
     }
 
     private static byte[]? CopyAndFree(nint value, nuint length)

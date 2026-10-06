@@ -168,6 +168,27 @@ is allowed to be.
 
 ### Changed
 
+- **The read path copies and allocates less.** Measured with the medium job
+  on the benchmark suites, against the previous revision:
+  - `Get` reads through a pinned slice instead of `rocksdb_get`, which is a
+    pinned read underneath that copied the value twice before the wrapper
+    copied it a third time. About 9% faster on 16 KB values and 5% on 1 KB.
+    The same goes for `GetString`, which also decodes straight from the
+    pinned value, and for the reads on `Transaction` and `TransactionDb`.
+  - The string overloads encode into a pooled buffer instead of a new array
+    per key and value. `Put(string, string)` went from 164 KB allocated per
+    thousand calls to nothing, and `GetString` allocates only the strings it
+    returns.
+  - The batched reads copy their keys into one native block instead of pinning
+    each with a `GCHandle` and allocating five arrays, and `MultiGet` from a
+    single family goes through RocksDb's batched read. About 6% faster and
+    15% less allocation on 128 keys; `MultiGetPinned` allocates 25% less.
+  - Every pinned value, iterator and snapshot registers with its database, and
+    that registration is now a linked list rather than a `List`, so disposing
+    one is constant time however many are open. A batch of 2,000 pinned values
+    disposed in read order is 12% faster and allocates 25% less.
+  - `PinnableSlice.Value` and `Length` read the pointer and length once
+    instead of crossing into native code on every access.
 - **Callbacks reach managed code through `[UnmanagedCallersOnly]` function
   pointers instead of marshalled delegates.** All 38
   `Marshal.GetFunctionPointerForDelegate` sites are gone, along with the

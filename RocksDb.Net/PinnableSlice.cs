@@ -27,12 +27,22 @@ namespace RocksDbNet;
 /// see the remarks on <see cref="Value"/>.
 /// </para>
 /// </remarks>
-public sealed class PinnableSlice : RocksDbHandle
+public sealed unsafe class PinnableSlice : RocksDbHandle
 {
+    // Read once. A pinned value cannot change or move for as long as the slice
+    // holds it, so asking the native side again on every access, as Value and
+    // Length used to, cost a transition per read and bought nothing; a loop
+    // over Value[i] paid one per element.
+    private readonly byte* _data;
+    private readonly int _length;
+
     internal PinnableSlice(nint handle, RocksDbHandle owner)
         : base(handle)
     {
         SetParent(owner);
+
+        _data = NativeMethods.rocksdb_pinnableslice_value(handle, out nuint length);
+        _length = _data is null ? 0 : checked((int)length);
     }
 
     /// <summary>
@@ -46,27 +56,23 @@ public sealed class PinnableSlice : RocksDbHandle
     /// <see langword="using" /> pattern gives you for free when both are locals.
     /// </remarks>
     /// <exception cref="ObjectDisposedException">This instance has been disposed.</exception>
-    public unsafe ReadOnlySpan<byte> Value
+    public ReadOnlySpan<byte> Value
     {
         get
         {
             ThrowIfDisposed();
-
-            byte* data = NativeMethods.rocksdb_pinnableslice_value(Handle, out nuint length);
-            return data is null ? default : new ReadOnlySpan<byte>(data, checked((int)length));
+            return new ReadOnlySpan<byte>(_data, _length);
         }
     }
 
     /// <summary>Length of the value in bytes.</summary>
     /// <exception cref="ObjectDisposedException">This instance has been disposed.</exception>
-    public unsafe int Length
+    public int Length
     {
         get
         {
             ThrowIfDisposed();
-
-            _ = NativeMethods.rocksdb_pinnableslice_value(Handle, out nuint length);
-            return checked((int)length);
+            return _length;
         }
     }
 
