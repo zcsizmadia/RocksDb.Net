@@ -153,6 +153,28 @@ public class ReadmeSnippetTests
     }
 
     [Fact]
+    public void LoggingAndMetrics()
+    {
+        // The README's loggerFactory is the application's; any will do here.
+        Microsoft.Extensions.Logging.ILoggerFactory loggerFactory =
+            Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance;
+
+        var options = new DbOptions { CreateIfMissing = true }
+            .UseLogging(loggerFactory)      // RocksDb's info log, under the "RocksDb" category
+            .EnableStatistics();            // needed for tickers and histograms, and costs throughput
+
+        string path = TestDb.InMemory(options);
+        using var db = RocksDb.Open(options, path);
+
+        // Statistics and key properties as System.Diagnostics.Metrics instruments on the
+        // "RocksDb.Net" meter. Nothing is read until a collector asks.
+        using var metrics = RocksDbMetrics.Register(db, new RocksDbMetricsOptions { DatabaseName = "observed_db" });
+
+        db.Put("a", "1");
+        Assert.Equal("1", db.GetString("a"));
+    }
+
+    [Fact]
     public void MetadataAndStatistics()
     {
         // Statistics live on the options, so keep a reference to read them back.

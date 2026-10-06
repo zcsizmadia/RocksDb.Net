@@ -5,6 +5,15 @@
   <ItemGroup>
     <PackageVersion Include="BenchmarkDotNet" Version="0.15.4" />
     <PackageVersion Include="coverlet.collector" Version="10.1.0" />
+    <!--
+      The lowest version that serves every target framework, deliberately. A
+      library sets the floor for everyone who installs it, and an application
+      on .NET 8 should not be pulled onto a newer Microsoft.Extensions line
+      because of a database wrapper. Dependabot leaves its major version alone.
+    -->
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.3" />
+    <!-- The observability sample's console output only; nothing the package depends on. -->
+    <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="8.0.1" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
     <PackageVersion Include="xunit.v3" Version="4.0.1" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />

@@ -3,6 +3,10 @@
 const string HeaderUrlTemplate =
     "https://raw.githubusercontent.com/facebook/rocksdb/v{0}/include/rocksdb/{1}";
 
+// For the one source file read: the statistics names are not in a header.
+const string SourceUrlTemplate =
+    "https://raw.githubusercontent.com/facebook/rocksdb/v{0}/{1}";
+
 // ── Parse arguments ──────────────────────────────────────────────────────────
 // Usage: NativeMethodsGenerator [--version <version>] [--project <path>]
 //
@@ -99,6 +103,7 @@ var statisticsOutputPath = Path.Combine(projectDir, "StatisticsEnums.g.cs");
 
 var url = string.Format(HeaderUrlTemplate, resolvedVersion, "c.h");
 var statisticsUrl = string.Format(HeaderUrlTemplate, resolvedVersion, "statistics.h");
+var statisticsNamesUrl = string.Format(SourceUrlTemplate, resolvedVersion, "monitoring/statistics.cc");
 
 // ── Say what is about to happen ─────────────────────────────────────────────
 
@@ -110,6 +115,7 @@ Console.WriteLine($"  P/Invoke bindings   {Path.GetFullPath(outputPath)}");
 Console.WriteLine($"    from              {url}");
 Console.WriteLine($"  Statistics enums    {Path.GetFullPath(statisticsOutputPath)}");
 Console.WriteLine($"    from              {statisticsUrl}");
+Console.WriteLine($"    and names from    {statisticsNamesUrl}");
 Console.WriteLine();
 
 // ── Fetch headers ───────────────────────────────────────────────────────────
@@ -119,6 +125,7 @@ Console.WriteLine();
 // caller unless they are read from where they are actually defined.
 string headerText;
 string statisticsHeaderText;
+string statisticsSourceText;
 
 Console.WriteLine("Fetching headers ...");
 
@@ -129,6 +136,9 @@ using (var http = new HttpClient())
 
     statisticsHeaderText = await http.GetStringAsync(statisticsUrl);
     Console.WriteLine($"  statistics.h   {statisticsHeaderText.Length,9:N0} characters");
+
+    statisticsSourceText = await http.GetStringAsync(statisticsNamesUrl);
+    Console.WriteLine($"  statistics.cc  {statisticsSourceText.Length,9:N0} characters");
 }
 
 // ── Parse and write ─────────────────────────────────────────────────────────
@@ -136,6 +146,8 @@ using (var http = new HttpClient())
 var functions = CHeaderParser.Parse(headerText);
 var tickers = CppEnumParser.Parse(statisticsHeaderText, "Tickers");
 var histograms = CppEnumParser.Parse(statisticsHeaderText, "Histograms");
+var tickerNames = StatisticsNameParser.Parse(statisticsSourceText, "TickersNameMap");
+var histogramNames = StatisticsNameParser.Parse(statisticsSourceText, "HistogramsNameMap");
 
 var fullPath = Path.GetFullPath(outputPath);
 Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
@@ -145,7 +157,7 @@ var statisticsFullPath = Path.GetFullPath(statisticsOutputPath);
 Directory.CreateDirectory(Path.GetDirectoryName(statisticsFullPath)!);
 await File.WriteAllTextAsync(
     statisticsFullPath,
-    StatisticsEnumGenerator.Generate(tickers, histograms, resolvedVersion, statisticsUrl));
+    StatisticsEnumGenerator.Generate(tickers, histograms, resolvedVersion, statisticsUrl, tickerNames, histogramNames));
 
 Console.WriteLine();
 Console.WriteLine("Wrote:");

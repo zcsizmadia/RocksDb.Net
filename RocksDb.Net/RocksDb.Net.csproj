@@ -86,6 +86,7 @@
 
   <ItemGroup>
     <PackageReference Include="RocksDb.Net.Runtimes" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
 
   <ItemGroup>
