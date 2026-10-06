@@ -6,8 +6,21 @@ namespace RocksDbNet;
 
 /// <summary>
 /// A RocksDb embedded key-value database.
-/// Thread-safe: all operations may be called concurrently from multiple threads.
+/// Thread-safe: all operations may be called concurrently from multiple threads,
+/// except <see cref="RocksDbHandle.Dispose()"/>.
 /// </summary>
+/// <remarks>
+/// <para>
+/// Dispose only once nothing else is using the database or anything opened
+/// from it. Disposal is the usual .NET exception to thread safety, and here it
+/// is not caught for you: an operation already inside RocksDb when another
+/// thread closes the database runs against freed memory and takes the process
+/// down, rather than throwing <see cref="ObjectDisposedException"/>. Only an
+/// operation that starts after disposal has finished throws. Guarding every
+/// call against a concurrent close would cost two interlocked operations on
+/// each read and write, which is why it is the caller's to ensure.
+/// </para>
+/// </remarks>
 public sealed class RocksDb : RocksDbHandle
 {
     // Shared default options used when the caller passes null — avoids creating
@@ -285,6 +298,7 @@ public sealed class RocksDb : RocksDbHandle
 
         nint err = default;
         NativeMethods.rocksdb_destroy_db(options.Handle, path, ref err);
+        GC.KeepAlive(options);
         NativeMethods.ThrowOnError(err);
     }
 
@@ -296,6 +310,7 @@ public sealed class RocksDb : RocksDbHandle
 
         nint err = default;
         NativeMethods.rocksdb_repair_db(options.Handle, path, ref err);
+        GC.KeepAlive(options);
         NativeMethods.ThrowOnError(err);
     }
 
@@ -308,6 +323,7 @@ public sealed class RocksDb : RocksDbHandle
         nint err = default;
         nuint count;
         byte** list = NativeMethods.rocksdb_list_column_families(options.Handle, path, &count, ref err);
+        GC.KeepAlive(options);
 
         if (err != nint.Zero)
         {
@@ -340,6 +356,7 @@ public sealed class RocksDb : RocksDbHandle
         fixed (byte* v = value)
             NativeMethods.rocksdb_put(Handle, (options ?? _defaultWriteOptions).Handle,
                 k, (nuint)key.Length, v, (nuint)value.Length, ref err);
+        GC.KeepAlive(options);
         NativeMethods.ThrowOnError(err);
     }
 
@@ -352,6 +369,7 @@ public sealed class RocksDb : RocksDbHandle
         fixed (byte* v = value)
             NativeMethods.rocksdb_put_cf(Handle, (options ?? _defaultWriteOptions).Handle, cf.Handle,
                 k, (nuint)key.Length, v, (nuint)value.Length, ref err);
+        GC.KeepAlive(options);
         NativeMethods.ThrowOnError(err);
     }
 
@@ -371,6 +389,7 @@ public sealed class RocksDb : RocksDbHandle
         nint err = default;
         fixed (byte* k = key)
             NativeMethods.rocksdb_delete(Handle, (options ?? _defaultWriteOptions).Handle, k, (nuint)key.Length, ref err);
+        GC.KeepAlive(options);
         NativeMethods.ThrowOnError(err);
     }
 
@@ -398,6 +417,7 @@ public sealed class RocksDb : RocksDbHandle
         fixed (byte* k = key)
             NativeMethods.rocksdb_singledelete(Handle, (options ?? _defaultWriteOptions).Handle,
                 k, (nuint)key.Length, ref err);
+        GC.KeepAlive(options);
         NativeMethods.ThrowOnError(err);
     }
 
@@ -410,6 +430,7 @@ public sealed class RocksDb : RocksDbHandle
         fixed (byte* k = key)
             NativeMethods.rocksdb_singledelete_cf(Handle, (options ?? _defaultWriteOptions).Handle, cf.Handle,
                 k, (nuint)key.Length, ref err);
+        GC.KeepAlive(options);
         NativeMethods.ThrowOnError(err);
     }
 
@@ -425,6 +446,7 @@ public sealed class RocksDb : RocksDbHandle
         fixed (byte* k = key)
             NativeMethods.rocksdb_delete_cf(Handle, (options ?? _defaultWriteOptions).Handle, cf.Handle,
                 k, (nuint)key.Length, ref err);
+        GC.KeepAlive(options);
         NativeMethods.ThrowOnError(err);
     }
 
@@ -451,6 +473,7 @@ public sealed class RocksDb : RocksDbHandle
         fixed (byte* e = endKey)
             NativeMethods.rocksdb_delete_range_cf(Handle, (options ?? _defaultWriteOptions).Handle, cf.Handle,
                 s, (nuint)startKey.Length, e, (nuint)endKey.Length, ref err);
+        GC.KeepAlive(options);
         NativeMethods.ThrowOnError(err);
     }
 
@@ -478,6 +501,7 @@ public sealed class RocksDb : RocksDbHandle
         fixed (byte* v = value)
             NativeMethods.rocksdb_merge(Handle, (options ?? _defaultWriteOptions).Handle,
                 k, (nuint)key.Length, v, (nuint)value.Length, ref err);
+        GC.KeepAlive(options);
         NativeMethods.ThrowOnError(err);
     }
 
@@ -496,6 +520,7 @@ public sealed class RocksDb : RocksDbHandle
         fixed (byte* v = value)
             NativeMethods.rocksdb_merge_cf(Handle, (options ?? _defaultWriteOptions).Handle, cf.Handle,
                 k, (nuint)key.Length, v, (nuint)value.Length, ref err);
+        GC.KeepAlive(options);
         NativeMethods.ThrowOnError(err);
     }
 
@@ -512,6 +537,8 @@ public sealed class RocksDb : RocksDbHandle
         ArgumentNullException.ThrowIfNull(batch);
         nint err = default;
         NativeMethods.rocksdb_write(Handle, (options ?? _defaultWriteOptions).Handle, batch.Handle, ref err);
+        GC.KeepAlive(options);
+        GC.KeepAlive(batch);
         NativeMethods.ThrowOnError(err);
     }
 
@@ -529,6 +556,8 @@ public sealed class RocksDb : RocksDbHandle
         ArgumentNullException.ThrowIfNull(batch);
         nint err = default;
         NativeMethods.rocksdb_write_writebatch_wi(Handle, (options ?? _defaultWriteOptions).Handle, batch.Handle, ref err);
+        GC.KeepAlive(options);
+        GC.KeepAlive(batch);
         NativeMethods.ThrowOnError(err);
     }
 
@@ -554,6 +583,7 @@ public sealed class RocksDb : RocksDbHandle
         {
             valNint = NativeMethods.rocksdb_get(Handle, (options ?? _defaultReadOptions).Handle,
                 k, (nuint)key.Length, out vallen, ref err);
+            GC.KeepAlive(options);
         }
         NativeMethods.ThrowOnError(err);
         return NativeMethods.CopyAndFree(valNint, vallen);
@@ -634,6 +664,7 @@ public sealed class RocksDb : RocksDbHandle
         fixed (byte* k = key)
             slice = NativeMethods.rocksdb_get_pinned(Handle, (options ?? _defaultReadOptions).Handle,
                 k, (nuint)key.Length, ref err);
+        GC.KeepAlive(options);
 
         // A null return means either "not found" or "failed", so the error has to
         // be checked before deciding which.
@@ -652,6 +683,7 @@ public sealed class RocksDb : RocksDbHandle
         fixed (byte* k = key)
             slice = NativeMethods.rocksdb_get_pinned_cf(Handle, (options ?? _defaultReadOptions).Handle,
                 cf.Handle, k, (nuint)key.Length, ref err);
+        GC.KeepAlive(options);
 
         NativeMethods.ThrowOnError(err);
 
@@ -694,6 +726,7 @@ public sealed class RocksDb : RocksDbHandle
         fixed (byte* dest = destination)
             copied = NativeMethods.rocksdb_get_into_buffer(Handle, (options ?? _defaultReadOptions).Handle,
                 k, (nuint)key.Length, dest, (nuint)destination.Length, out length, &found, ref err);
+        GC.KeepAlive(options);
 
         NativeMethods.ThrowOnError(err);
 
@@ -717,6 +750,7 @@ public sealed class RocksDb : RocksDbHandle
         fixed (byte* dest = destination)
             copied = NativeMethods.rocksdb_get_into_buffer_cf(Handle, (options ?? _defaultReadOptions).Handle,
                 cf.Handle, k, (nuint)key.Length, dest, (nuint)destination.Length, out length, &found, ref err);
+        GC.KeepAlive(options);
 
         NativeMethods.ThrowOnError(err);
 
@@ -734,6 +768,7 @@ public sealed class RocksDb : RocksDbHandle
         fixed (byte* k = key)
             valNint = NativeMethods.rocksdb_get_cf(Handle, (options ?? _defaultReadOptions).Handle, cf.Handle,
                 k, (nuint)key.Length, out vallen, ref err);
+        GC.KeepAlive(options);
         NativeMethods.ThrowOnError(err);
         return NativeMethods.CopyAndFree(valNint, vallen);
     }
@@ -899,6 +934,7 @@ public sealed class RocksDb : RocksDbHandle
             fixed (nint* ep = errs)
                 NativeMethods.rocksdb_batched_multi_get_cf(Handle, (options ?? _defaultReadOptions).Handle,
                     cf.Handle, (nuint)n, kp, ks, sp, (byte**)ep, sortedInput ? (byte)1 : (byte)0);
+            GC.KeepAlive(options);
         }
         finally
         {
@@ -987,6 +1023,7 @@ public sealed class RocksDb : RocksDbHandle
                 {
                     NativeMethods.rocksdb_multi_get_cf(Handle, (options ?? _defaultReadOptions).Handle,
                         cfp, (nuint)n, kp, ks, vp, vs, (byte**)ep);
+                    GC.KeepAlive(options);
                 }
             }
         }
@@ -1019,9 +1056,13 @@ public sealed class RocksDb : RocksDbHandle
     /// </summary>
     public unsafe bool KeyMayExist(ReadOnlySpan<byte> key, ReadOptions? options = null)
     {
+        bool mayExist;
         fixed (byte* k = key)
-            return NativeMethods.rocksdb_key_may_exist(Handle, (options ?? _defaultReadOptions).Handle,
+            mayExist = NativeMethods.rocksdb_key_may_exist(Handle, (options ?? _defaultReadOptions).Handle,
                 k, (nuint)key.Length, (byte**)null, out nuint dummyValLen, (byte*)null, 0, (byte*)null) != 0;
+        GC.KeepAlive(options);
+
+        return mayExist;
     }
 
     /// <summary>
@@ -1032,10 +1073,14 @@ public sealed class RocksDb : RocksDbHandle
     public unsafe bool KeyMayExist(ReadOnlySpan<byte> key, ColumnFamilyHandle cf, ReadOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(cf);
+        bool mayExist;
         fixed (byte* k = key)
-            return NativeMethods.rocksdb_key_may_exist_cf(Handle, (options ?? _defaultReadOptions).Handle,
+            mayExist = NativeMethods.rocksdb_key_may_exist_cf(Handle, (options ?? _defaultReadOptions).Handle,
                 cf.Handle, k, (nuint)key.Length, (byte**)null, out nuint dummyValLen,
                 (byte*)null, 0, (byte*)null) != 0;
+        GC.KeepAlive(options);
+
+        return mayExist;
     }
 
     /// <summary>
@@ -1140,6 +1185,8 @@ public sealed class RocksDb : RocksDbHandle
         nint err = default;
         nint handle = NativeMethods.rocksdb_create_column_family_with_import(
             Handle, options.Handle, name, (importOptions ?? owned!).Handle, metadata.Handle, ref err);
+        GC.KeepAlive(importOptions);
+        GC.KeepAlive(metadata);
         NativeMethods.ThrowOnError(err);
 
         _columnFamilyOptions.Add(options);
@@ -1421,6 +1468,7 @@ public sealed class RocksDb : RocksDbHandle
     {
         ArgumentNullException.ThrowIfNull(options);
         nint meta = NativeMethods.rocksdb_get_column_family_metadata_with_options(Handle, options.Handle);
+        GC.KeepAlive(options);
         return meta == nint.Zero ? null : ColumnFamilyMetadata.ReadAndDestroy(meta);
     }
 
@@ -1433,6 +1481,7 @@ public sealed class RocksDb : RocksDbHandle
         ArgumentNullException.ThrowIfNull(cf);
         ArgumentNullException.ThrowIfNull(options);
         nint meta = NativeMethods.rocksdb_get_column_family_metadata_cf_with_options(Handle, cf.Handle, options.Handle);
+        GC.KeepAlive(options);
         return meta == nint.Zero ? null : ColumnFamilyMetadata.ReadAndDestroy(meta);
     }
 
@@ -1453,6 +1502,7 @@ public sealed class RocksDb : RocksDbHandle
     {
         nint err = default;
         NativeMethods.rocksdb_flush(Handle, (options ?? _defaultFlushOptions).Handle, ref err);
+        GC.KeepAlive(options);
         NativeMethods.ThrowOnError(err);
     }
 
@@ -1462,6 +1512,7 @@ public sealed class RocksDb : RocksDbHandle
         ArgumentNullException.ThrowIfNull(cf);
         nint err = default;
         NativeMethods.rocksdb_flush_cf(Handle, (options ?? _defaultFlushOptions).Handle, cf.Handle, ref err);
+        GC.KeepAlive(options);
         NativeMethods.ThrowOnError(err);
     }
 
@@ -1495,6 +1546,7 @@ public sealed class RocksDb : RocksDbHandle
         {
             fixed (nint* ptr = handles)
                 NativeMethods.rocksdb_flush_cfs(Handle, (options ?? _defaultFlushOptions).Handle, ptr, count, ref err);
+            GC.KeepAlive(options);
         }
         NativeMethods.ThrowOnError(err);
     }
@@ -1530,6 +1582,7 @@ public sealed class RocksDb : RocksDbHandle
 
         nint err = default;
         NativeMethods.rocksdb_flush_wal_with_options(Handle, options.Handle, ref err);
+        GC.KeepAlive(options);
         NativeMethods.ThrowOnError(err);
     }
 
@@ -1575,6 +1628,7 @@ public sealed class RocksDb : RocksDbHandle
             NativeMethods.rocksdb_compact_range_opt(Handle, options.Handle,
                 startKey.IsEmpty ? null : s, (nuint)startKey.Length,
                 limitKey.IsEmpty ? null : e, (nuint)limitKey.Length);
+        GC.KeepAlive(options);
     }
 
     /// <summary>
@@ -1663,6 +1717,7 @@ public sealed class RocksDb : RocksDbHandle
         try
         {
             NativeMethods.rocksdb_wait_for_compact(Handle, (options ?? owned!).Handle, ref err);
+            GC.KeepAlive(options);
         }
         finally
         {
@@ -2400,6 +2455,7 @@ public sealed class RocksDb : RocksDbHandle
 
         nint err = default;
         NativeMethods.rocksdb_verify_checksum_with_options(Handle, options.Handle, ref err);
+        GC.KeepAlive(options);
         NativeMethods.ThrowOnError(err);
     }
 
@@ -2435,6 +2491,7 @@ public sealed class RocksDb : RocksDbHandle
 
         nint err = default;
         NativeMethods.rocksdb_verify_file_checksums_with_options(Handle, options.Handle, ref err);
+        GC.KeepAlive(options);
         NativeMethods.ThrowOnError(err);
     }
 
@@ -2542,9 +2599,14 @@ public sealed class RocksDb : RocksDbHandle
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        return ApproximateSizesCore(ranges,
+        ulong[] result = ApproximateSizesCore(ranges,
             (int n, byte** sk, nuint* sl, byte** lk, nuint* ll, ulong* sizes, ref nint err)
                 => NativeMethods.rocksdb_approximate_sizes_with_options(Handle, options.Handle, n, sk, sl, lk, ll, sizes, ref err));
+
+        // The lambda reads the handle and nothing else, so the options are kept
+        // alive out here, until every call through it has returned.
+        GC.KeepAlive(options);
+        return result;
     }
 
     /// <summary>
@@ -2556,9 +2618,12 @@ public sealed class RocksDb : RocksDbHandle
         ArgumentNullException.ThrowIfNull(cf);
         ArgumentNullException.ThrowIfNull(options);
 
-        return ApproximateSizesCore(ranges,
+        ulong[] result = ApproximateSizesCore(ranges,
             (int n, byte** sk, nuint* sl, byte** lk, nuint* ll, ulong* sizes, ref nint err)
                 => NativeMethods.rocksdb_approximate_sizes_cf_with_options(Handle, cf.Handle, options.Handle, n, sk, sl, lk, ll, sizes, ref err));
+
+        GC.KeepAlive(options);
+        return result;
     }
 
 
@@ -2682,6 +2747,7 @@ public sealed class RocksDb : RocksDbHandle
             nint err = default;
             fixed (byte** pp = pathPtrs)
                 NativeMethods.rocksdb_ingest_external_file(Handle, pp, (nuint)count, options.Handle, ref err);
+            GC.KeepAlive(options);
             NativeMethods.ThrowOnError(err);
         }
         finally
@@ -2715,6 +2781,7 @@ public sealed class RocksDb : RocksDbHandle
             nint err = default;
             fixed (byte** pp = pathPtrs)
                 NativeMethods.rocksdb_ingest_external_file_cf(Handle, cf.Handle, pp, (nuint)count, options.Handle, ref err);
+            GC.KeepAlive(options);
             NativeMethods.ThrowOnError(err);
         }
         finally

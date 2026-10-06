@@ -10,6 +10,10 @@ namespace RocksDbNet;
 /// </summary>
 /// <remarks>
 /// <para>
+/// Thread-safe except for disposal, as with <see cref="RocksDb"/>: dispose
+/// only once nothing else is using the database or a transaction from it.
+/// </para>
+/// <para>
 /// The difference from <see cref="TransactionDb"/> is where the cost falls. A
 /// transaction database locks every key as it is written and holds the lock
 /// until the transaction ends, so a second writer waits for the lock timeout
@@ -120,6 +124,7 @@ public sealed class OptimisticTransactionDb : RocksDbHandle
         nint err = default;
         nint handle = NativeMethods.rocksdb_optimistictransactiondb_open_with_otxn_db_options(
             options.Handle, optimisticOptions.Handle, path, ref err);
+        GC.KeepAlive(optimisticOptions);
         NativeMethods.ThrowOnError(err);
 
         return new OptimisticTransactionDb(handle, options);
@@ -186,6 +191,7 @@ public sealed class OptimisticTransactionDb : RocksDbHandle
                         options.Handle, path, count, names, opts, handles, ref err)
                     : NativeMethods.rocksdb_optimistictransactiondb_open_column_families_with_otxn_db_options(
                         options.Handle, optimisticOptions.Handle, path, count, names, opts, handles, ref err);
+                GC.KeepAlive(optimisticOptions);
             }
         }
         finally
@@ -229,6 +235,8 @@ public sealed class OptimisticTransactionDb : RocksDbHandle
             (writeOptions ?? _defaultWriteOptions).Handle,
             (transactionOptions ?? owned!).Handle,
             nint.Zero);
+        GC.KeepAlive(writeOptions);
+        GC.KeepAlive(transactionOptions);
 
         return new Transaction(handle, this);
     }
@@ -250,6 +258,8 @@ public sealed class OptimisticTransactionDb : RocksDbHandle
         nint err = default;
         NativeMethods.rocksdb_optimistictransactiondb_write(
             Handle, (options ?? _defaultWriteOptions).Handle, batch.Handle, ref err);
+        GC.KeepAlive(options);
+        GC.KeepAlive(batch);
         NativeMethods.ThrowOnError(err);
     }
 

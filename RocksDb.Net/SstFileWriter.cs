@@ -72,6 +72,7 @@ public sealed class SstFileWriter : RocksDbHandle
         ArgumentNullException.ThrowIfNull(options);
 
         nint writer = NativeMethods.rocksdb_sstfilewriter_create(envOptions.Handle, options.Handle);
+        GC.KeepAlive(envOptions);
         return new SstFileWriter(writer, options);
     }
 

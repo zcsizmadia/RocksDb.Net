@@ -10,6 +10,10 @@ namespace RocksDbNet;
 /// </summary>
 /// <remarks>
 /// <para>
+/// Thread-safe except for disposal, as with <see cref="RocksDb"/>: dispose
+/// only once nothing else is using the database or a transaction from it.
+/// </para>
+/// <para>
 /// Every write takes locks, whether it goes through a
 /// <see cref="Transaction"/> or straight through this object. A second writer
 /// touching a locked key waits for the lock timeout and then fails, or fails at
@@ -98,6 +102,7 @@ public sealed class TransactionDb : RocksDbHandle
         nint err = default;
         nint handle = NativeMethods.rocksdb_transactiondb_open(
             options.Handle, transactionDbOptions.Handle, path, ref err);
+        GC.KeepAlive(transactionDbOptions);
         NativeMethods.ThrowOnError(err);
 
         return new TransactionDb(handle, options);
@@ -145,6 +150,7 @@ public sealed class TransactionDb : RocksDbHandle
             fixed (nint* handles = cfHandles)
                 handle = NativeMethods.rocksdb_transactiondb_open_column_families(
                     options.Handle, transactionDbOptions.Handle, path, count, names, opts, handles, ref err);
+            GC.KeepAlive(transactionDbOptions);
         }
         finally
         {
@@ -180,6 +186,8 @@ public sealed class TransactionDb : RocksDbHandle
             (writeOptions ?? _defaultWriteOptions).Handle,
             (transactionOptions ?? owned!).Handle,
             nint.Zero);
+        GC.KeepAlive(writeOptions);
+        GC.KeepAlive(transactionOptions);
 
         return new Transaction(handle, this);
     }
@@ -257,6 +265,7 @@ public sealed class TransactionDb : RocksDbHandle
         fixed (byte* v = value)
             NativeMethods.rocksdb_transactiondb_put(Handle, (options ?? _defaultWriteOptions).Handle,
                 k, (nuint)key.Length, v, (nuint)value.Length, ref err);
+        GC.KeepAlive(options);
         NativeMethods.ThrowOnError(err);
     }
 
@@ -270,6 +279,7 @@ public sealed class TransactionDb : RocksDbHandle
         fixed (byte* v = value)
             NativeMethods.rocksdb_transactiondb_put_cf(Handle, (options ?? _defaultWriteOptions).Handle, cf.Handle,
                 k, (nuint)key.Length, v, (nuint)value.Length, ref err);
+        GC.KeepAlive(options);
         NativeMethods.ThrowOnError(err);
     }
 
@@ -288,6 +298,7 @@ public sealed class TransactionDb : RocksDbHandle
         fixed (byte* k = key)
             NativeMethods.rocksdb_transactiondb_delete(Handle, (options ?? _defaultWriteOptions).Handle,
                 k, (nuint)key.Length, ref err);
+        GC.KeepAlive(options);
         NativeMethods.ThrowOnError(err);
     }
 
@@ -300,6 +311,7 @@ public sealed class TransactionDb : RocksDbHandle
         fixed (byte* k = key)
             NativeMethods.rocksdb_transactiondb_delete_cf(Handle, (options ?? _defaultWriteOptions).Handle, cf.Handle,
                 k, (nuint)key.Length, ref err);
+        GC.KeepAlive(options);
         NativeMethods.ThrowOnError(err);
     }
 
@@ -315,6 +327,7 @@ public sealed class TransactionDb : RocksDbHandle
         fixed (byte* v = value)
             NativeMethods.rocksdb_transactiondb_merge(Handle, (options ?? _defaultWriteOptions).Handle,
                 k, (nuint)key.Length, v, (nuint)value.Length, ref err);
+        GC.KeepAlive(options);
         NativeMethods.ThrowOnError(err);
     }
 
@@ -328,6 +341,7 @@ public sealed class TransactionDb : RocksDbHandle
         fixed (byte* v = value)
             NativeMethods.rocksdb_transactiondb_merge_cf(Handle, (options ?? _defaultWriteOptions).Handle, cf.Handle,
                 k, (nuint)key.Length, v, (nuint)value.Length, ref err);
+        GC.KeepAlive(options);
         NativeMethods.ThrowOnError(err);
     }
 
@@ -338,6 +352,8 @@ public sealed class TransactionDb : RocksDbHandle
 
         nint err = default;
         NativeMethods.rocksdb_transactiondb_write(Handle, (options ?? _defaultWriteOptions).Handle, batch.Handle, ref err);
+        GC.KeepAlive(options);
+        GC.KeepAlive(batch);
         NativeMethods.ThrowOnError(err);
     }
 
@@ -350,6 +366,7 @@ public sealed class TransactionDb : RocksDbHandle
         fixed (byte* k = key)
             value = NativeMethods.rocksdb_transactiondb_get(Handle, (options ?? _defaultReadOptions).Handle,
                 k, (nuint)key.Length, out length, ref err);
+        GC.KeepAlive(options);
 
         NativeMethods.ThrowOnError(err);
         return CopyAndFree(value, length);
@@ -366,6 +383,7 @@ public sealed class TransactionDb : RocksDbHandle
         fixed (byte* k = key)
             value = NativeMethods.rocksdb_transactiondb_get_cf(Handle, (options ?? _defaultReadOptions).Handle, cf.Handle,
                 k, (nuint)key.Length, out length, ref err);
+        GC.KeepAlive(options);
 
         NativeMethods.ThrowOnError(err);
         return CopyAndFree(value, length);
@@ -396,6 +414,7 @@ public sealed class TransactionDb : RocksDbHandle
         fixed (byte* k = key)
             slice = NativeMethods.rocksdb_transactiondb_get_pinned(Handle, (options ?? _defaultReadOptions).Handle,
                 k, (nuint)key.Length, ref err);
+        GC.KeepAlive(options);
 
         NativeMethods.ThrowOnError(err);
         return slice == nint.Zero ? null : new PinnableSlice(slice, this);
@@ -411,6 +430,7 @@ public sealed class TransactionDb : RocksDbHandle
         fixed (byte* k = key)
             slice = NativeMethods.rocksdb_transactiondb_get_pinned_cf(Handle, (options ?? _defaultReadOptions).Handle,
                 cf.Handle, k, (nuint)key.Length, ref err);
+        GC.KeepAlive(options);
 
         NativeMethods.ThrowOnError(err);
         return slice == nint.Zero ? null : new PinnableSlice(slice, this);
@@ -551,6 +571,7 @@ public sealed class TransactionDb : RocksDbHandle
     {
         nint err = default;
         NativeMethods.rocksdb_transactiondb_flush(Handle, (options ?? _defaultFlushOptions).Handle, ref err);
+        GC.KeepAlive(options);
         NativeMethods.ThrowOnError(err);
     }
 
@@ -561,6 +582,7 @@ public sealed class TransactionDb : RocksDbHandle
 
         nint err = default;
         NativeMethods.rocksdb_transactiondb_flush_cf(Handle, (options ?? _defaultFlushOptions).Handle, cf.Handle, ref err);
+        GC.KeepAlive(options);
         NativeMethods.ThrowOnError(err);
     }
 
@@ -595,6 +617,7 @@ public sealed class TransactionDb : RocksDbHandle
 
         nint err = default;
         NativeMethods.rocksdb_transactiondb_flush_wal_with_options(Handle, options.Handle, ref err);
+        GC.KeepAlive(options);
         NativeMethods.ThrowOnError(err);
     }
 

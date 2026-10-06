@@ -28,7 +28,10 @@ public sealed class Cache : RocksDbHandle
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        return new Cache(NativeMethods.rocksdb_cache_create_lru_opts(options.Handle));
+        nint handle = NativeMethods.rocksdb_cache_create_lru_opts(options.Handle);
+        GC.KeepAlive(options);
+
+        return new Cache(handle);
     }
 
     /// <summary>Creates a HyperClock cache.</summary>
@@ -51,7 +54,10 @@ public sealed class Cache : RocksDbHandle
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        return new Cache(NativeMethods.rocksdb_cache_create_hyper_clock_opts(options.Handle));
+        nint handle = NativeMethods.rocksdb_cache_create_hyper_clock_opts(options.Handle);
+        GC.KeepAlive(options);
+
+        return new Cache(handle);
     }
 
     /// <summary>Gets or sets the cache capacity in bytes.</summary>

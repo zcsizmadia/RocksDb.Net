@@ -52,8 +52,11 @@ public sealed class WriteBufferManager : RocksDbHandle
     {
         ArgumentNullException.ThrowIfNull(cache);
 
-        return new WriteBufferManager(NativeMethods.rocksdb_write_buffer_manager_create_with_cache(
-            checked((nuint)bufferSize), cache.Handle, allowStall ? (byte)1 : (byte)0));
+        nint handle = NativeMethods.rocksdb_write_buffer_manager_create_with_cache(
+            checked((nuint)bufferSize), cache.Handle, allowStall ? (byte)1 : (byte)0);
+        GC.KeepAlive(cache);
+
+        return new WriteBufferManager(handle);
     }
 
     /// <summary>

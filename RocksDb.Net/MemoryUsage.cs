@@ -93,6 +93,7 @@ public sealed class ApproximateMemoryUsage : RocksDbHandle
 
         nint err = default;
         nint handle = NativeMethods.rocksdb_approximate_memory_usage_create(consumers.Handle, ref err);
+        GC.KeepAlive(consumers);
         NativeMethods.ThrowOnError(err);
 
         return new ApproximateMemoryUsage(handle);

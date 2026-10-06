@@ -154,6 +154,17 @@ is allowed to be.
   released immediately when disposed, though the native iterator or options
   still pointed into them. Those disposals are now deferred until the reader
   lets go. Closing a database still releases its snapshots, whatever holds them.
+- **An options object or batch could be finalized during the call it was passed
+  to.** Native calls read the wrapper's handle and nothing kept the wrapper
+  itself reachable afterwards, so in `db.Put(k, v, new WriteOptions { Sync =
+  true })` a collection on another thread could finalize the options and
+  destroy the native struct while RocksDb was still using it. About a hundred
+  calls across the library now keep their arguments alive until they return,
+  and a test scans the sources so a new call cannot leave one out.
+- **Disposal is now documented as the exception to thread safety.** Disposing
+  a database while another thread is inside a call on it is an access violation,
+  not an `ObjectDisposedException`. That was always so; the class documentation
+  said every operation was safe to call concurrently, and now says which is not.
 
 ### Changed
 

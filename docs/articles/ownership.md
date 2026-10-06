@@ -78,6 +78,10 @@ Every wrapper throws `ObjectDisposedException` when you use it after disposal, w
 
 This used to be an access violation that took the process down. The C API dereferences every pointer it is given without a null check, so the zero a disposed wrapper reported went straight into the native call, and the crash named nothing that would lead you back to the object you had already disposed. The guard sits on the handle itself rather than on individual methods, so it covers paths nobody thought to guard.
 
+That guard covers an operation that starts after disposal has finished. It cannot cover one already inside RocksDb when another thread disposes: the check happened before the call began, and the database is closed underneath it. That is an access violation, not an exception. The database types are otherwise safe to call from many threads at once, but disposal is the usual exception: dispose only once nothing else is using the database or anything opened from it. Making a concurrent close safe would mean counting every call in and out, two interlocked operations on each read and write, so it is left to you, as it is for most .NET types.
+
+The same applies to any wrapper you pass into a call. While the call runs, the library keeps that object reachable, so the garbage collector cannot finalize it underneath RocksDb, even when it was created inline with nothing else referring to it. It cannot stop you disposing it from another thread at the same time.
+
 ## Caller-provided buffers
 
 Most methods copy the key or value, or use it only for the duration of the call, so nothing needs to stay alive afterwards.

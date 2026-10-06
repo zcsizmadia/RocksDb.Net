@@ -54,6 +54,7 @@ public sealed class BackupEngine : RocksDbHandle
 
         nint err = default;
         nint handle = NativeMethods.rocksdb_backup_engine_open(options.Handle, backupPath, ref err);
+        GC.KeepAlive(options);
         NativeMethods.ThrowOnError(err);
         return new BackupEngine(handle);
     }
@@ -93,6 +94,7 @@ public sealed class BackupEngine : RocksDbHandle
 
         nint err = default;
         nint handle = NativeMethods.rocksdb_backup_engine_open_opts(options.Handle, environment.Handle, ref err);
+        GC.KeepAlive(options);
 
         if (err != nint.Zero)
         {
@@ -124,6 +126,7 @@ public sealed class BackupEngine : RocksDbHandle
 
         nint err = default;
         NativeMethods.rocksdb_backup_engine_create_new_backup_flush(Handle, db.Handle, flushBeforeBackup ? (byte)1 : (byte)0, ref err);
+        GC.KeepAlive(db);
         NativeMethods.ThrowOnError(err);
     }
 
@@ -140,6 +143,7 @@ public sealed class BackupEngine : RocksDbHandle
         nint err = default;
         NativeMethods.rocksdb_backup_engine_create_new_backup_with_options(
             Handle, db.Handle, options.Handle, &backupId, ref err);
+        GC.KeepAlive(db);
 
         // Only options.Handle was read, so nothing kept the options object
         // reachable for the call. A caller who passed a temporary — the natural
@@ -176,6 +180,7 @@ public sealed class BackupEngine : RocksDbHandle
         fixed (byte* metadata = appMetadata)
             NativeMethods.rocksdb_backup_engine_create_new_backup_with_metadata(
                 Handle, db.Handle, options.Handle, metadata, (nuint)appMetadata.Length, &backupId, ref err);
+        GC.KeepAlive(db);
 
         // As in the overload above: only the handle was read, so nothing kept a
         // temporary options object reachable for the length of the backup.
@@ -247,6 +252,7 @@ public sealed class BackupEngine : RocksDbHandle
 
         nint err = default;
         NativeMethods.rocksdb_backup_engine_restore_db_from_latest_backup(Handle, dbDir, walDir, options.Handle, ref err);
+        GC.KeepAlive(options);
         NativeMethods.ThrowOnError(err);
     }
 
