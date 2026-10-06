@@ -13,7 +13,7 @@
     -->
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.3" />
     <!-- The observability sample's console output only; nothing the package depends on. -->
-    <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="8.0.1" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="10.0.12" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
     <PackageVersion Include="xunit.v3" Version="4.0.1" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />
