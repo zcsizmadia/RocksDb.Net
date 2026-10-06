@@ -211,6 +211,15 @@ is allowed to be.
   including two that would have silently done nothing if wrapped:
   `DeleteRange` on an indexed batch, which RocksDb does not support, and a
   batch size cap, whose failures the C API discards.
+- **A symbols package is published alongside the package**, with Source Link,
+  so stepping into the library from a debugger shows its source at the commit
+  that was built rather than a decompilation. CI builds are deterministic.
+- **Packing checks compatibility with the last release.** Package validation
+  compares every target framework against the version in
+  `PackageValidationBaselineVersion` and fails the pack on a source or binary
+  break, which is what this changelog promises a revision bump never contains.
+  It lapses on its own when the RocksDb version changes, which is when breaking
+  changes are allowed. Everything merged since 11.8.1.2 passes it.
 - **The read path copies and allocates less.** Measured with the medium job
   on the benchmark suites, against the previous revision:
   - `Get` reads through a pinned slice instead of `rocksdb_get`, which is a

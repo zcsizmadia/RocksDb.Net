@@ -9,6 +9,16 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
+  <!--
+    Deterministic paths in the PDBs of anything CI builds, which is what gets
+    published. Without it a PDB records the runner's checkout path, so two
+    builds of the same commit differ and Source Link cannot map the files.
+    Not set locally, where the real paths are what a debugger wants.
+  -->
+  <PropertyGroup Condition="'$(GITHUB_ACTIONS)' == 'true'">
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
   <PropertyGroup>
     <RocksDbVersion>11.8.1</RocksDbVersion>
 
@@ -20,6 +30,20 @@
       CHANGELOG.md under Versioning.
     -->
     <Revision>2</Revision>
+
+    <!--
+      The last version published to nuget.org. Packing compares the package
+      against it and fails on anything that would break a caller compiled
+      against it, which is what the promise above says a revision may not do.
+      Update it to the version just published as part of each release.
+
+      Only applied while it wraps the same RocksDb version, so it lapses on
+      its own when RocksDbVersion is bumped: that is when breaking changes are
+      allowed, and comparing against the previous RocksDb version's package
+      would report every one of them. The first release of the new version
+      then becomes the baseline again. See RocksDb.Net.csproj.
+    -->
+    <PackageValidationBaselineVersion>11.8.1.2</PackageValidationBaselineVersion>
 
     <!--
       VersionPrefix rather than Version, so that a prerelease can be built by

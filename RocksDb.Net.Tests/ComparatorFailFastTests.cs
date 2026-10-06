@@ -70,22 +70,54 @@ public class ComparatorFailFastTests
     {
         string assembly = typeof(ComparatorFailFastTests).Assembly.Location;
 
-        var startInfo = new ProcessStartInfo("dotnet")
+        // The test assembly run as the program it is under xunit v3, filtered to
+        // the one test. Not `dotnet test`: that hosts the assembly through
+        // VSTest, which does not relay a crashing process's standard error, so
+        // the fail-fast message this test looks for never reached the output.
+        //
+        // Through the executable xunit v3 builds beside the assembly where there
+        // is one, rather than `dotnet <assembly>`. The executable is built for
+        // the same architecture as the assembly, and the `dotnet` on the path is
+        // not necessarily: on the 32-bit leg it is the 64-bit host, which could
+        // not load the 32-bit native library the build copied.
+        string appHost = Path.ChangeExtension(assembly, OperatingSystem.IsWindows() ? ".exe" : null);
+
+        var startInfo = new ProcessStartInfo(File.Exists(appHost) ? appHost : "dotnet")
         {
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
         };
 
-        // The built assembly rather than the project, so the child runs the tests
-        // already built rather than building them again.
-        startInfo.ArgumentList.Add("test");
-        startInfo.ArgumentList.Add(assembly);
-        startInfo.ArgumentList.Add("--filter");
+        if (!File.Exists(appHost))
+        {
+            startInfo.ArgumentList.Add(assembly);
+        }
+
+        startInfo.ArgumentList.Add("-method");
         startInfo.ArgumentList.Add(
-            $"FullyQualifiedName={typeof(ComparatorFailFastTests).FullName}.{nameof(ComparatorThatThrows_TerminatesTheProcess)}");
+            $"{typeof(ComparatorFailFastTests).FullName}.{nameof(ComparatorThatThrows_TerminatesTheProcess)}");
 
         startInfo.Environment[ChildSwitch] = "1";
+
+        // No crash dump for a crash that is the point of the test. CI runs the
+        // suite with --blame-crash, which turns dumps on through environment
+        // variables, and the child inherits them now that it is started
+        // directly rather than through VSTest. On macOS, writing the dump of a
+        // process that has called FailFast took longer than the timeout below,
+        // so the child never exited in time.
+        foreach (string name in startInfo.Environment.Keys.ToArray())
+        {
+            if (name.StartsWith("DOTNET_DbgEnableMiniDump", StringComparison.OrdinalIgnoreCase)
+                || name.StartsWith("COMPlus_DbgEnableMiniDump", StringComparison.OrdinalIgnoreCase)
+                || name.StartsWith("DOTNET_DbgMiniDump", StringComparison.OrdinalIgnoreCase)
+                || name.StartsWith("COMPlus_DbgMiniDump", StringComparison.OrdinalIgnoreCase)
+                || name.StartsWith("DOTNET_EnableCrashReport", StringComparison.OrdinalIgnoreCase)
+                || name.StartsWith("COMPlus_EnableCrashReport", StringComparison.OrdinalIgnoreCase))
+            {
+                startInfo.Environment.Remove(name);
+            }
+        }
 
         using Process child = Process.Start(startInfo)!;
 
@@ -97,7 +129,17 @@ public class ComparatorFailFastTests
         Task<string> standardOutput = child.StandardOutput.ReadToEndAsync(timeout.Token);
         Task<string> standardError = child.StandardError.ReadToEndAsync(timeout.Token);
 
-        await child.WaitForExitAsync(timeout.Token);
+        try
+        {
+            await child.WaitForExitAsync(timeout.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // Not left running behind the test run, holding the database and
+            // the runner's pipes.
+            child.Kill(entireProcessTree: true);
+            throw;
+        }
 
         string output = await standardOutput + await standardError;
 

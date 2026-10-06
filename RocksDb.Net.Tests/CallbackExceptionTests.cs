@@ -116,7 +116,15 @@ public class CallbackExceptionTests
         Assert.True(
             Wait.Until(() => listener.Calls > 0),
             "the listener should have been invoked");
-        Assert.Contains(recorder.Reported, r => r.CallbackName == nameof(EventListener.OnFlushCompleted) && r.Exception is InvalidOperationException);
+
+        // Waited for in its own right. The listener counts the call and then
+        // throws, and the wrapper reports the exception after catching it, on
+        // the flush thread; checking straight after the count could land in
+        // between, which a Linux runner did.
+        Assert.True(
+            Wait.Until(() => recorder.Reported.Any(
+                r => r.CallbackName == nameof(EventListener.OnFlushCompleted) && r.Exception is InvalidOperationException)),
+            "the listener's exception should have been reported");
     }
 
     private sealed class ThrowingCompactionFilterFactory() : CompactionFilterFactory("throwing-factory")
