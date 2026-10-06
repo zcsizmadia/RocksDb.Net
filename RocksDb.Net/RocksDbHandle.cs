@@ -149,13 +149,62 @@ public abstract class RocksDbHandle : IDisposable
         if (remaining > 0)
         {
             // Something else still points at this, so releasing it now would
-            // pull it out from under code still using it.
+            // pull it out from under code still using it. Recorded as a request
+            // instead, so that a keep-alive letting go last still performs the
+            // release this holder asked for.
+            Volatile.Write(ref _disposeRequested, 1);
             return;
         }
 
         // The count is now zero, so the deferral in Dispose no longer applies
         // and this performs the real release.
         Dispose();
+    }
+
+    // Set when a Dispose, a finalizer, or a disposing holder was deferred
+    // because something still held this handle. Whoever lets go last honours
+    // it.
+    private int _disposeRequested;
+
+    /// <summary>
+    /// Keeps this handle's native object alive without taking ownership of it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// For something that reads through this handle but has no business
+    /// disposing it: a database using a column family's options, an iterator
+    /// reading through its <see cref="ReadOptions"/>, read options pinned to a
+    /// snapshot. While any keep-alive is held, <see cref="Dispose()"/> and the
+    /// finalizer are deferred rather than releasing the native object under the
+    /// reader.
+    /// </para>
+    /// <para>
+    /// The difference from <see cref="AddHolder"/> is what happens at the end.
+    /// The last holder to release disposes the handle outright, because holders
+    /// own what they hold. The last keep-alive disposes it only if a disposal
+    /// was asked for and deferred in the meantime. Otherwise it leaves the
+    /// handle alone, since the caller still owns it and may be about to reuse
+    /// it, which is exactly why disposing column family options on close was
+    /// tried once and backed out.
+    /// </para>
+    /// </remarks>
+    internal void AddKeepAlive() => AddHolder();
+
+    /// <summary>
+    /// Releases a keep-alive taken with <see cref="AddKeepAlive"/>, performing
+    /// a disposal that was deferred while it was held.
+    /// </summary>
+    internal void ReleaseKeepAlive()
+    {
+        if (Interlocked.Decrement(ref _holders) > 0)
+        {
+            return;
+        }
+
+        if (Interlocked.Exchange(ref _disposeRequested, 0) != 0)
+        {
+            Dispose();
+        }
     }
 
     /// <summary>
@@ -408,9 +457,21 @@ public abstract class RocksDbHandle : IDisposable
         // together and are finalized in no particular order, so without this
         // the finalizer could release a comparator while the options still
         // pointed at it. That was an access violation, not a leak.
-        if (Volatile.Read(ref _holders) > 0)
+        //
+        // A parent closing is the exception. Its children cannot outlive it
+        // whoever holds them: RocksDb closes a database with snapshots still
+        // open, and releasing one afterwards would reach into a freed database.
+        if (Volatile.Read(ref _holders) > 0 && Volatile.Read(ref _parentClosing) == 0)
         {
-            return;
+            Volatile.Write(ref _disposeRequested, 1);
+
+            // Checked again, because the last holder may have let go between
+            // the first check and the request being recorded, and would then
+            // have seen no request to honour.
+            if (Volatile.Read(ref _holders) > 0)
+            {
+                return;
+            }
         }
 
         if (Interlocked.CompareExchange(ref _disposed, Releasing, Alive) != Alive)
@@ -477,6 +538,10 @@ public abstract class RocksDbHandle : IDisposable
     // The object this handle lives inside, or null for a root handle. Held as a
     // strong reference on purpose: see SetParent.
     private RocksDbHandle? _parent;
+
+    // Set by the parent as it releases its children, so that a hold on this
+    // handle cannot keep it alive past the parent it lives inside.
+    private int _parentClosing;
 
     // The handles that live inside this one, held as strong references for as
     // long as they are open. See SetParent for why both directions are needed.
@@ -545,6 +610,8 @@ public abstract class RocksDbHandle : IDisposable
 
         for (int i = open.Length - 1; i >= 0; i--)
         {
+            // Released even if something holds it. See Dispose(bool).
+            Volatile.Write(ref open[i]._parentClosing, 1);
             open[i].Dispose();
         }
     }

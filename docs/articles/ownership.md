@@ -68,9 +68,9 @@ The native call copies the options struct, so a clone points at the **same** com
 
 ## Per-column-family options
 
-A `ColumnFamilyDescriptor` built from a name alone creates its own `DbOptions` and disposes them from its finalizer. A database opened with descriptors holds on to them, so those options cannot be finalized while it is open. Without that, the descriptor list became unreachable as soon as `Open` returned and the next collection destroyed the comparator or compaction filter attached to a column family's options underneath a live database.
+A column family keeps calling the comparator, merge operator and compaction filter attached to the options it was created with, so a database keeps those options alive until it closes. That covers the options in the descriptors you open with and the options you pass to `CreateColumnFamily` and its variants, on `RocksDb`, `TransactionDb` and `OptimisticTransactionDb` alike. Disposing them while the database is open, which a `using` block around `CreateColumnFamily` does, is deferred until the database closes and performed then. So is the finalizer of a `ColumnFamilyDescriptor` built from a name alone, which disposes the options it created.
 
-They are released when the descriptors are themselves collected, not when the database closes, and that is deliberate rather than a compromise. A descriptor and the options it owns belong to you, and the same list can be handed to a second database: create one, close it, reopen read-only with the same descriptors. Disposing those options as a side effect of closing one database would destroy something you still own and are about to reuse.
+Options you did not dispose are left alone when the database closes, and that is deliberate. They belong to you, and the same options or descriptors can be handed to a second database: create one, close it, reopen read-only with the same descriptors. Disposing them as a side effect of closing one database would destroy something you still own and are about to reuse.
 
 ## Using something after disposing it
 
@@ -90,13 +90,15 @@ RocksDb requires an iterator, snapshot, pinned value, column family handle or tr
 
 You do not have to police this. Each of those types keeps its parent reachable, so the parent cannot be finalized first, and skips its native release if the parent has already been closed. Forgetting to dispose one leaks a small wrapper rather than terminating the process. Disposing in the natural `using` order costs nothing and reclaims everything.
 
-One case the mechanism cannot cover: an iterator holds its `ReadOptions` alive, because RocksDb stores an iterate bound as a pointer into the options struct. That protects against the options being collected, which is the common accident. It cannot protect against disposing them explicitly while the iterator is still in use, because the native struct is gone at that point.
+Disposing something an iterator reads through is deferred as well. An iterator keeps its `ReadOptions` alive, because RocksDb stores an iterate bound as a pointer into the options struct, and an overlay iterator from a `WriteBatchWithIndex` keeps the batch alive too. Disposing either while the iterator is still in use is deferred until the iterator is disposed, and performed then. `ReadOptions.SetSnapshot` keeps its snapshot alive the same way until the snapshot is detached or the options are disposed. A snapshot stops compaction discarding what it can see, so detach it once you are done rather than leaving it to the finalizer.
+
+The parent is the exception. Closing a database releases its snapshots, iterators and column family handles whatever still holds them, because none of them can outlive it.
 
 ## Indexed write batches
 
 `WriteBatchWithIndex.NewIteratorWithBase` creates its own base iterator internally and never hands one out. That is deliberate: the native call **deletes** the iterator it is given, so passing in an iterator you hold would leave your object pointing at freed memory and its disposal would destroy the same memory a second time.
 
-The overlay iterator reads through both the database and the batch, so it holds both alive and must be disposed before either. Do not modify the batch while such an iterator is positioned; RocksDb invalidates its current key and value.
+The overlay iterator reads through both the database and the batch, so it keeps both alive. Disposing the batch first is deferred until the iterator is disposed. Do not modify the batch while such an iterator is positioned; RocksDb invalidates its current key and value.
 
 Applying a batch does not consume it. It can be applied again, or to a second database.
 

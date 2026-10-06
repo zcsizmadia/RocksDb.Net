@@ -19,24 +19,34 @@ public sealed class Iterator : RocksDbHandle
     // use therefore read freed memory. The same applies to a table filter,
     // whose callback state the options own.
     //
-    // This does not make an explicit early Dispose of the options safe. Nothing
-    // can: the native struct is gone at that point. It removes the far more
-    // common failure, where the options were simply not kept in a variable.
+    // A keep-alive, not just a reference. A reference stops collection but not
+    // an explicit Dispose, and disposing the options while an iterator still
+    // read through them used to free the struct under it. Now that Dispose is
+    // deferred until the iterator lets go, and performed then.
     private readonly ReadOptions? _options;
 
     // A second object this iterator reads through, kept alive for the same
     // reason as the options. RocksDbHandle tracks one parent, which is the
     // thing whose closing invalidates the iterator. An overlay iterator over a
-    // WriteBatchWithIndex also reads the batch, and that must not be collected
-    // underneath it either.
+    // WriteBatchWithIndex also reads the batch, and disposing the batch first
+    // must not free it underneath the iterator either.
     private readonly RocksDbHandle? _secondary;
 
     private Iterator(nint handle, RocksDbHandle owner, ReadOptions? options, RocksDbHandle? secondary)
     {
         Handle = handle;
-        _options = options;
-        _secondary = secondary;
+
+        // Registered first, so the parent releases the native iterator even if
+        // taking a keep-alive below throws.
         SetParent(owner);
+
+        // Each field is set only once its keep-alive is held, so the release in
+        // DisposeUnmanagedResources lets go of exactly what was taken.
+        options?.AddKeepAlive();
+        _options = options;
+
+        secondary?.AddKeepAlive();
+        _secondary = secondary;
     }
 
     internal static Iterator FromHandle(nint handle, RocksDbHandle owner, ReadOptions? options)
@@ -313,5 +323,14 @@ public sealed class Iterator : RocksDbHandle
     protected override void DisposeHandle()
     {
         NativeMethods.rocksdb_iter_destroy(Handle);
+    }
+
+    protected override void DisposeUnmanagedResources()
+    {
+        // The native iterator goes first. What it reads through has to outlive it.
+        base.DisposeUnmanagedResources();
+
+        _options?.ReleaseKeepAlive();
+        _secondary?.ReleaseKeepAlive();
     }
 }

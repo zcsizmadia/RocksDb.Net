@@ -59,6 +59,10 @@ public sealed class OptimisticTransactionDb : RocksDbHandle
     private readonly ColumnFamilyRegistry _columnFamilies = new();
     private readonly DbOptions _ownedOptions;
 
+    // The options of every column family, kept alive until the database has
+    // closed. See ColumnFamilyOptionsKeepAlive.
+    private readonly ColumnFamilyOptionsKeepAlive _columnFamilyOptions = new();
+
     private OptimisticTransactionDb(nint handle, DbOptions options)
         : base(handle)
     {
@@ -77,6 +81,7 @@ public sealed class OptimisticTransactionDb : RocksDbHandle
     {
         _ownedOptions = options;
         options.AddHolder();
+        _columnFamilyOptions.Add(descriptors);
 
         for (int i = 0; i < cfHandles.Length; i++)
         {
@@ -377,5 +382,8 @@ public sealed class OptimisticTransactionDb : RocksDbHandle
         // After the close, so callbacks the options own outlive the database
         // that calls them.
         _ownedOptions.ReleaseHolder();
+
+        // Likewise every column family's options, for the same reason.
+        _columnFamilyOptions.Release();
     }
 }
