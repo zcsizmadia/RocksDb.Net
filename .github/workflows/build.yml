@@ -15,7 +15,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ ubuntu-latest, windows-latest, macos-latest ]
+        # ubuntu-24.04-arm because macos-latest covers ARM64 only on macOS,
+        # and Linux is where most ARM64 deployments of an embedded database
+        # run: Graviton, Ampere, ARM Kubernetes nodes. Its native library is a
+        # separate build from the macOS one, with its own toolchain and
+        # compression libraries, and the 32-bit leg below showed what a
+        # platform nobody runs can hide.
+        os: [ ubuntu-latest, ubuntu-24.04-arm, windows-latest, macos-latest ]
 
     steps:
     - uses: actions/checkout@v7
@@ -189,7 +195,12 @@ jobs:
       uses: actions/upload-artifact@v7
       with:
         name: nuget-package
-        path: nupkgs/*.nupkg
+        # The symbols package travels with the package. The release pushes the
+        # .nupkg, and dotnet nuget push picks up a .snupkg of the same name
+        # beside it, so leaving it out here would publish without symbols.
+        path: |
+          nupkgs/*.nupkg
+          nupkgs/*.snupkg
 
   aot:
     name: NativeAOT

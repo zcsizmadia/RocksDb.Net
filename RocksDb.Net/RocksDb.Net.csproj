@@ -21,6 +21,15 @@
     -->
     <IsAotCompatible>true</IsAotCompatible>
 
+    <!--
+      Fails `dotnet pack` on a change that would break source or binary
+      compatibility with the baseline in Directory.Build.props, across every
+      target framework. That turns the versioning promise in the changelog
+      into something the build checks. Only while the baseline wraps the same
+      RocksDb version; see the comment on the baseline for why.
+    -->
+    <EnablePackageValidation Condition="$(PackageValidationBaselineVersion.StartsWith('$(RocksDbVersion).'))">true</EnablePackageValidation>
+
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <!-- Suppress CS1591: library is documented on public API surface; Dispose/ToString are self-evident -->
     <NoWarn>$(NoWarn);CS1591</NoWarn>
@@ -44,6 +53,18 @@
     <Description>C# wrapper for the RocksDb embedded key-value store</Description>
     <Copyright>Copyright © 2026 Zoltan Csizmadia</Copyright>
     <IsPackable>true</IsPackable>
+
+    <!--
+      A symbols package beside the main one, so stepping into the library from
+      a consuming app shows its source rather than a decompilation. Source Link
+      ships with the SDK, so the PDBs point at this repository's sources at the
+      commit that was built, and EmbedUntrackedSources covers the generated
+      files Source Link cannot map.
+    -->
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
   </PropertyGroup>
 
   <ItemGroup>

@@ -4,6 +4,17 @@
     <TargetFrameworks>$(DefaultClassLibTargetFrameworks)</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+
+    <!--
+      xunit v3 runs through VSTest here, not Microsoft.Testing.Platform. v3
+      builds a testing-platform application by default, and on the .NET 10 SDK
+      dotnet test refuses to drive one through VSTest. Moving to the platform
+      would change the syntax of every flag the CI test step depends on: the
+      crash and hang blame, coverage collection, the results directory and the
+      32-bit run. That is a migration of its own; this keeps those working
+      unchanged, through xunit.runner.visualstudio.
+    -->
+    <IsTestingPlatformApplication>false</IsTestingPlatformApplication>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace>RocksDbNet.Tests</RootNamespace>
   </PropertyGroup>
@@ -11,7 +22,7 @@
   <ItemGroup>
     <PackageReference Include="coverlet.collector" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
-    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio" />
   </ItemGroup>
 

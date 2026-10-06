@@ -66,7 +66,14 @@ at a private registry; CI runs it regardless.
 
 ## Step 1 - version, and regenerate
 
-Bump `RocksDbVersion` in `Directory.Build.props` **first**, then regenerate:
+For a revision release, the same RocksDb version, bump `Revision` in
+`Directory.Build.props` and nothing else here. `dotnet pack` then compares the
+package with `PackageValidationBaselineVersion`, the last version published, and
+fails on any source or binary break, which a revision may not contain. Fix the
+break; do not suppress it.
+
+For a new RocksDb version, bump `RocksDbVersion` in `Directory.Build.props`
+**first**, then regenerate:
 
 ```bash
 dotnet run --project NativeMethodsGenerator
@@ -187,6 +194,22 @@ immediately after a successful push is normal, not a failure:
 ```bash
 curl -s https://api.nuget.org/v3-flatcontainer/rocksdb.net/index.json
 ```
+
+The symbols package goes up with it: `dotnet nuget push` takes the `.snupkg`
+from beside the `.nupkg`. Look for a second `Created` in the same log, for the
+symbol server.
+
+## Step 8 - move the compatibility baseline
+
+Once the version is on nuget.org, set `PackageValidationBaselineVersion` in
+`Directory.Build.props` to it, and land that on main. Every later pack is then
+checked against what users actually have. Leaving it behind still passes, but
+checks against an older version than necessary, and stops catching a break
+introduced since.
+
+After a RocksDb version bump the old baseline no longer applies (validation only
+runs while the baseline wraps the current `RocksDbVersion`), so this step is
+what turns validation back on for the new version.
 
 ## Facts that cost time to learn
 

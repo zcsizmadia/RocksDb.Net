@@ -128,11 +128,22 @@ jobs:
             exit 1
           fi
 
+          # The symbols package built beside it. Required rather than optional:
+          # the project produces one, so its absence means the artifact is not
+          # what the build made, and publishing would silently drop symbols.
+          TARGET_SNUPKG="./nupkgs/RocksDb.Net.$TAG_VERSION.snupkg"
+          if [[ ! -f "$TARGET_SNUPKG" ]]; then
+            echo "::error::Could not find the symbols package for version $TAG_VERSION in downloaded artifacts"
+            ls -la ./nupkgs || true
+            exit 1
+          fi
+
           echo "version=$TAG_VERSION" >> "$GITHUB_OUTPUT"
           echo "nupkg=RocksDb.Net.$TAG_VERSION.nupkg" >> "$GITHUB_OUTPUT"
 
           # Export variables for later steps
           echo "TARGET_NUPKG=$TARGET_NUPKG" >> "$GITHUB_ENV"
+          echo "TARGET_SNUPKG=$TARGET_SNUPKG" >> "$GITHUB_ENV"
 
       - name: Hand the validated package to the publish job
         # Rather than downloading from build.yml again over there. What gets
@@ -141,7 +152,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: release-nupkg
-          path: ${{ env.TARGET_NUPKG }}
+          path: |
+            ${{ env.TARGET_NUPKG }}
+            ${{ env.TARGET_SNUPKG }}
           if-no-files-found: error
 
       - name: Attach Assets to GitHub Release
@@ -220,8 +233,11 @@ jobs:
             --skip-duplicate
 
       - name: Publish to GitHub Packages
+        # --no-symbols: GitHub Packages has no symbol server and rejects a
+        # .snupkg, which nuget.org above takes from beside the package.
         run: |
           dotnet nuget push "./nupkgs/${{ needs.validate.outputs.nupkg }}" \
+            --no-symbols \
             --api-key ${{ secrets.GITHUB_TOKEN }} \
             --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" \
             --skip-duplicate

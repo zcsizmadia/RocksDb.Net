@@ -70,20 +70,33 @@ public class ComparatorFailFastTests
     {
         string assembly = typeof(ComparatorFailFastTests).Assembly.Location;
 
-        var startInfo = new ProcessStartInfo("dotnet")
+        // The test assembly run as the program it is under xunit v3, filtered to
+        // the one test. Not `dotnet test`: that hosts the assembly through
+        // VSTest, which does not relay a crashing process's standard error, so
+        // the fail-fast message this test looks for never reached the output.
+        //
+        // Through the executable xunit v3 builds beside the assembly where there
+        // is one, rather than `dotnet <assembly>`. The executable is built for
+        // the same architecture as the assembly, and the `dotnet` on the path is
+        // not necessarily: on the 32-bit leg it is the 64-bit host, which could
+        // not load the 32-bit native library the build copied.
+        string appHost = Path.ChangeExtension(assembly, OperatingSystem.IsWindows() ? ".exe" : null);
+
+        var startInfo = new ProcessStartInfo(File.Exists(appHost) ? appHost : "dotnet")
         {
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
         };
 
-        // The built assembly rather than the project, so the child runs the tests
-        // already built rather than building them again.
-        startInfo.ArgumentList.Add("test");
-        startInfo.ArgumentList.Add(assembly);
-        startInfo.ArgumentList.Add("--filter");
+        if (!File.Exists(appHost))
+        {
+            startInfo.ArgumentList.Add(assembly);
+        }
+
+        startInfo.ArgumentList.Add("-method");
         startInfo.ArgumentList.Add(
-            $"FullyQualifiedName={typeof(ComparatorFailFastTests).FullName}.{nameof(ComparatorThatThrows_TerminatesTheProcess)}");
+            $"{typeof(ComparatorFailFastTests).FullName}.{nameof(ComparatorThatThrows_TerminatesTheProcess)}");
 
         startInfo.Environment[ChildSwitch] = "1";
 
