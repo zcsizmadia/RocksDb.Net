@@ -6,6 +6,22 @@ namespace RocksDbNet;
 /// </summary>
 public sealed class WriteOptions : RocksDbHandle
 {
+    /// <summary>
+    /// Whether a batch's inserts into the memtable reuse a position hint from
+    /// one key to the next.
+    /// </summary>
+    /// <remarks>
+    /// Speeds up batches whose keys are sequential or close together, since
+    /// each insert starts its search from where the previous one landed. Only
+    /// helps memtables that support hints, which the default skip list does,
+    /// and costs a little on batches of scattered keys.
+    /// </remarks>
+    public bool MemtableInsertHintPerBatch
+    {
+        get => NativeMethods.rocksdb_writeoptions_get_memtable_insert_hint_per_batch(Handle) != 0;
+        set => NativeMethods.rocksdb_writeoptions_set_memtable_insert_hint_per_batch(Handle, value ? (byte)1 : (byte)0);
+    }
+
     public WriteOptions()
         : base(NativeMethods.rocksdb_writeoptions_create())
     {

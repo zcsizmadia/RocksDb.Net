@@ -446,6 +446,54 @@ public sealed class Transaction : RocksDbHandle
     public void SetSavePoint() => NativeMethods.rocksdb_transaction_set_savepoint(Handle);
 
     /// <summary>
+    /// Writes a blob to the write-ahead log alongside this transaction's
+    /// writes, without storing it in the database.
+    /// </summary>
+    /// <param name="blob">The data to log. Copied.</param>
+    /// <remarks>
+    /// For marking a transaction in the log for a change-data-capture reader,
+    /// which sees it through <see cref="WriteBatch.Entries"/> on the batches
+    /// <see cref="RocksDb.GetUpdatesSince"/> returns, as
+    /// <see cref="WriteBatch.PutLogData"/> does for an ordinary batch. The blob
+    /// is logged when the transaction commits, and not at all if it rolls back.
+    /// </remarks>
+    public unsafe void PutLogData(ReadOnlySpan<byte> blob)
+    {
+        fixed (byte* b = blob)
+            NativeMethods.rocksdb_transaction_put_log_data(Handle, b, (nuint)blob.Length);
+    }
+
+    /// <summary>
+    /// Applies every operation in <paramref name="batch"/> to this transaction,
+    /// as if each had been made on it directly.
+    /// </summary>
+    /// <remarks>
+    /// Each write takes its lock as it would through <see cref="Put(ReadOnlySpan{byte}, ReadOnlySpan{byte})"/>,
+    /// so this can fail part-way on a lock timeout or conflict, leaving the
+    /// operations before it applied. The batch is copied from, not consumed.
+    /// </remarks>
+    public void RebuildFromWriteBatch(WriteBatch batch)
+    {
+        ArgumentNullException.ThrowIfNull(batch);
+
+        nint err = default;
+        NativeMethods.rocksdb_transaction_rebuild_from_writebatch(Handle, batch.Handle, ref err);
+        GC.KeepAlive(batch);
+        NativeMethods.ThrowOnError(err);
+    }
+
+    /// <inheritdoc cref="RebuildFromWriteBatch(WriteBatch)"/>
+    public void RebuildFromWriteBatch(WriteBatchWithIndex batch)
+    {
+        ArgumentNullException.ThrowIfNull(batch);
+
+        nint err = default;
+        NativeMethods.rocksdb_transaction_rebuild_from_writebatch_wi(Handle, batch.Handle, ref err);
+        GC.KeepAlive(batch);
+        NativeMethods.ThrowOnError(err);
+    }
+
+    /// <summary>
     /// Discards everything queued since the last <see cref="SetSavePoint"/>.
     /// </summary>
     /// <remarks>

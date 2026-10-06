@@ -12,6 +12,13 @@ namespace RocksDbNet;
 /// <see cref="GetFromBatch(DbOptions, ReadOnlySpan{byte})"/> for the batch
 /// alone, or <see cref="GetFromBatchAndDb(RocksDb, ReadOnlySpan{byte}, ReadOptions)"/>
 /// to see the batch layered over the committed database.
+/// <para>
+/// There is no <c>DeleteRange</c>. RocksDb's indexed batch does not support
+/// range deletes and reports so through a status the C API discards, so a
+/// wrapper would accept the call and do nothing. Use a plain
+/// <see cref="WriteBatch"/>, or <see cref="RocksDb.DeleteRange(ReadOnlySpan{byte}, ReadOnlySpan{byte}, ColumnFamilyHandle, WriteOptions?)"/>,
+/// for those.
+/// </para>
 /// </remarks>
 public sealed class WriteBatchWithIndex : RocksDbHandle
 {
@@ -23,6 +30,29 @@ public sealed class WriteBatchWithIndex : RocksDbHandle
             throw new ArgumentOutOfRangeException(nameof(reservedBytes), "Reserved bytes must be non-negative.");
         }
         Handle = NativeMethods.rocksdb_writebatch_wi_create((nuint)reservedBytes, overwriteKeys ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>Creates an empty write batch with per-key integrity protection.</summary>
+    /// <param name="reservedBytes">Bytes to reserve up front, or 0.</param>
+    /// <param name="overwriteKeys">
+    /// Whether a later write to a key replaces the earlier one in the index.
+    /// </param>
+    /// <param name="protectionBytesPerKey">
+    /// 8 to checksum every key and value, or 0 for none. See
+    /// <see cref="WriteBatch(int, int)"/>.
+    /// </param>
+    /// <exception cref="ArgumentOutOfRangeException">An argument is out of range.</exception>
+    public WriteBatchWithIndex(int reservedBytes, bool overwriteKeys, int protectionBytesPerKey)
+    {
+        // Named, because three of these are size_t and a misplaced one is
+        // silently a different setting: max_bytes caps the batch, and the C
+        // API discards the error a capped Put returns.
+        Handle = NativeMethods.rocksdb_writebatch_wi_create_with_params(
+            backup_index_comparator: nint.Zero,
+            reserved_bytes: WriteBatch.CheckReserved(reservedBytes),
+            overwrite_key: overwriteKeys ? (byte)1 : (byte)0,
+            max_bytes: 0,
+            protection_bytes_per_key: WriteBatch.CheckProtection(protectionBytesPerKey));
     }
 
     /// <summary>Returns the number of operations in the batch.</summary>
@@ -295,6 +325,56 @@ public sealed class WriteBatchWithIndex : RocksDbHandle
 
         NativeMethods.ThrowOnError(err);
         return CopyAndFree(value, length);
+    }
+
+    /// <summary>
+    /// Reads a key from this batch layered over the database, without copying
+    /// the value into managed memory.
+    /// </summary>
+    /// <returns>
+    /// The value, or <see langword="null"/> if the key is absent from both.
+    /// Dispose it; see <see cref="PinnableSlice"/>.
+    /// </returns>
+    /// <remarks>
+    /// A value found in the database is pinned in place, as by
+    /// <see cref="RocksDb.GetPinned(ReadOnlySpan{byte}, ReadOptions?)"/>. One
+    /// found in this batch, or resolved from a merge, is copied into the slice,
+    /// so the slice stays valid if the batch changes afterwards.
+    /// </remarks>
+    public PinnableSlice? GetPinnedFromBatchAndDb(RocksDb db, ReadOnlySpan<byte> key, ReadOptions? options = null)
+        => GetPinnedFromBatchAndDbCore(db, key, cf: null, options);
+
+    /// <inheritdoc cref="GetPinnedFromBatchAndDb(RocksDb, ReadOnlySpan{byte}, ReadOptions?)"/>
+    public PinnableSlice? GetPinnedFromBatchAndDb(
+        RocksDb db, ReadOnlySpan<byte> key, ColumnFamilyHandle cf, ReadOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(cf);
+        return GetPinnedFromBatchAndDbCore(db, key, cf, options);
+    }
+
+    private unsafe PinnableSlice? GetPinnedFromBatchAndDbCore(
+        RocksDb db, ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ReadOptions? options)
+    {
+        ArgumentNullException.ThrowIfNull(db);
+
+        nint err = default;
+        nint slice;
+        fixed (byte* k = key)
+        {
+            slice = cf is null
+                ? NativeMethods.rocksdb_writebatch_wi_get_pinned_from_batch_and_db(
+                    Handle, db.Handle, (options ?? _defaultReadOptions).Handle, k, (nuint)key.Length, ref err)
+                : NativeMethods.rocksdb_writebatch_wi_get_pinned_from_batch_and_db_cf(
+                    Handle, db.Handle, (options ?? _defaultReadOptions).Handle, cf.Handle, k, (nuint)key.Length, ref err);
+        }
+        GC.KeepAlive(db);
+        GC.KeepAlive(options);
+
+        NativeMethods.ThrowOnError(err);
+
+        // Parented to the database, which owns the block cache a pinned value
+        // may point into, and which has to close after the slice.
+        return slice == nint.Zero ? null : new PinnableSlice(slice, db);
     }
 
     /// <summary>Reads a UTF-8 key from this batch and the database.</summary>

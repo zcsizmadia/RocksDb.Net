@@ -26,6 +26,31 @@ is allowed to be.
   virtual rather than abstract, so a new one can override only the span form;
   one that overrides neither fails its merges, or keeps every entry, with the
   reason reported through `RocksDbCallbacks.UnhandledException`.
+- **`OpenAsSecondary` and `OpenWithTtl` with column families.** A database
+  with column families could not be opened as a secondary or as a TTL database
+  at all, since both opened only the default family and RocksDb refuses an open
+  that omits one. The TTL overload takes a TTL per family. The four
+  column-family opens now share one implementation.
+- **`TransactionDb` catches up with `RocksDb`:** `MultiGet` with the same three
+  overloads, `Flush` of a chosen set of column families, and `CreateCheckpoint`.
+  `Transaction` gains `PutLogData`, for marking a transaction in the WAL for a
+  change-data-capture reader, and `RebuildFromWriteBatch` for either kind of
+  batch.
+- **Per-key protection for write batches.** `WriteBatch(int, int)` and a new
+  `WriteBatchWithIndex` constructor take `protectionBytesPerKey`, which keeps a
+  checksum for every entry so corruption between building a batch and writing
+  it is caught. The batch's maximum size is deliberately not offered: RocksDb
+  enforces it by failing the write, and the C API discards that failure.
+- **`WriteBatchWithIndex.GetPinnedFromBatchAndDb`**, the copy-free counterpart
+  of `GetFromBatchAndDb`.
+- **Tuning options:** `SetCompressionPerLevel`; `SetCompressionOptions` and
+  `SetBottommostCompressionOptions`, which set the compression level, the one
+  setting the individual properties did not reach; the bottommost dictionary
+  training and buffer limits; `SetColumnFamilyPaths`;
+  `SetMaxBytesForLevelMultiplierAdditional`; `RateLimiter.CreateAutoTuned` and
+  `RateLimiter.Create` with a `RateLimiterMode`; and
+  `WriteOptions.MemtableInsertHintPerBatch`.
+- **`SstFileWriter.DeleteRange`**, so an ingested file can delete a range.
 - **`OptimisticTransactionDb`.** A database whose transactions detect conflicts
   at commit instead of locking. `TransactionDb` locks every key as it is
   written and holds it until the transaction ends, so a second writer waits for
@@ -180,6 +205,12 @@ is allowed to be.
 
 ### Changed
 
+- **The README no longer claims full C API coverage.** Every function in
+  `c.h` is bound, but about 220 of them are not reachable from the managed API,
+  nearly all on purpose. The API reference now lists those groups and why,
+  including two that would have silently done nothing if wrapped:
+  `DeleteRange` on an indexed batch, which RocksDb does not support, and a
+  batch size cap, whose failures the C API discards.
 - **The read path copies and allocates less.** Measured with the medium job
   on the benchmark suites, against the previous revision:
   - `Get` reads through a pinned slice instead of `rocksdb_get`, which is a
