@@ -211,9 +211,23 @@ public sealed class DbOptions : RocksDbHandle
 {
     private readonly ConcurrentBag<RocksDbHandle> _ownedHandles = [];
 
+    /// <summary>
+    /// Applied to every options object this constructor creates. For this
+    /// library's own test suite only, which sets it from a module initializer;
+    /// nothing else sets it, so in any other process it is null and costs a
+    /// null check.
+    /// </summary>
+    /// <remarks>
+    /// The suite uses it to turn off RocksDb's periodic statistics dump for
+    /// every database it opens, as a workaround for a crash it has not
+    /// explained. See <c>TestEnvironment</c> in the test project for why.
+    /// </remarks>
+    internal static Action<DbOptions>? ConfigureForTests;
+
     public DbOptions()
         : base(NativeMethods.rocksdb_options_create())
     {
+        ConfigureForTests?.Invoke(this);
     }
 
     /// <summary>
