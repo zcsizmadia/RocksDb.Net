@@ -760,6 +760,37 @@ public abstract class RocksDbHandle : IDisposable
         parent.AddChild(this);
     }
 
+    /// <summary>
+    /// The first undisposed handle of type <typeparamref name="T"/> registered
+    /// with this one as its parent that <paramref name="match"/> accepts, or
+    /// <see langword="null"/>.
+    /// </summary>
+    /// <remarks>
+    /// Called under the child list's lock, so <paramref name="match"/> must
+    /// only read managed state.
+    /// </remarks>
+    internal T? FindChild<T>(Func<T, bool> match) where T : RocksDbHandle
+    {
+        ChildList? list = Volatile.Read(ref _childList);
+        if (list is null)
+        {
+            return null;
+        }
+
+        lock (list)
+        {
+            for (RocksDbHandle? child = list.First; child is not null; child = child._nextSibling)
+            {
+                if (child is T candidate && !candidate.IsDisposed && match(candidate))
+                {
+                    return candidate;
+                }
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>The number of open handles registered with this one as their parent.</summary>
     internal int ChildCount
     {

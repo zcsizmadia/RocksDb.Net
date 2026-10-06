@@ -1950,7 +1950,15 @@ public sealed class RocksDb : RocksDbHandle
     /// a number that is not a rate anything has. RocksDb does not distinguish the
     /// two either, so neither does this.
     /// </para>
+    /// <para>
+    /// A family dropped on another thread while the sum is taken is left out of
+    /// it, since it is no longer part of the database.
+    /// </para>
     /// </remarks>
+    /// <exception cref="ObjectDisposedException">
+    /// The handle registered for one of the families has been disposed, so
+    /// that family cannot be read. See <see cref="GetColumnFamily"/>.
+    /// </exception>
     public ulong? GetAggregatedPropertyInt(string propName)
     {
         ArgumentException.ThrowIfNullOrEmpty(propName);
@@ -1959,7 +1967,14 @@ public sealed class RocksDb : RocksDbHandle
 
         foreach (string name in ColumnFamilyNames)
         {
-            ulong? value = GetPropertyInt(propName, GetColumnFamily(name));
+            // The names are a snapshot. A family dropped since it was taken
+            // used to throw KeyNotFoundException out of the lookup.
+            if (!TryGetColumnFamily(name, out ColumnFamilyHandle? columnFamily))
+            {
+                continue;
+            }
+
+            ulong? value = GetPropertyInt(propName, columnFamily);
             if (value is null)
             {
                 return null;

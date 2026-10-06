@@ -99,7 +99,7 @@ builder.Services.AddOpenTelemetry()
         .AddPrometheusExporter());
 ```
 
-When the application uses dependency injection, pass its `IMeterFactory` as `RocksDbMetricsOptions.MeterFactory`, so the meter's lifetime follows the container's.
+When the application uses dependency injection, pass its `IMeterFactory` as `RocksDbMetricsOptions.MeterFactory`, so the meter's lifetime follows the container's. The meter then belongs to the factory, so disposing the export cannot remove its instruments: they stay registered until the container is disposed, but report nothing and no longer hold the database.
 
 `dotnet-counters monitor --counters RocksDb.Net -p <pid>` shows the same instruments without any of that.
 

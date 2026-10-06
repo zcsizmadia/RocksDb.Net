@@ -1,4 +1,5 @@
 using System.Diagnostics.Metrics;
+using System.Runtime.CompilerServices;
 
 namespace RocksDbNet.Tests;
 
@@ -224,5 +225,90 @@ public class RocksDbMetricsTests
         metrics.Dispose();
 
         Assert.DoesNotContain(collector.Collect(), m => m.Meter.Tags?.Any(t => (string?)t.Value == "removed-test") == true);
+    }
+
+    /// <summary>
+    /// Hands every caller the same meter, as a dependency injection container's
+    /// factory does for the same name and tags, and disposes it with itself.
+    /// </summary>
+    private sealed class SharedMeterFactory : IMeterFactory
+    {
+        public Meter Meter { get; } = new(RocksDbMetrics.MeterName);
+
+        public Meter Create(MeterOptions options) => Meter;
+
+        public void Dispose() => Meter.Dispose();
+    }
+
+    /// <summary>
+    /// A meter from a factory is not the export's to dispose, so its instruments
+    /// stay registered. Disposing the export still has to stop them reading the
+    /// database, and stop them holding it.
+    /// </summary>
+    /// <remarks>
+    /// Disposal used to do nothing at all with a factory: every instrument kept
+    /// reading the database, and kept it reachable until the factory itself was
+    /// disposed, which in an application is at shutdown.
+    /// </remarks>
+    [Fact]
+    public void DisposingAnExportFromAFactory_StopsReporting_AndLetsTheDatabaseGo()
+    {
+        using var factory = new SharedMeterFactory();
+        using var collector = new Collector(factory.Meter);
+
+        WeakReference database = RegisterAndDispose(factory, collector);
+
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+
+        Assert.False(database.IsAlive, "the factory's meter kept the closed database reachable");
+        Assert.Empty(collector.Collect());
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static WeakReference RegisterAndDispose(SharedMeterFactory factory, Collector collector)
+    {
+        var db = StatisticsDb();
+        var metrics = RocksDbMetrics.Register(db.Db, new() { MeterFactory = factory });
+
+        Assert.NotEmpty(collector.Collect());
+
+        metrics.Dispose();
+
+        // Before the database closes, so this is the export's own disposal
+        // that silences it, not the database's.
+        Assert.Empty(collector.Collect());
+
+        var weak = new WeakReference(db.Db);
+        db.Dispose();
+        return weak;
+    }
+
+    /// <summary>
+    /// The summed properties read every column family. A family whose handle
+    /// the caller disposed cannot be read, and that used to throw out of the
+    /// instrument's callback and fail the whole collection, every time.
+    /// </summary>
+    [Fact]
+    public void ADisposedColumnFamilyHandle_DoesNotFailTheCollection()
+    {
+        using var cfOptions = new DbOptions();
+        using var db = new TempDb();
+        ColumnFamilyHandle other = db.Db.CreateColumnFamily(cfOptions, "other");
+
+        using var metrics = RocksDbMetrics.Register(db.Db, new() { DatabaseName = "disposed-cf-test" });
+        using var collector = new Collector();
+
+        other.Dispose();
+
+        var measurements = collector.Collect()
+            .Where(m => m.Meter.Tags?.Any(t => (string?)t.Value == "disposed-cf-test") == true)
+            .ToList();
+
+        // The summed gauge reports nothing rather than a total missing a
+        // family; the database-wide ones are unaffected.
+        Assert.DoesNotContain(measurements, m => m.Name == "rocksdb.estimate-num-keys");
+        Assert.Contains(measurements, m => m.Name == "rocksdb.background-errors");
     }
 }

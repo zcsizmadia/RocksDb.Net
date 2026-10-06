@@ -188,6 +188,59 @@ public class CallbackBufferTests
         }
     }
 
+    /// <summary>
+    /// A buffer that grew for one very large result gives the memory back at
+    /// the next callback, while ordinary sizes keep reusing their allocation.
+    /// </summary>
+    /// <remarks>
+    /// The buffers live as long as their thread, and RocksDb's compaction
+    /// threads live as long as the process, so without this a single large
+    /// merge result stayed allocated on every thread that ever produced one.
+    /// </remarks>
+    [Fact]
+    public void ALargeScratchBuffer_IsGivenBackAtTheNextCallback()
+    {
+        CallbackScratch scratch = CallbackScratch.Acquire();
+        try
+        {
+            scratch.Write(new byte[4 * CallbackScratch.RetainedCapacityLimit]);
+            Assert.True(scratch.Capacity > CallbackScratch.RetainedCapacityLimit);
+        }
+        finally
+        {
+            CallbackScratch.Release();
+        }
+
+        // Still held after release: RocksDb copies the result after the
+        // callback returns, so it cannot go any earlier than this.
+        Assert.True(scratch.Capacity > CallbackScratch.RetainedCapacityLimit);
+
+        int small;
+        CallbackScratch again = CallbackScratch.Acquire();
+        try
+        {
+            Assert.Same(scratch, again);
+            Assert.Equal(0, again.Capacity);
+
+            again.Write(new byte[1000]);
+            small = again.Capacity;
+        }
+        finally
+        {
+            CallbackScratch.Release();
+        }
+
+        CallbackScratch third = CallbackScratch.Acquire();
+        try
+        {
+            Assert.Equal(small, third.Capacity);
+        }
+        finally
+        {
+            CallbackScratch.Release();
+        }
+    }
+
     private sealed class OverridesNothing() : MergeOperator("overrides-nothing");
 
     /// <summary>

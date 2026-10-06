@@ -61,8 +61,29 @@ public sealed class Transaction : RocksDbHandle
     internal Transaction(nint handle, RocksDbHandle owner)
         : base(handle)
     {
+        Native = NativeOf(handle);
         SetParent(owner);
     }
+
+    /// <summary>
+    /// The C++ transaction this handle wraps, which identifies the transaction
+    /// where the handle does not. See <see cref="NativeOf"/>.
+    /// </summary>
+    internal nint Native { get; }
+
+    /// <summary>
+    /// Reads the C++ transaction out of a C API transaction handle.
+    /// </summary>
+    /// <remarks>
+    /// The C API's <c>rocksdb_transaction_t</c> is <c>struct { Transaction* rep; }</c>
+    /// (<c>db/c.cc</c>), and it is not one handle per transaction:
+    /// <c>rocksdb_transactiondb_get_prepared_transactions</c> allocates a new
+    /// handle around every prepared transaction on every call, including those
+    /// this process already holds a handle to. Two handles to one transaction
+    /// would each delete it when destroyed, so the transaction has to be
+    /// recognised by what the handle points at, not by the handle itself.
+    /// </remarks>
+    internal static unsafe nint NativeOf(nint handle) => *(nint*)handle;
 
     // ── Writes ───────────────────────────────────────────────────────────────
 

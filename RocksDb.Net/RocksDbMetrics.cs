@@ -105,7 +105,11 @@ public sealed class RocksDbMetrics : IDisposable
 
     private static readonly double[] Quantiles = [0.5, 0.95, 0.99, 1.0];
 
-    private readonly RocksDb _db;
+    // Cleared by Dispose. A meter from an IMeterFactory belongs to the factory
+    // and cannot drop individual instruments, so the instruments outlive the
+    // export; clearing this is what stops them reading the database, and what
+    // lets a closed database be collected rather than held by the factory.
+    private RocksDb? _db;
     private readonly Meter _meter;
     private readonly bool _ownsMeter;
 
@@ -128,7 +132,7 @@ public sealed class RocksDbMetrics : IDisposable
     /// <summary>Starts exporting <paramref name="db"/>'s statistics and properties.</summary>
     /// <param name="db">The database to observe.</param>
     /// <param name="options">What to export, or <see langword="null"/> for everything.</param>
-    /// <returns>The export. Dispose it to remove its instruments.</returns>
+    /// <returns>The export. Dispose it to stop exporting.</returns>
     /// <remarks>
     /// Tickers and histograms need statistics, which must be enabled with
     /// <see cref="DbOptions.EnableStatistics"/> before the database is opened.
@@ -252,7 +256,7 @@ public sealed class RocksDbMetrics : IDisposable
         {
             ulong? value = null;
 
-            _db.TryObserve(db => value = summed
+            Observe(db => value = summed
                 ? db.GetAggregatedPropertyInt(property)
                 : db.GetPropertyInt(property));
 
@@ -263,7 +267,34 @@ public sealed class RocksDbMetrics : IDisposable
     private IEnumerable<Measurement<long>> Read(Func<RocksDb, long> read)
     {
         long value = 0;
-        return _db.TryObserve(db => value = read(db)) ? [new Measurement<long>(value)] : [];
+        return Observe(db => value = read(db)) ? [new Measurement<long>(value)] : [];
+    }
+
+    /// <summary>
+    /// Runs <paramref name="read"/> against the database unless the export was
+    /// disposed or the database closed, and says whether it ran.
+    /// </summary>
+    private bool Observe(Action<RocksDb> read)
+    {
+        RocksDb? db = Volatile.Read(ref _db);
+
+        if (db is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            return db.TryObserve(read);
+        }
+        catch (ObjectDisposedException)
+        {
+            // A column family handle the caller disposed while the database
+            // stays open. The summed properties read through every family, and
+            // an exception here would fail the whole collection, every time,
+            // for every instrument the listener reads after this one.
+            return false;
+        }
     }
 
     private HistogramData? ReadHistogram(Histogram histogram)
@@ -283,7 +314,7 @@ public sealed class RocksDbMetrics : IDisposable
 
         // Not cached when the database has closed, so a closed database
         // reports nothing rather than its last reading.
-        if (!_db.TryObserve(db => data = db.OpenOptions.GetHistogramData(histogram)))
+        if (!Observe(db => data = db.OpenOptions.GetHistogramData(histogram)))
         {
             return null;
         }
@@ -322,9 +353,25 @@ public sealed class RocksDbMetrics : IDisposable
         return null;
     }
 
-    /// <summary>Removes the instruments. The database is left as it is.</summary>
+    /// <summary>Stops exporting. The database is left as it is.</summary>
+    /// <remarks>
+    /// Without <see cref="RocksDbMetricsOptions.MeterFactory"/>, this disposes
+    /// the meter, which removes the instruments. A meter from a factory belongs
+    /// to the factory, and the factory hands the same meter to everything that
+    /// asks for the same name and tags, so it is left alone: its instruments
+    /// stay registered until the factory is disposed, but report nothing and
+    /// no longer reference the database.
+    /// </remarks>
     public void Dispose()
     {
+        Volatile.Write(ref _db, null);
+
+        // Or a collection just after this would still report a cached reading.
+        lock (_histograms)
+        {
+            _histograms.Clear();
+        }
+
         if (_ownsMeter)
         {
             _meter.Dispose();
