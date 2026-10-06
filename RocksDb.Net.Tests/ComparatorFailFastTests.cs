@@ -100,6 +100,25 @@ public class ComparatorFailFastTests
 
         startInfo.Environment[ChildSwitch] = "1";
 
+        // No crash dump for a crash that is the point of the test. CI runs the
+        // suite with --blame-crash, which turns dumps on through environment
+        // variables, and the child inherits them now that it is started
+        // directly rather than through VSTest. On macOS, writing the dump of a
+        // process that has called FailFast took longer than the timeout below,
+        // so the child never exited in time.
+        foreach (string name in startInfo.Environment.Keys.ToArray())
+        {
+            if (name.StartsWith("DOTNET_DbgEnableMiniDump", StringComparison.OrdinalIgnoreCase)
+                || name.StartsWith("COMPlus_DbgEnableMiniDump", StringComparison.OrdinalIgnoreCase)
+                || name.StartsWith("DOTNET_DbgMiniDump", StringComparison.OrdinalIgnoreCase)
+                || name.StartsWith("COMPlus_DbgMiniDump", StringComparison.OrdinalIgnoreCase)
+                || name.StartsWith("DOTNET_EnableCrashReport", StringComparison.OrdinalIgnoreCase)
+                || name.StartsWith("COMPlus_EnableCrashReport", StringComparison.OrdinalIgnoreCase))
+            {
+                startInfo.Environment.Remove(name);
+            }
+        }
+
         using Process child = Process.Start(startInfo)!;
 
         // Both pipes read at once. Draining one to the end before starting the
@@ -110,7 +129,17 @@ public class ComparatorFailFastTests
         Task<string> standardOutput = child.StandardOutput.ReadToEndAsync(timeout.Token);
         Task<string> standardError = child.StandardError.ReadToEndAsync(timeout.Token);
 
-        await child.WaitForExitAsync(timeout.Token);
+        try
+        {
+            await child.WaitForExitAsync(timeout.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // Not left running behind the test run, holding the database and
+            // the runner's pipes.
+            child.Kill(entireProcessTree: true);
+            throw;
+        }
 
         string output = await standardOutput + await standardError;
 
