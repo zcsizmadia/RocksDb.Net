@@ -197,6 +197,7 @@ jobs:
     permissions:
       contents: read
       packages: write   # To push to GitHub Packages
+      id-token: write   # To exchange an OIDC token for a NuGet.org API key
 
     steps:
       - name: Install .NET SDKs
@@ -224,11 +225,24 @@ jobs:
           fi
           echo "Publishing ${{ needs.validate.outputs.nupkg }} for ${{ github.event_name }}."
 
+      - name: Log in to NuGet.org
+        # Trusted publishing. NuGet.org has a policy for this repository and
+        # release.yml, so the job's OIDC token is exchanged for a short-lived
+        # API key scoped to pushing this package. No long-lived key is stored
+        # as a secret, so there is none to leak, expire or rotate. Done right
+        # before the push, after the environment approval, because the key
+        # only lasts an hour.
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          # The NuGet.org profile name that owns the policy, not an email.
+          user: zcsizmadia
+
       - name: Publish to NuGet.org
         shell: bash
         run: |
           dotnet nuget push "./nupkgs/${{ needs.validate.outputs.nupkg }}" \
-            --api-key ${{ secrets.NUGET_API_KEY }} \
+            --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }} \
             --source https://api.nuget.org/v3/index.json \
             --skip-duplicate
 

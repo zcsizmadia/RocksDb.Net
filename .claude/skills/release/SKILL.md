@@ -222,5 +222,8 @@ what turns validation back on for the new version.
 - nuget.org index lag is not a failed publish.
 - `can_admins_bypass` defaults to true on the environment; set it false if an
   admin should not be able to skip the wait.
-- `NUGET_API_KEY` is a repository secret. Moving it to a `nuget-release`
-  environment secret would stop every other job being able to read it.
+- Publishing to NuGet.org uses trusted publishing (`NuGet/login`), not a
+  stored API key. The NuGet.org policy names this repository and
+  `release.yml`, with no environment, so renaming the workflow file breaks
+  publishing until the policy is updated to match. The publish job needs
+  `id-token: write`.
