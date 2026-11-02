@@ -22,6 +22,12 @@ Only members that existed in 11.8.1.3 are listed.
 
 ### Changed
 
+- **The package ships `net8.0` and `net10.0` assemblies, no longer
+  `net9.0`.** The library has no framework-specific code, so the three were
+  the same source compiled three times. A .NET 9 application now resolves the
+  `net8.0` assembly, with no change in behaviour and nothing to do; .NET 9
+  reaches end of support on November 10, 2026. Removing a framework is only
+  allowed on a RocksDb version bump, which is why it happens here.
 - **`MultiGet` within one column family makes one native allocation per
   batch instead of one per value.** It uses RocksDb 11.9's
   `rocksdb_batched_multi_get_pinned_cf`, which keeps the batch's pinned values

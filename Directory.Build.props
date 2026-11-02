@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
     <DefaultTargetFramework>net10.0</DefaultTargetFramework>
-    <DefaultClassLibTargetFrameworks>net8.0;net9.0;net10.0</DefaultClassLibTargetFrameworks>
+    <DefaultClassLibTargetFrameworks>net8.0;net10.0</DefaultClassLibTargetFrameworks>
   </PropertyGroup>
 
   <PropertyGroup>
