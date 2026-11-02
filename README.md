@@ -16,7 +16,7 @@ A modern C# wrapper for [RocksDb](https://rocksdb.org/), the high-performance em
 ## Features
 
 - **Generated bindings for the whole C API** — every exported function in the official `rocksdb/c.h` header is bound, and the managed API wraps the large majority of them. [What is deliberately not wrapped, and why](https://zcsizmadia.github.io/RocksDb.Net/api/index.html#what-is-not-wrapped) is listed in the API reference
-- **Modern .NET** — targets .NET 8, 9 and 10, uses `LibraryImport`, `ReadOnlySpan<byte>`, and `ref struct` iterators
+- **Modern .NET** — targets .NET 8, 9, 10 and 11, uses `LibraryImport`, `ReadOnlySpan<byte>`, and `ref struct` iterators
 - **NativeAOT and trimming** — `IsAotCompatible`, no reflection, and callbacks reached through `[UnmanagedCallersOnly]` function pointers rather than marshalled delegates. CI publishes samples with `PublishAot=true` and runs them, one of them with a managed merge operator, so the claim is checked rather than asserted
 - **Idiomatic C# API** — `IDisposable` handles, properties, string overloads, LINQ-compatible iterators
 - **Column families** — create, drop, and operate on multiple column families, with metadata inspection, and open them as a secondary or with a TTL per family
@@ -82,7 +82,7 @@ about the native ABI, and nothing would catch it at build or load time.
 
 ## Requirements
 
-- .NET 8.0, 9.0 or 10.0
+- .NET 8.0, 9.0, 10.0 or 11.0
 - [RocksDb native binaries](https://github.com/zcsizmadia/RocksDb.Net.Runtimes) (provided by the `RocksDb.Net.Runtimes` [NuGet package](https://www.nuget.org/packages/RocksDb.Net.Runtimes))
 - `Microsoft.Extensions.Logging.Abstractions` 8.0 or later, installed with the package, for `UseLogging`
 

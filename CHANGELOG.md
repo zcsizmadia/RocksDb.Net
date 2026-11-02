@@ -12,6 +12,8 @@ Same RocksDb version, so a revision bump: everything here is additive.
 
 ### Added
 
+- **.NET 11 target.** The package now ships a `net11.0` assembly beside the
+  net8.0, net9.0 and net10.0 ones, and the test suite runs on it in CI.
 - **`ContainsKey`**, an exact existence check, on `RocksDb`, `TransactionDb`
   and `Transaction`. `KeyMayExist` consults only the bloom filters and can
   answer yes for an absent key; this is a real read, so it is always right,

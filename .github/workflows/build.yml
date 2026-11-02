@@ -36,6 +36,16 @@ jobs:
           9.0.x
           10.0.x
 
+    - name: Setup .NET 11 SDK
+      uses: actions/setup-dotnet@v6
+      with:
+        # A step of its own because dotnet-quality applies to every version in
+        # a step, and the 8, 9 and 10 channels have no preview to resolve.
+        # Preview admits the release candidates until .NET 11 ships and the GA
+        # builds after it, so dropping the line then changes nothing.
+        dotnet-version: 11.0.x
+        dotnet-quality: preview
+
     - name: Build
       shell: bash
       run: |

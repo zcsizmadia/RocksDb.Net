@@ -60,6 +60,15 @@ jobs:
           dotnet-version: |
             10.0.x
 
+      - name: Install the .NET 11 SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          # Building the net11.0 assembly needs it. A step of its own for the
+          # same reason as in build.yml: dotnet-quality applies to every version
+          # in a step.
+          dotnet-version: 11.0.x
+          dotnet-quality: preview
+
       - name: Check the tag is on main
         shell: bash
         run: |
