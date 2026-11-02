@@ -231,6 +231,77 @@ public class BlockBasedTableOptionsPropertyTests
         Assert.Equal(prepopulate, opts.PrepopulateBlockCache);
     }
 
+    [Fact]
+    public void OptimizeKeyCommonPrefix_DefaultsToIfFastSeek()
+    {
+        using var opts = new BlockBasedTableOptions();
+
+        Assert.Equal(OptimizeKeyCommonPrefix.IfFastSeek, opts.OptimizeKeyCommonPrefix);
+    }
+
+    [Theory]
+    [InlineData(OptimizeKeyCommonPrefix.Disabled)]
+    [InlineData(OptimizeKeyCommonPrefix.IfFastSeek)]
+    [InlineData(OptimizeKeyCommonPrefix.Enabled)]
+    public void OptimizeKeyCommonPrefix_RoundTrips(OptimizeKeyCommonPrefix value)
+    {
+        using var opts = new BlockBasedTableOptions();
+
+        opts.OptimizeKeyCommonPrefix = value;
+        Assert.Equal(value, opts.OptimizeKeyCommonPrefix);
+    }
+
+    /// <summary>
+    /// At format version 8, storing the shared prefix once makes the files
+    /// smaller for keys that share a long prefix, and they still read back.
+    /// </summary>
+    /// <remarks>
+    /// Compares against the same data written with the optimization off, so a
+    /// native library that ignored the setting would fail rather than pass.
+    /// </remarks>
+    [Fact]
+    public void OptimizeKeyCommonPrefix_AtFormatVersion8_ShrinksPrefixHeavyFiles()
+    {
+        ulong disabled = WritePrefixHeavyTable(OptimizeKeyCommonPrefix.Disabled);
+        ulong enabled = WritePrefixHeavyTable(OptimizeKeyCommonPrefix.Enabled);
+
+        Assert.True(enabled < disabled, $"{enabled} bytes with the optimization, {disabled} without");
+    }
+
+    private static ulong WritePrefixHeavyTable(OptimizeKeyCommonPrefix optimize)
+    {
+        using var dir = new TempDir();
+        using var table = new BlockBasedTableOptions
+        {
+            FormatVersion = 8,
+            OptimizeKeyCommonPrefix = optimize,
+        };
+
+        var options = new DbOptions { CreateIfMissing = true, Compression = Compression.None };
+        options.BlockBasedTableFactory = table;
+
+        using RocksDb db = RocksDb.Open(options, dir.Path);
+
+        const string Prefix = "tenant/0000000042/collection/orders/document/";
+        for (int i = 0; i < 2000; i++)
+        {
+            db.Put($"{Prefix}{i:D6}", "v");
+        }
+
+        db.Flush();
+
+        Assert.Equal("v", db.GetString($"{Prefix}001234"));
+
+        using (Iterator it = db.NewIterator())
+        {
+            it.Seek($"{Prefix}001999");
+            Assert.True(it.IsValid());
+            Assert.Equal($"{Prefix}001999", it.KeyAsString());
+        }
+
+        return db.GetPropertyInt("rocksdb.total-sst-files-size")!.Value;
+    }
+
     /// <summary>
     /// Each of these round-trips both ways on its own, without moving any of
     /// the others.

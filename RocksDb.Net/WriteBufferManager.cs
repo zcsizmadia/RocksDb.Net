@@ -60,6 +60,85 @@ public sealed class WriteBufferManager : RocksDbHandle
     }
 
     /// <summary>
+    /// Creates a manager with a budget of <paramref name="bufferSize"/> bytes
+    /// that picks what to flush by <paramref name="flushPolicy"/>.
+    /// </summary>
+    /// <param name="bufferSize">
+    /// The total memtable budget. Zero disables the manager, which then tracks
+    /// usage without enforcing anything.
+    /// </param>
+    /// <param name="flushPolicy">Which memtable to flush when the budget is exceeded.</param>
+    /// <param name="allowStall">
+    /// Whether writers are stalled when the budget is exhausted. When false, the
+    /// budget is enforced by flushing sooner rather than by blocking.
+    /// </param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="flushPolicy"/> is not a defined value.</exception>
+    public static WriteBufferManager Create(ulong bufferSize, WriteBufferFlushPolicy flushPolicy, bool allowStall = false)
+    {
+        ThrowIfUndefined(flushPolicy);
+
+        return new(NativeMethods.rocksdb_write_buffer_manager_create_with_policy(
+            checked((nuint)bufferSize), allowStall ? (byte)1 : (byte)0, (int)flushPolicy));
+    }
+
+    /// <summary>
+    /// Creates a manager that charges its memory against
+    /// <paramref name="cache"/> and picks what to flush by
+    /// <paramref name="flushPolicy"/>.
+    /// </summary>
+    /// <remarks>
+    /// See <see cref="Create(ulong, Cache, bool)"/> for what charging the cache
+    /// does.
+    /// </remarks>
+    /// <param name="bufferSize">The total memtable budget, in bytes.</param>
+    /// <param name="cache">The cache the memtable memory is charged against.</param>
+    /// <param name="flushPolicy">Which memtable to flush when the budget is exceeded.</param>
+    /// <param name="allowStall">Whether writers are stalled when the budget is exhausted.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="cache"/> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="flushPolicy"/> is not a defined value.</exception>
+    public static WriteBufferManager Create(
+        ulong bufferSize, Cache cache, WriteBufferFlushPolicy flushPolicy, bool allowStall = false)
+    {
+        ArgumentNullException.ThrowIfNull(cache);
+        ThrowIfUndefined(flushPolicy);
+
+        nint handle = NativeMethods.rocksdb_write_buffer_manager_create_with_cache_and_policy(
+            checked((nuint)bufferSize), cache.Handle, allowStall ? (byte)1 : (byte)0, (int)flushPolicy);
+        GC.KeepAlive(cache);
+
+        return new WriteBufferManager(handle);
+    }
+
+    /// <summary>
+    /// Which memtable is flushed when the budget is exceeded. Defaults to
+    /// <see cref="WriteBufferFlushPolicy.Oldest"/>, RocksDb's historical
+    /// behaviour.
+    /// </summary>
+    /// <remarks>
+    /// Can be changed while databases are using the manager.
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException">The value is not a defined value.</exception>
+    public WriteBufferFlushPolicy FlushPolicy
+    {
+        get => (WriteBufferFlushPolicy)NativeMethods.rocksdb_write_buffer_manager_flush_policy(Handle);
+        set
+        {
+            // RocksDb ignores a value it does not recognise, so the assignment
+            // would appear to succeed and change nothing.
+            ThrowIfUndefined(value);
+            NativeMethods.rocksdb_write_buffer_manager_set_flush_policy(Handle, (int)value);
+        }
+    }
+
+    private static void ThrowIfUndefined(WriteBufferFlushPolicy policy)
+    {
+        if (!Enum.IsDefined(policy))
+        {
+            throw new ArgumentOutOfRangeException(nameof(policy), policy, "Not a defined WriteBufferFlushPolicy.");
+        }
+    }
+
+    /// <summary>
     /// Whether the manager is enforcing a budget, which it is only when the
     /// buffer size is non-zero.
     /// </summary>
@@ -118,4 +197,28 @@ public sealed class WriteBufferManager : RocksDbHandle
     {
         NativeMethods.rocksdb_write_buffer_manager_destroy(Handle);
     }
+}
+
+/// <summary>
+/// Which memtable a <see cref="WriteBufferManager"/> flushes when its budget is
+/// exceeded.
+/// </summary>
+/// <remarks>
+/// The values are the <c>rocksdb_write_buffer_manager_flush_policy_*</c>
+/// constants in <c>c.h</c>, which the C API translates to
+/// <c>WriteBufferFlushPolicy</c> in <c>include/rocksdb/write_buffer_manager.h</c>.
+/// </remarks>
+public enum WriteBufferFlushPolicy
+{
+    /// <summary>Flush the oldest mutable memtable. RocksDb's historical behaviour, and the default.</summary>
+    Oldest = 0,
+
+    /// <summary>Flush the largest mutable memtable in the database that hit the limit.</summary>
+    Largest = 1,
+
+    /// <summary>
+    /// Flush the database that would free the most memory, among every database
+    /// sharing this manager.
+    /// </summary>
+    LargestAcrossDbs = 2,
 }

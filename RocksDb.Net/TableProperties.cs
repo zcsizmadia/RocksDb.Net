@@ -92,8 +92,22 @@ public sealed record TableProperties
     /// <summary>Identifier of the column family this file belongs to.</summary>
     public ulong ColumnFamilyId { get; init; }
 
-    /// <summary>Unix timestamp at which the oldest data in this file was written, or 0 if unknown.</summary>
-    public ulong CreationTime { get; init; }
+    /// <summary>
+    /// Unix timestamp at which the oldest data in this file was written, or 0 if
+    /// unknown. For a compaction output that is the oldest time among the files
+    /// it was made from, not when this file was created; see
+    /// <see cref="FileCreationTime"/> for that.
+    /// </summary>
+    public ulong OldestAncestorTime { get; init; }
+
+    /// <summary>The former name of <see cref="OldestAncestorTime"/>.</summary>
+    /// <remarks>
+    /// RocksDb 11.12 renamed the property because "creation time" read as the
+    /// file's own creation time, which it is not. The old name is kept, as it is
+    /// upstream, as an alias that will go in a later RocksDb version.
+    /// </remarks>
+    [Obsolete("Renamed to OldestAncestorTime, which is what it holds. Use FileCreationTime for when the file was created.")]
+    public ulong CreationTime => OldestAncestorTime;
 
     /// <summary>Unix timestamp of the oldest key in this file, or 0 if unknown.</summary>
     public ulong OldestKeyTime { get; init; }
@@ -109,9 +123,6 @@ public sealed record TableProperties
 
     /// <summary>Estimated data size had the faster compression been used, in bytes.</summary>
     public ulong FastCompressionEstimatedDataSize { get; init; }
-
-    /// <summary>Offset of the global sequence number for an ingested external file.</summary>
-    public ulong ExternalSstFileGlobalSeqnoOffset { get; init; }
 
     /// <summary>Offset at which the file's metadata tail begins, in bytes.</summary>
     public ulong TailStartOffset { get; init; }
@@ -247,13 +258,12 @@ public sealed record TableProperties
             FormatVersion = NativeMethods.rocksdb_table_properties_format_version(props),
             FixedKeyLen = NativeMethods.rocksdb_table_properties_fixed_key_len(props),
             ColumnFamilyId = NativeMethods.rocksdb_table_properties_column_family_id(props),
-            CreationTime = NativeMethods.rocksdb_table_properties_creation_time(props),
+            OldestAncestorTime = NativeMethods.rocksdb_table_properties_oldest_ancestor_time(props),
             OldestKeyTime = NativeMethods.rocksdb_table_properties_oldest_key_time(props),
             NewestKeyTime = NativeMethods.rocksdb_table_properties_newest_key_time(props),
             FileCreationTime = NativeMethods.rocksdb_table_properties_file_creation_time(props),
             SlowCompressionEstimatedDataSize = NativeMethods.rocksdb_table_properties_slow_compression_estimated_data_size(props),
             FastCompressionEstimatedDataSize = NativeMethods.rocksdb_table_properties_fast_compression_estimated_data_size(props),
-            ExternalSstFileGlobalSeqnoOffset = NativeMethods.rocksdb_table_properties_external_sst_file_global_seqno_offset(props),
             TailStartOffset = NativeMethods.rocksdb_table_properties_tail_start_offset(props),
             UserDefinedTimestampsPersisted = NativeMethods.rocksdb_table_properties_user_defined_timestamps_persisted(props) != 0,
             KeyLargestSeqno = NativeMethods.rocksdb_table_properties_key_largest_seqno(props),

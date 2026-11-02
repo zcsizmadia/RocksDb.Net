@@ -98,6 +98,7 @@ public sealed class RocksDbMetrics : IDisposable
         "rocksdb.block-cache-pinned-usage",
         "rocksdb.num-running-compactions",
         "rocksdb.num-running-flushes",
+        "rocksdb.num-unscheduled-compactions",
         "rocksdb.background-errors",
         "rocksdb.is-write-stopped",
         "rocksdb.actual-delayed-write-rate",

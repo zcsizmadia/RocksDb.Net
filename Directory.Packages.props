@@ -28,12 +28,12 @@
       packaging or rebuild fix ships as, and excludes the next one, which needs
       regenerated bindings and a new release of this package.
 
-      The floor is revision 2, not 1. Revision 1 shipped the native binaries
-      with no attribution for the third-party libraries alongside them, and
-      those licences ask for their notices to travel with the binaries. Since
-      revision 2 is what carries them, anyone installing this package should
-      get it rather than being free to resolve the revision that does not.
+      The floor is the first revision of the runtimes package for this RocksDb
+      version that is fit to ship, so check it on every RocksDbVersion bump. For
+      11.8.1 it was revision 2, because revision 1 shipped the native binaries
+      without the third-party licence notices those libraries ask to travel
+      with them. For 11.12.0 revision 1 already carries them.
     -->
-    <PackageVersion Include="RocksDb.Net.Runtimes" Version="[$(RocksDbVersion).2, $(RocksDbVersionNextPatch))" />
+    <PackageVersion Include="RocksDb.Net.Runtimes" Version="[$(RocksDbVersion).1, $(RocksDbVersionNextPatch))" />
   </ItemGroup>
 </Project>

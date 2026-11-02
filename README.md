@@ -8,7 +8,7 @@ A modern C# wrapper for [RocksDb](https://rocksdb.org/), the high-performance em
 [![NuGet](https://img.shields.io/nuget/v/RocksDb.Net.svg)](https://www.nuget.org/packages/RocksDb.Net)
 [![Downloads](https://img.shields.io/nuget/dt/RocksDb.Net.svg)](https://www.nuget.org/packages/RocksDb.Net)
 [![.NET](https://img.shields.io/badge/.NET-8.0%20%7C%209.0%20%7C%2010.0-512BD4)](https://dotnet.microsoft.com/)
-[![RocksDb](https://img.shields.io/badge/RocksDb-11.8.1-blue)](https://github.com/facebook/rocksdb/releases/tag/v11.8.1)
+[![RocksDb](https://img.shields.io/badge/RocksDb-11.12.0-blue)](https://github.com/facebook/rocksdb/releases/tag/v11.12)
 [![License](https://img.shields.io/badge/license-MIT%20%2B%20Apache--2.0-green)](https://github.com/zcsizmadia/RocksDb.Net/blob/main/LICENSE)
 
 **[API reference](https://zcsizmadia.github.io/RocksDb.Net/)** · [Guides](https://zcsizmadia.github.io/RocksDb.Net/articles/getting-started.html) · [Samples](https://github.com/zcsizmadia/RocksDb.Net/tree/main/Samples) · [Changelog](https://github.com/zcsizmadia/RocksDb.Net/blob/main/CHANGELOG.md)
@@ -55,15 +55,17 @@ A modern C# wrapper for [RocksDb](https://rocksdb.org/), the high-performance em
 
 ## Versioning
 
-The package version is `<RocksDbVersion>.<Revision>`, so `11.8.1.1` wraps RocksDb 11.8.1.
+The package version is `<RocksDbVersion>.<Revision>`, so `11.12.0.1` wraps RocksDb 11.12.0.
 
-Breaking changes land only when the RocksDb version changes. A revision bump alone, such as `11.8.1.1` to `11.8.1.2`, never breaks compatibility.
+Breaking changes land only when the RocksDb version changes. A revision bump alone, such as `11.12.0.1` to `11.12.0.2`, never breaks compatibility.
 
 The dependency on the native `RocksDb.Net.Runtimes` package is bounded to
-revisions of the same RocksDb version, currently `[11.8.1.2, 11.8.2)`. The
+revisions of the same RocksDb version, currently `[11.12.0.1, 11.12.1)`. The
 P/Invoke declarations are generated from exactly that version's `c.h`, so a
 runtimes package built from a different RocksDb version could disagree with them
 about the native ABI, and nothing would catch it at build or load time.
+
+**Upgrading from 11.8.1.x to 11.12.0.1 has small breaking changes,** all following RocksDb itself: `IngestExternalFileOptions.WriteGlobalSeqno` and `TableProperties.ExternalSstFileGlobalSeqnoOffset` are gone, and `TableProperties.CreationTime` is an obsolete alias of `OldestAncestorTime`. See the [changelog](https://github.com/zcsizmadia/RocksDb.Net/blob/main/CHANGELOG.md).
 
 **Upgrading from 11.1.2.1 to 11.8.1.1 has breaking changes.** See the [changelog](https://github.com/zcsizmadia/RocksDb.Net/blob/main/CHANGELOG.md#breaking-changes) for the full list and migrations. In short: the 12 deprecated fluent setters on `DbOptions` are gone in favour of the properties that replaced them, `FlushWal` requires its `sync` argument on both database types, `options.EventListener = x` becomes `options.AddEventListener(x)`, the size options that were `nuint` are `ulong`, `ReadTier`, `Checksum` and `VerifyOutputFlags` are enums, and a handful of members that could not work are removed.
 
@@ -379,7 +381,7 @@ dotnet run --project Samples/BasicSample
 ```text
 RocksDb.Net/
 ├── Native/
-│   ├── NativeMethods.g.cs        # Generated P/Invoke bindings (1,745 functions)
+│   ├── NativeMethods.g.cs        # Generated P/Invoke bindings (1,768 functions)
 │   └── NativeMethods.Helpers.cs  # Native library resolver and helpers
 ├── RocksDb.cs                    # Main database class
 ├── DbOptions.cs                  # Database configuration options

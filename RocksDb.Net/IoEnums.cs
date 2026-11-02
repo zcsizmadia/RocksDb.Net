@@ -52,6 +52,9 @@ public enum IoActivity
     /// <summary>Reading file checksums out of the current manifest.</summary>
     GetFileChecksumsFromCurrentManifest = 10,
 
+    /// <summary>Resolving blob-backed columns of a lazily read wide-column entity.</summary>
+    LazyResolve = 11,
+
     /// <summary>The first value available for application-defined activities.</summary>
     FirstCustom = 0x80,
 

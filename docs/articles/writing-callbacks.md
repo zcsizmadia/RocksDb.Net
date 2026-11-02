@@ -193,12 +193,15 @@ This is the callback with the sharpest lifetime rule, and the wrapper handles it
 
 ## Event listener
 
-An event listener observes background work. Override only the events you want:
+An event listener observes background work. Override the events you want, and name them in `Subscribed`:
 
 ```csharp
 public sealed class FlushWatcher : EventListener
 {
     private long _flushes;
+
+    protected override EventKinds Subscribed
+        => EventKinds.FlushCompleted | EventKinds.BackgroundError;
 
     public long Flushes => Interlocked.Read(ref _flushes);
 
@@ -214,6 +217,8 @@ public sealed class FlushWatcher : EventListener
 var options = new DbOptions { CreateIfMissing = true };
 options.AddEventListener(new FlushWatcher());
 ```
+
+`Subscribed` is optional, and worth setting. It defaults to every event, so a listener that leaves it alone still has an info object built for each event it does not override, roughly doubling what a flush allocates. Overriding fewer events does not change that; narrowing `Subscribed` does. An event you override but leave out of `Subscribed` is not delivered, so a test that drives the listener will catch the omission.
 
 Note the `Interlocked` calls. Most listener callbacks run on RocksDb's background threads, concurrently when several flushes or compactions are in flight, so a listener that accumulates anything must be thread-safe. `OnMemTableSealed` is the exception and runs on the writer's thread, which is not a reason to skip the synchronisation: the same listener still hears the rest from elsewhere.
 

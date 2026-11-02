@@ -25,7 +25,7 @@ public class StatisticsEnumTests
     {
         int[] values = [.. Enum.GetValues<Ticker>().Select(v => (int)v).Order()];
 
-        Assert.Equal(263, values.Length);
+        Assert.Equal(267, values.Length);
         Assert.Equal(0, values[0]);
 
         // Positional values, so a gap means the generator dropped a member and

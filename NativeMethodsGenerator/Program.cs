@@ -101,13 +101,50 @@ else
 var outputPath = Path.Combine(projectDir, "Native", "NativeMethods.g.cs");
 var statisticsOutputPath = Path.Combine(projectDir, "StatisticsEnums.g.cs");
 
-var url = string.Format(HeaderUrlTemplate, resolvedVersion, "c.h");
-var statisticsUrl = string.Format(HeaderUrlTemplate, resolvedVersion, "statistics.h");
-var statisticsNamesUrl = string.Format(SourceUrlTemplate, resolvedVersion, "monitoring/statistics.cc");
+using var http = new HttpClient();
+
+// ── Find the tag ────────────────────────────────────────────────────────────
+
+// Upstream does not always tag the version the way it is pinned here: 11.12.0
+// is tagged v11.12. Each candidate is probed with c.h, the file needed anyway,
+// and the first that exists is used for all three downloads, so they cannot
+// come from different tags. See UpstreamTag.
+string? tag = null;
+string? headerText = null;
+
+foreach (string candidate in UpstreamTag.Candidates(resolvedVersion))
+{
+    using HttpResponseMessage response =
+        await http.GetAsync(string.Format(HeaderUrlTemplate, candidate.TrimStart('v'), "c.h"));
+
+    if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+    {
+        continue;
+    }
+
+    response.EnsureSuccessStatusCode();
+    tag = candidate;
+    headerText = await response.Content.ReadAsStringAsync();
+    break;
+}
+
+if (tag is null)
+{
+    Console.Error.WriteLine(
+        $"Error: no upstream tag found for RocksDb {resolvedVersion}. Tried: " +
+        string.Join(", ", UpstreamTag.Candidates(resolvedVersion)) + ".");
+    return 1;
+}
+
+string tagVersion = tag.TrimStart('v');
+var url = string.Format(HeaderUrlTemplate, tagVersion, "c.h");
+var statisticsUrl = string.Format(HeaderUrlTemplate, tagVersion, "statistics.h");
+var statisticsNamesUrl = string.Format(SourceUrlTemplate, tagVersion, "monitoring/statistics.cc");
 
 // ── Say what is about to happen ─────────────────────────────────────────────
 
 Console.WriteLine($"RocksDb version : {resolvedVersion}  (from {versionSource})");
+Console.WriteLine($"Upstream tag    : {tag}");
 Console.WriteLine($"Project         : {Path.GetFullPath(projectDir)}");
 Console.WriteLine();
 Console.WriteLine("Generating:");
@@ -123,23 +160,14 @@ Console.WriteLine();
 // Two headers, because the statistics counters are not declared in c.h.
 // The C API takes them as plain integers, so nothing about them reaches a
 // caller unless they are read from where they are actually defined.
-string headerText;
-string statisticsHeaderText;
-string statisticsSourceText;
-
 Console.WriteLine("Fetching headers ...");
+Console.WriteLine($"  c.h            {headerText!.Length,9:N0} characters");
 
-using (var http = new HttpClient())
-{
-    headerText = await http.GetStringAsync(url);
-    Console.WriteLine($"  c.h            {headerText.Length,9:N0} characters");
+string statisticsHeaderText = await http.GetStringAsync(statisticsUrl);
+Console.WriteLine($"  statistics.h   {statisticsHeaderText.Length,9:N0} characters");
 
-    statisticsHeaderText = await http.GetStringAsync(statisticsUrl);
-    Console.WriteLine($"  statistics.h   {statisticsHeaderText.Length,9:N0} characters");
-
-    statisticsSourceText = await http.GetStringAsync(statisticsNamesUrl);
-    Console.WriteLine($"  statistics.cc  {statisticsSourceText.Length,9:N0} characters");
-}
+string statisticsSourceText = await http.GetStringAsync(statisticsNamesUrl);
+Console.WriteLine($"  statistics.cc  {statisticsSourceText.Length,9:N0} characters");
 
 // ── Parse and write ─────────────────────────────────────────────────────────
 
