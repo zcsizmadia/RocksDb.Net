@@ -225,6 +225,14 @@ jobs:
         dotnet-version: |
           10.0.x
 
+    - name: Install the .NET 11 SDK
+      uses: actions/setup-dotnet@v6
+      with:
+        # The samples are net10.0, but restoring them restores the library they
+        # reference, and that targets net11.0 too, which only this SDK knows.
+        dotnet-version: 11.0.x
+        dotnet-quality: preview
+
     - name: Install the AOT toolchain
       # ILC needs a native linker. Nothing else in the build does, so this is
       # the only job that pays for it.
@@ -273,6 +281,14 @@ jobs:
       with:
         dotnet-version: |
           10.0.x
+
+    - name: Install the .NET 11 SDK
+      uses: actions/setup-dotnet@v6
+      with:
+        # Only net10.0 runs here, but restore covers every target framework
+        # of the test project, and net11.0 needs this SDK to restore at all.
+        dotnet-version: 11.0.x
+        dotnet-quality: preview
 
     - name: Install the 32-bit runtime
       # setup-dotnet installs the 64-bit runtime, and `dotnet test -a x86` needs
