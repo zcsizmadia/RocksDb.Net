@@ -16,7 +16,7 @@
     <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="10.0.12" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
     <PackageVersion Include="xunit.v3" Version="4.0.1" />
-    <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.1" />
     <!--
       Bounded, not open-ended. The P/Invoke declarations in NativeMethods.g.cs
       are generated from exactly this RocksDb version's c.h, so a runtimes
