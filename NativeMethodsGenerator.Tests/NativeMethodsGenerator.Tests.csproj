@@ -2,6 +2,13 @@
 
   <PropertyGroup>
     <!--
+      Stated here although xunit.v3 sets it too, so restore sees an executable
+      and fetches the app host pack for the runtime asked for. See the comment
+      in RocksDb.Net.Tests.csproj.
+    -->
+    <OutputType>Exe</OutputType>
+
+    <!--
       One framework, not three. This tests a build-time tool that only ever runs
       on the SDK's own runtime, so multi-targeting it would triple the run for
       no coverage of anything.
