@@ -2,6 +2,16 @@
 
   <PropertyGroup>
     <TargetFrameworks>$(DefaultClassLibTargetFrameworks)</TargetFrameworks>
+
+    <!--
+      Stated here although xunit.v3 sets it too. The package sets it from its
+      own props, and those are only imported once restore has run, so restore
+      itself sees a Library and fetches no app host pack. For x64 that goes
+      unnoticed, because the SDK ships that app host in the box; the 32-bit CI
+      leg (`dotnet test -a x86`) then fails on a clean checkout, unable to copy
+      a win-x86 apphost.exe that restore never downloaded.
+    -->
+    <OutputType>Exe</OutputType>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
 
