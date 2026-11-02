@@ -16,7 +16,7 @@
       an embedded key-value store is a natural dependency for exactly the
       deployments that care, and those users will try it.
 
-      Per target framework, and this library multi-targets, so every target is
+      Per target framework, and this library multi-targets, so all three are
       analysed.
     -->
     <IsAotCompatible>true</IsAotCompatible>

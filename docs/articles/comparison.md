@@ -8,7 +8,7 @@ It reflects both projects as of October 2026: RocksDb.Net 11.8.1.3 and `RocksDB`
 
 | | RocksDb.Net | rocksdb-sharp |
 | --- | --- | --- |
-| Target frameworks | .NET 8, 9, 10, 11 | netstandard2.0 and 2.1, netcoreapp3.1, .NET 5 to 10 |
+| Target frameworks | .NET 8, 9, 10 | netstandard2.0 and 2.1, netcoreapp3.1, .NET 5 to 10 |
 | .NET Framework | No | Yes, through netstandard2.0 |
 | NativeAOT and trimming | Supported; CI publishes and runs AOT samples | Not possible: the bindings are generated at run time with `Reflection.Emit` |
 | How the bindings are made | Generated from `c.h` at build time as `LibraryImport` declarations | One class generated at run time, loaded through `dlopen` or `LoadLibrary` |

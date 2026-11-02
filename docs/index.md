@@ -10,7 +10,7 @@ dotnet add package RocksDb.Net
 
 The native binaries come from the [RocksDb.Net.Runtimes](https://www.nuget.org/packages/RocksDb.Net.Runtimes) package, which the main package depends on.
 
-Targets .NET 8.0, 9.0, 10.0 and 11.0.
+Targets .NET 8.0, 9.0 and 10.0.
 
 ## Quick start
 
