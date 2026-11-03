@@ -247,6 +247,15 @@ public class ResourceGovernanceTests
         Assert.Equal(value, b.GetString("key03996"));
 
         // About 5 MB was written into a 1 MB budget, so something was flushed.
+        // The budget switches memtables on the write path, but the flush itself
+        // runs in the background, and on a slow runner (the 32-bit leg) it had
+        // not finished when the sizes were read. WaitForCompact waits for work
+        // already scheduled without flushing anything itself (Flush is off), so
+        // any SST still has to come from the budget.
+        using var waitOptions = new WaitForCompactOptions { Flush = false, TimeoutMicros = 30_000_000 };
+        a.WaitForCompact(waitOptions);
+        b.WaitForCompact(waitOptions);
+
         ulong sstBytes = a.GetPropertyInt("rocksdb.total-sst-files-size")!.Value
             + b.GetPropertyInt("rocksdb.total-sst-files-size")!.Value;
         Assert.True(sstBytes > 0, "the shared budget should have forced a flush");
