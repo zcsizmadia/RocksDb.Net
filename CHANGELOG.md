@@ -6,7 +6,7 @@ The package version is `<RocksDbVersion>.<Revision>`, so `11.8.1.1` wraps RocksD
 
 Breaking changes land only when `RocksDbVersion` changes. A revision bump alone, `11.8.1.1` to `11.8.1.2`, never breaks source or binary compatibility. A RocksDb version bump already means a different native library and a required re-test, which is the point at which API cleanup costs least.
 
-## Unreleased
+## 11.12.0.1
 
 Upgrades the native library from RocksDb 11.8.1 to 11.12.0, which added 26 exported C functions and removed three, taking the bindings from 1,745 to 1,768. RocksDb tagged this release `v11.12`; the package keeps the three-part `11.12.0`, as `RocksDb.Net.Runtimes` does.
 
