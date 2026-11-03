@@ -10,7 +10,7 @@ dotnet add package RocksDb.Net
 
 The native binaries come from the [RocksDb.Net.Runtimes](https://www.nuget.org/packages/RocksDb.Net.Runtimes) package, which the main package depends on.
 
-Targets .NET 8.0, 9.0 and 10.0.
+Targets .NET 8.0 and 10.0, and runs on any later .NET.
 
 ## Quick start
 
@@ -41,4 +41,4 @@ string? value = db.GetString("key");
 
 ## Versioning
 
-The package version is `<RocksDbVersion>.<Revision>`, so `11.8.1.1` wraps RocksDb 11.8.1. Breaking changes land only when the RocksDb version changes; a revision bump alone never breaks compatibility. See the [changelog](https://github.com/zcsizmadia/RocksDb.Net/blob/main/CHANGELOG.md).
+The package version is `<RocksDbVersion>.<Revision>`, so `11.12.0.1` wraps RocksDb 11.12.0. Breaking changes land only when the RocksDb version changes; a revision bump alone never breaks compatibility. See the [changelog](https://github.com/zcsizmadia/RocksDb.Net/blob/main/CHANGELOG.md).

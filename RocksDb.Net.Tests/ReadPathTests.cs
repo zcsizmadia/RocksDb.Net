@@ -164,6 +164,51 @@ public class ReadPathTests
     }
 
     /// <summary>
+    /// An empty value is found, not missing: the pinned batch reports both with
+    /// a zero length, and only the result state tells them apart.
+    /// </summary>
+    [Fact]
+    public void MultiGet_DistinguishesAnEmptyValueFromAMissingKey()
+    {
+        using var db = new TempDb();
+        ColumnFamilyHandle cf = db.Db.GetDefaultColumnFamily();
+        db.Db.Put("empty"u8, ReadOnlySpan<byte>.Empty);
+
+        byte[]?[] values = db.Db.MultiGet(["empty"u8.ToArray(), "missing"u8.ToArray()], cf);
+
+        Assert.NotNull(values[0]);
+        Assert.Empty(values[0]!);
+        Assert.Null(values[1]);
+    }
+
+    /// <summary>
+    /// Since RocksDb 11.12, a block-cache-only read fails for a key whose block
+    /// is not cached, as <c>Get</c> always did, instead of reading it from disk.
+    /// </summary>
+    [Fact]
+    public void MultiGet_BlockCacheTier_FailsForUncachedKeysAndReadsCachedOnes()
+    {
+        using var db = new TempDb();
+
+        for (int i = 0; i < 100; i++)
+        {
+            db.Db.Put($"key{i:D3}", $"value{i}");
+        }
+
+        db.Db.Flush();
+
+        byte[][] keys = [.. Enumerable.Range(0, 100).Select(i => Encoding.UTF8.GetBytes($"key{i:D3}"))];
+        using var cacheOnly = new ReadOptions { ReadTier = ReadTier.BlockCache };
+
+        RocksDbException ex = Assert.Throws<RocksDbException>(() => db.Db.MultiGet(keys, cacheOnly));
+        Assert.Contains("Incomplete", ex.Message, StringComparison.OrdinalIgnoreCase);
+
+        // An ordinary read fills the cache, after which the same read succeeds.
+        Assert.All(db.Db.MultiGet(keys), v => Assert.NotNull(v));
+        Assert.Equal("value42", Encoding.UTF8.GetString(db.Db.MultiGet(keys, cacheOnly)[42]!));
+    }
+
+    /// <summary>
     /// Keys in reverse order, since the batched read sorts them internally:
     /// results have to come back in the order asked for.
     /// </summary>

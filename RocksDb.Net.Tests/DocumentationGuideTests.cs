@@ -598,6 +598,9 @@ public class DocumentationGuideTests
     {
         private long _flushes;
 
+        protected override EventKinds Subscribed
+            => EventKinds.FlushCompleted | EventKinds.BackgroundError;
+
         public long Flushes => Interlocked.Read(ref _flushes);
 
         public override void OnFlushCompleted(FlushJobInfo info)

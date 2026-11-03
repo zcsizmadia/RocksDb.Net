@@ -48,7 +48,7 @@ otherwise ship, and the first person to notice would be a user.
 | Suite | Question |
 | --- | --- |
 | `CallbackBenchmarks` | What does a managed comparator cost against RocksDb's own? This is the payoff of converting the callbacks to function pointers, which was argued without a number. |
-| `EventListenerBenchmarks` | Is a notification the listener does not want cheap? Decides whether the reflection that gates the ten event slots can simply be dropped. |
+| `EventListenerBenchmarks` | Is a notification the listener does not want cheap, and what does narrowing `EventListener.Subscribed` save? Decided how the reflection that used to gate the ten event slots was replaced. |
 | `ReadBenchmarks` | Do the three read tiers actually differ, and does the gap widen with value size? The README's zero-copy claim rests on this. |
 | `MultiGetBenchmarks` | Is batching worth restructuring calling code for, against a plain loop? |
 | `IteratorBenchmarks` | Does a full scan allocate? The `ref struct` iterator claim lives in the allocation column, not the time column. |

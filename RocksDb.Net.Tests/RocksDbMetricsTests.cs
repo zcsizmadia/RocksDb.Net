@@ -132,6 +132,9 @@ public class RocksDbMetricsTests
         Assert.Contains(measurements, m => m.Name == "rocksdb.estimate-num-keys");
         Assert.Contains(measurements, m => m.Name == "rocksdb.is-write-stopped");
 
+        // New in RocksDb 11.9, so present only if the native library knows it.
+        Assert.Contains(measurements, m => m.Name == "rocksdb.num-unscheduled-compactions");
+
         // No statistics, so no tickers rather than a column of zeros.
         Assert.DoesNotContain(measurements, m => m.Name == "rocksdb.number.keys.written");
     }

@@ -13,7 +13,7 @@ namespace RocksDbNet.Tests;
 /// </para>
 /// <para>
 /// So each table below is exhaustive, and the expected numbers are transcribed
-/// from RocksDb 11.8.1: <c>CompactionReason</c>, <c>FlushReason</c> and
+/// from RocksDb 11.12.0: <c>CompactionReason</c>, <c>FlushReason</c> and
 /// <c>BackgroundErrorReason</c> from <c>include/rocksdb/listener.h</c>, and
 /// <c>WriteStallCondition</c> from <c>include/rocksdb/types.h</c>. Three of the
 /// four are positional in the header, so inserting a member shifts everything

@@ -57,7 +57,7 @@ Instruments are created on a meter called `RocksDb.Net` and named as RocksDb nam
 | Histograms, such as `rocksdb.db.get.micros` | `ObservableGauge<double>` tagged `quantile` 0.5, 0.95, 0.99 and 1.0 (the maximum), plus counters `<name>.count` and `<name>.sum` | RocksDb keeps summaries, not samples. Need statistics. |
 | Properties, such as `rocksdb.estimate-num-keys` | `ObservableGauge<long>` | Totals are summed over every column family; database-wide values such as the shared block cache are read once. Need nothing. |
 
-The properties exported are the ones usually watched: memtable size, block cache usage and pinned usage, pending compaction bytes, running flushes and compactions, estimated keys, live data and SST file sizes, background errors, whether writes are stopped, and the delayed write rate.
+The properties exported are the ones usually watched: memtable size, block cache usage and pinned usage, pending compaction bytes, running flushes and compactions, compactions queued but not yet running, estimated keys, live data and SST file sizes, background errors, whether writes are stopped, and the delayed write rate.
 
 ### Statistics, and what they cost
 

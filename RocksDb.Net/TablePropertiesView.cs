@@ -62,8 +62,12 @@ public sealed class TablePropertiesView
     /// <summary>Total size of all values before compression or encoding, in bytes.</summary>
     public ulong RawValueSize => NativeMethods.rocksdb_table_properties_raw_value_size(Props);
 
-    /// <summary>Unix timestamp at which the oldest data in this file was written, or 0 if unknown.</summary>
-    public ulong CreationTime => NativeMethods.rocksdb_table_properties_creation_time(Props);
+    /// <inheritdoc cref="TableProperties.OldestAncestorTime"/>
+    public ulong OldestAncestorTime => NativeMethods.rocksdb_table_properties_oldest_ancestor_time(Props);
+
+    /// <inheritdoc cref="TableProperties.CreationTime"/>
+    [Obsolete("Renamed to OldestAncestorTime, which is what it holds. Use FileCreationTime for when the file was created.")]
+    public ulong CreationTime => OldestAncestorTime;
 
     /// <summary>Unix timestamp of the oldest key in this file, or 0 if unknown.</summary>
     public ulong OldestKeyTime => NativeMethods.rocksdb_table_properties_oldest_key_time(Props);

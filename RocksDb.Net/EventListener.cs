@@ -15,9 +15,11 @@ namespace RocksDbNet;
 /// </para>
 /// <para>
 /// What narrowing saves is the construction of the job-info object an event
-/// carries, which is measurable: a listener overriding five of the ten events
-/// allocates about twice what one overriding none does, while the boundary
-/// crossing itself costs nothing detectable. See the benchmarks.
+/// carries, which is measurable: a listener receiving flush events allocates
+/// about twice what one subscribed to none does, while the boundary crossing
+/// itself costs nothing detectable. Overriding nothing is not enough on its
+/// own; with the default subscription the info objects are still built. See
+/// the benchmarks.
 /// </para>
 /// </remarks>
 [Flags]
@@ -402,9 +404,10 @@ public abstract class EventListener : RocksDbHandle
     /// <para>
     /// What it bought is worth keeping, so this is the same saving stated
     /// explicitly rather than inferred: an event nobody wants costs no job-info
-    /// object. That is the measurable part — a listener overriding five events
-    /// allocates about twice what one overriding none does, while the boundary
-    /// crossing itself costs nothing detectable.
+    /// object. That is the measurable part — a listener receiving flush events
+    /// allocates about twice what one subscribed to none does, while the
+    /// boundary crossing itself costs nothing detectable. Unlike the reflection
+    /// check, overriding nothing does not opt out: narrow this to do that.
     /// </para>
     /// <para>
     /// Read when an event arrives rather than cached at construction, so an

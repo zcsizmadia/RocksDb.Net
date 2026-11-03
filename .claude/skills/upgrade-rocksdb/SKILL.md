@@ -39,6 +39,12 @@ The generator takes no arguments in normal use. It reads the version from
 `RocksDb.Net/Native/StatisticsEnums.g.cs`, printing what it is doing and where.
 `--version` and `--project` override the defaults if needed.
 
+Upstream does not always tag in three parts: 11.12.0 is tagged `v11.12`. The
+pinned version stays three-part (it is the package version's prefix, and
+`RocksDb.Net.Runtimes` pins the same number), and the generator falls back to
+the two-part tag for a `.0` patch (`UpstreamTag`). Use the real tag in the
+`curl` commands below.
+
 **Never hand-edit the generated files.** If a declaration is wrong, the defect
 is in the generator: `CHeaderParser.cs` (parsing), `PInvokeGenerator.cs` (type
 mapping and emission), `CppEnumParser.cs` and `StatisticsEnumGenerator.cs`
@@ -204,8 +210,14 @@ dotnet docfx docs/docfx.json --warningsAsErrors
 ```
 
 CI runs the suite on ubuntu, macos and windows, because the native library is
-platform-specific. There is **no 32-bit leg**, so nothing in the suite exercises
-the `size_t` hazards above — those have to be reasoned about, not tested.
+platform-specific, plus a 32-bit leg (`dotnet test -a x86` on Windows), the
+only one that can catch the `size_t` hazards above.
+
+If the new `RocksDb.Net.Runtimes` is not on nuget.org yet (it can sit in
+validation for a while), restore from its GitHub release instead: download the
+`.nupkg` into an empty folder and pass a `nuget.config` that lists nuget.org
+plus that folder with `dotnet restore --configfile`. Keep that config out of
+the repository; CI cannot pass until the package is public.
 
 Then follow the `release` skill.
 

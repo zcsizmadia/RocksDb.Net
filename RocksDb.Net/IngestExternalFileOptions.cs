@@ -62,17 +62,6 @@ public sealed class IngestExternalFileOptions : RocksDbHandle
     }
 
     /// <summary>
-    /// When <c>true</c>, the assigned global sequence number is written into the
-    /// ingested file. When <c>false</c>, it is held in the manifest instead,
-    /// which leaves the file itself unmodified.
-    /// </summary>
-    public bool WriteGlobalSeqno
-    {
-        get => NativeMethods.rocksdb_ingestexternalfileoptions_get_write_global_seqno(Handle) != 0;
-        set => NativeMethods.rocksdb_ingestexternalfileoptions_set_write_global_seqno(Handle, value ? (byte)1 : (byte)0);
-    }
-
-    /// <summary>
     /// When <c>true</c>, the ingest operation may wait and block ongoing flushes.
     /// Defaults to <c>true</c>.
     /// </summary>
