@@ -342,7 +342,7 @@ internal static unsafe partial class NativeMethods
     }
 
     /// <summary>
-    /// Copies and frees every value a batched read returned, frees every error,
+    /// Copies and frees every <c>malloc</c> value a batched read returned, frees every error,
     /// and then throws for the first error if there was one.
     /// </summary>
     /// <remarks>
@@ -352,11 +352,7 @@ internal static unsafe partial class NativeMethods
     /// exception is rethrown once they have been.
     /// </remarks>
     /// <param name="batch">The batch the read wrote its results into.</param>
-    /// <param name="pinned">
-    /// Whether the value slots hold pinned slices, from the batched read, or
-    /// <c>malloc</c> buffers with their lengths, from <c>rocksdb_multi_get</c>.
-    /// </param>
-    internal static byte[]?[] CopyAndFreeBatch(in NativeKeyBatch batch, bool pinned)
+    internal static byte[]?[] CopyAndFreeBatch(in NativeKeyBatch batch)
     {
         var results = new byte[]?[batch.Count];
         Exception? copyFailure = null;
@@ -365,9 +361,7 @@ internal static unsafe partial class NativeMethods
         {
             try
             {
-                results[i] = pinned
-                    ? CopyPinnedAndDestroy(batch.Values[i])
-                    : CopyAndFree(batch.Values[i], batch.ValueSizes[i]);
+                results[i] = CopyAndFree(batch.Values[i], batch.ValueSizes[i]);
             }
             catch (Exception e)
             {

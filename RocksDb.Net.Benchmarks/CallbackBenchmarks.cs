@@ -92,21 +92,40 @@ public class CallbackBenchmarks
 /// What an event listener costs when it does not want the event.
 /// </summary>
 /// <remarks>
-/// Directly the question in #153. Today a reflection check at construction
-/// decides which of the ten slots a subclass overrode, and the alternative is
-/// to notify unconditionally and let an un-overridden virtual return. That is
-/// simpler and needs no reflection, and it is only wrong if the notification
-/// itself is expensive. Flushes are the event this can produce on demand.
+/// <para>
+/// Written for #153, when a reflection check decided which of the ten slots a
+/// subclass overrode. The answer it gave, that the boundary crossing is free
+/// and building each event's info object is what costs, is why #156 replaced
+/// that check with <see cref="EventListener"/>'s <c>Subscribed</c> rather than
+/// notifying unconditionally.
+/// </para>
+/// <para>
+/// <c>Subscribed</c> defaults to every event, so a listener that overrides
+/// nothing still pays for every info object; the saving is opted into by
+/// narrowing it. The rows below measure both. Flushes are the event this can
+/// produce on demand.
+/// </para>
 /// </remarks>
 [MemoryDiagnoser]
 public class EventListenerBenchmarks
 {
-    /// <summary>Overrides nothing, so every notification is wasted work.</summary>
+    /// <summary>
+    /// Overrides nothing but keeps the default subscription, so every event's
+    /// info object is built and then ignored.
+    /// </summary>
     private sealed class SilentListener : EventListener
     {
     }
 
-    /// <summary>Overrides everything, so every notification is marshalled in full.</summary>
+    /// <summary>
+    /// Overrides nothing and subscribes to nothing, so no info object is built.
+    /// </summary>
+    private sealed class UnsubscribedListener : EventListener
+    {
+        protected override EventKinds Subscribed => EventKinds.None;
+    }
+
+    /// <summary>Overrides five events, each marshalled in full.</summary>
     private sealed class LoudListener : EventListener
     {
         public long Seen;
@@ -131,6 +150,9 @@ public class EventListenerBenchmarks
 
     [Benchmark(Description = "Flushes with a listener that overrides nothing")]
     public void ListenerOverridingNothing() => Flush(new SilentListener());
+
+    [Benchmark(Description = "Flushes with a listener subscribed to nothing")]
+    public void ListenerSubscribedToNothing() => Flush(new UnsubscribedListener());
 
     [Benchmark(Description = "Flushes with a listener that overrides five events")]
     public void ListenerOverridingEvents() => Flush(new LoudListener());

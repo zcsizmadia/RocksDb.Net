@@ -8,9 +8,77 @@ Breaking changes land only when `RocksDbVersion` changes. A revision bump alone,
 
 ## Unreleased
 
-Same RocksDb version, so a revision bump: everything here is additive.
+Upgrades the native library from RocksDb 11.8.1 to 11.12.0, which added 26 exported C functions and removed three, taking the bindings from 1,745 to 1,768. RocksDb tagged this release `v11.12`; the package keeps the three-part `11.12.0`, as `RocksDb.Net.Runtimes` does.
+
+### Breaking changes
+
+Only members that existed in 11.8.1.3 are listed.
+
+| Change | Migration |
+| -------- | ----------- |
+| Removed `IngestExternalFileOptions.WriteGlobalSeqno` | RocksDb 11.12 removed the option and its C API. The global sequence number is always kept in the MANIFEST now, and the file is never rewritten. Delete the line |
+| Removed `TableProperties.ExternalSstFileGlobalSeqnoOffset` | RocksDb 11.12 removed the property along with `WriteGlobalSeqno`, which was the only thing that wrote at that offset |
+| `TableProperties.CreationTime` is an obsolete alias of the new `OldestAncestorTime`, without an `init` accessor | RocksDb renamed it because it holds the oldest time among a file's ancestors, not the file's own creation time, which is `FileCreationTime`. Reading `CreationTime` still works with a warning; an object initializer that set it must set `OldestAncestorTime`. `TablePropertiesView.CreationTime` is an obsolete alias too |
+
+### Changed
+
+- **The package ships `net8.0` and `net10.0` assemblies, no longer
+  `net9.0`.** The library has no framework-specific code, so the three were
+  the same source compiled three times. A .NET 9 application now resolves the
+  `net8.0` assembly, with no change in behaviour and nothing to do; .NET 9
+  reaches end of support on November 10, 2026. Removing a framework is only
+  allowed on a RocksDb version bump, which is why it happens here.
+- **`MultiGet` within one column family makes one native allocation per
+  batch instead of one per value.** It uses RocksDb 11.9's
+  `rocksdb_batched_multi_get_pinned_cf`, which keeps the batch's pinned values
+  and errors in a single object, where the previous call allocated and then
+  destroyed a `rocksdb_pinnableslice_t` for each value found. Results, order
+  and errors are unchanged. `MultiGetPinned`, which hands out a disposable
+  slice per key, and `MultiGet` across column families use the calls they did.
+- **`MultiGet` with `ReadTier.BlockCache` no longer reads from disk.** This
+  is RocksDb 11.12's fix: a key whose data block is not cached now fails with
+  `Incomplete`, as `Get` already did, instead of silently doing the I/O the
+  tier was meant to rule out. Code that relied on the old behaviour to fetch
+  uncached keys will now see an exception for them.
+- **`EventListener.Subscribed` documentation corrected.** It said a listener
+  overriding no events allocates half what one overriding five does. That was
+  true of the reflection check it replaced in 11.8.1.2; since then, a listener
+  that overrides nothing still receives every event and builds its info
+  object. Override `Subscribed` to narrow it, which the benchmarks now measure:
+  subscribed to nothing, a listener allocates what no listener does.
+- **`RocksDb.Net.Runtimes` dependency** is `[11.12.0.1, 11.12.1)`. The floor
+  was revision 2 for 11.8.1 because revision 1 lacked the third-party licence
+  notices; the first 11.12.0 revision already carries them.
+- **The generator finds a two-part upstream tag.** It fetched `v11.12.0`,
+  which does not exist; for a `.0` patch it now falls back to `v11.12`, and
+  the generated files record the tag actually read.
 
 ### Added
+
+- **`IoActivity.LazyResolve`**, the activity RocksDb 11.12 reports while
+  resolving lazily read wide columns.
+- **Four new tickers**, `Ticker.BlobDbLazyReadCount`, `BlobDbLazyReadBytes`,
+  `BlobDbLazyPartialReadCount` and `BlobDbLazyPartialBytesSaved`, appended
+  after the existing ones, so no existing value moves.
+- **`TableProperties.OldestAncestorTime`** and
+  **`TablePropertiesView.OldestAncestorTime`**, the new name for
+  `CreationTime` (see above).
+- **`WriteBufferManager.FlushPolicy`** and the `WriteBufferFlushPolicy` enum,
+  with `Create` overloads that take one. When the budget is exceeded, a
+  manager can now flush the largest memtable instead of the oldest, or, with
+  `LargestAcrossDbs`, whichever database sharing it would free the most
+  memory. An undefined value throws, where RocksDb would silently ignore it.
+- **`BlockBasedTableOptions.OptimizeKeyCommonPrefix`**, which stores the key
+  prefix a block's keys share once rather than at every restart point. It
+  needs `FormatVersion = 8`, which is not the default, and files written that
+  way need RocksDb 11.10 or later to read.
+- **`DbOptions.BlobFileWritableFileMaxBufferSize`**, a write buffer size for
+  blob files separate from `WritableFileMaxBufferSize`.
+- **`DbOptions.PeriodicCompactionPhaseRecoveryPercent`** (experimental in
+  RocksDb), which spreads out periodic compactions across databases configured
+  alike so they stop arriving in a herd. RocksDb recommends 33.
+- **`rocksdb.num-unscheduled-compactions`** in `RocksDbMetrics`: compactions
+  queued but not yet given to a background thread.
 
 - **`ContainsKey`**, an exact existence check, on `RocksDb`, `TransactionDb`
   and `Transaction`. `KeyMayExist` consults only the bloom filters and can

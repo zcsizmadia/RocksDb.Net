@@ -914,7 +914,7 @@ public sealed class Transaction : RocksDbHandle
         }
 
         GC.KeepAlive(options);
-        return NativeMethods.CopyAndFreeBatch(batch, pinned: false);
+        return NativeMethods.CopyAndFreeBatch(batch);
     }
 
     private static byte[]? CopyAndFree(nint value, nuint length)

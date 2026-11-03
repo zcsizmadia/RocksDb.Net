@@ -2,7 +2,7 @@
 
 Everything public in the `RocksDbNet` namespace, generated from the source.
 
-The generated P/Invoke declarations in `RocksDbNet.Native` are excluded. There are 1745 of them and they are an implementation detail; use the wrapper types instead.
+The generated P/Invoke declarations in `RocksDbNet.Native` are excluded. There are 1768 of them and they are an implementation detail; use the wrapper types instead.
 
 ## Where to start
 

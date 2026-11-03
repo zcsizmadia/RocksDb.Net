@@ -159,12 +159,28 @@ public class ValueDecoderTests
         // one-off allocation per site rather than per call.
         Read(db.Db, 1);
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        long sum = Read(db.Db, 1000);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        // Measured in rounds, passing on the first clean one. The runtime can
+        // allocate on this thread once, partway through, when it recompiles a
+        // method that has got hot: a macOS net10.0 run counted 7,464 bytes over
+        // 1,000 calls, about 7 bytes a call, which no allocation per call can be.
+        // A real per-call allocation is at least 24 bytes a call and recurs in
+        // every round, so it still fails; a one-off does not come back.
+        var rounds = new List<long>();
+        for (int round = 0; round < 5; round++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            long sum = Read(db.Db, 1000);
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
-        Assert.Equal(8000, sum);
-        Assert.Equal(0, allocated);
+            Assert.Equal(8000, sum);
+            rounds.Add(allocated);
+            if (allocated == 0)
+            {
+                return;
+            }
+        }
+
+        Assert.Fail($"Allocated in every round: {string.Join(", ", rounds)} bytes per 1,000 calls.");
 
         static long Read(RocksDb db, int times)
         {

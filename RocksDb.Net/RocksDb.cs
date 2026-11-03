@@ -1048,7 +1048,7 @@ public sealed class RocksDb : RocksDbHandle
         // inside this loop, which is what the single-family version used to do,
         // leaked the values and error strings for every key after the first
         // failure.
-        return NativeMethods.CopyAndFreeBatch(batch, pinned: false);
+        return NativeMethods.CopyAndFreeBatch(batch);
     }
 
     /// <summary>
@@ -1056,23 +1056,103 @@ public sealed class RocksDb : RocksDbHandle
     /// batched read.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The batched read returns pinned values, so each is copied once, straight
     /// from the block cache or memtable. <c>rocksdb_multi_get</c> builds a
     /// <c>std::string</c> per value and then copies each into a fresh
     /// <c>malloc</c> buffer before the wrapper copies it again. It also sorts
     /// the keys and reads blocks in batches, which the per-key form does not.
+    /// </para>
+    /// <para>
+    /// <c>rocksdb_batched_multi_get_pinned_cf</c> (RocksDb 11.9) keeps every
+    /// pinned value and error in one object for the whole batch.
+    /// <c>rocksdb_batched_multi_get_cf</c> allocated a
+    /// <c>rocksdb_pinnableslice_t</c> per value found and a <c>strdup</c> per
+    /// error, each then destroyed by its own call; here the values are copied
+    /// out and the batch released with one.
+    /// </para>
     /// </remarks>
-    private byte[]?[] MultiGetSingleFamily(IReadOnlyList<byte[]> keys, ColumnFamilyHandle cf, ReadOptions? options)
+    private unsafe byte[]?[] MultiGetSingleFamily(IReadOnlyList<byte[]> keys, ColumnFamilyHandle cf, ReadOptions? options)
     {
         if (keys.Count == 0)
         {
             return [];
         }
 
-        using var batch = new NativeKeyBatch(keys);
-        BatchedMultiGet(batch, cf, sortedInput: false, options);
+        using var batch = new NativeSliceBatch(keys);
 
-        return NativeMethods.CopyAndFreeBatch(batch, pinned: true);
+        nint results = NativeMethods.rocksdb_batched_multi_get_pinned_cf(Handle,
+            (options ?? _defaultReadOptions).Handle, cf.Handle, (nuint)batch.Count, batch.Slices, sorted_input: 0);
+        GC.KeepAlive(options);
+
+        try
+        {
+            return CopyPinnedMultiGet(results, batch.Count);
+        }
+        finally
+        {
+            NativeMethods.rocksdb_pinnable_multi_get_destroy(results);
+        }
+    }
+
+    // The result states rocksdb_pinnable_multi_get_result returns, from an
+    // anonymous enum in c.h that the generator does not emit.
+    private const int PinnableMultiGetNotFound = 0;
+    private const int PinnableMultiGetFound = 1;
+    private const int PinnableMultiGetError = 2;
+
+    /// <summary>
+    /// Copies every value out of a <c>rocksdb_pinnable_multi_get_t</c>, then
+    /// throws for the first per-key error, if any.
+    /// </summary>
+    /// <remarks>
+    /// The values and messages are borrowed from <paramref name="results"/>, so
+    /// nothing here frees anything; the caller destroys the batch afterwards,
+    /// whether this returns or throws. Every value is copied before an error is
+    /// reported, the same order <c>CopyAndFreeBatch</c> keeps.
+    /// </remarks>
+    private static unsafe byte[]?[] CopyPinnedMultiGet(nint results, int count)
+    {
+        var values = new byte[]?[count];
+        string? firstError = null;
+
+        for (int i = 0; i < count; i++)
+        {
+            byte* value;
+            nuint valueSize;
+            byte* error;
+            nuint errorSize;
+
+            int state = NativeMethods.rocksdb_pinnable_multi_get_result(
+                results, (nuint)i, &value, &valueSize, &error, &errorSize);
+
+            switch (state)
+            {
+                case PinnableMultiGetFound:
+                    values[i] = valueSize == 0 ? [] : new ReadOnlySpan<byte>(value, checked((int)valueSize)).ToArray();
+                    break;
+
+                case PinnableMultiGetNotFound:
+                    break;
+
+                case PinnableMultiGetError:
+                    firstError ??= NativeMethods.PtrToStringUTF8(error, errorSize) ?? "Unknown RocksDb error";
+                    break;
+
+                default:
+                    // Out of bounds, which cannot happen for an index below the
+                    // count the batch was created with.
+                    throw new InvalidOperationException(
+                        $"rocksdb_pinnable_multi_get_result returned {state} for key {i} of {count}.");
+            }
+        }
+
+        if (firstError is not null)
+        {
+            throw new RocksDbException(firstError);
+        }
+
+        return values;
     }
 
     /// <summary>

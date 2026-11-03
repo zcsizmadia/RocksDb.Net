@@ -153,6 +153,34 @@ public enum PrepopulateBlockCache
 }
 
 /// <summary>
+/// When a block stores the user-key prefix all its keys share once, instead of
+/// at every restart point. Needs <see cref="BlockBasedTableOptions.FormatVersion"/>
+/// 8 or later.
+/// </summary>
+/// <remarks>
+/// Mirrored from <c>BlockBasedTableOptions::OptimizeKeyCommonPrefix</c> in
+/// <c>include/rocksdb/table.h</c> because the C API declares this parameter as a
+/// plain <c>int</c>.
+/// </remarks>
+public enum OptimizeKeyCommonPrefix
+{
+    /// <summary>Never.</summary>
+    Disabled = 0,
+
+    /// <summary>
+    /// Only where it also speeds up <c>Seek</c>, which is with the built-in
+    /// bytewise or reverse-bytewise comparator. The default.
+    /// </summary>
+    IfFastSeek = 1,
+
+    /// <summary>
+    /// With every comparator. Custom comparators get the smaller blocks but not
+    /// the faster seek, and pay a little read CPU to rebuild full keys.
+    /// </summary>
+    Enabled = 2,
+}
+
+/// <summary>
 /// Options for the block-based table format.
 /// Configure and then pass to <see cref="DbOptions.BlockBasedTableFactory"/>.
 /// Maps to <c>rocksdb_block_based_table_options_t</c>.
@@ -377,6 +405,23 @@ public sealed class BlockBasedTableOptions : RocksDbHandle
     {
         get => (PrepopulateBlockCache)NativeMethods.rocksdb_block_based_options_get_prepopulate_block_cache(Handle);
         set => NativeMethods.rocksdb_block_based_options_set_prepopulate_block_cache(Handle, (int)value);
+    }
+
+    /// <summary>
+    /// When data and index blocks store their keys' common prefix once.
+    /// Defaults to <see cref="OptimizeKeyCommonPrefix.IfFastSeek"/>.
+    /// </summary>
+    /// <remarks>
+    /// Shrinks blocks, and their block-cache footprint, for data whose keys
+    /// share long prefixes. It applies only at
+    /// <see cref="FormatVersion"/> 8 or later, which is not the default, and
+    /// only with <see cref="UseDeltaEncoding"/>; otherwise it does nothing. Files
+    /// written at format version 8 cannot be read by RocksDb before 11.10.
+    /// </remarks>
+    public OptimizeKeyCommonPrefix OptimizeKeyCommonPrefix
+    {
+        get => (OptimizeKeyCommonPrefix)NativeMethods.rocksdb_block_based_options_get_optimize_key_common_prefix(Handle);
+        set => NativeMethods.rocksdb_block_based_options_set_optimize_key_common_prefix(Handle, (int)value);
     }
 
     /// <summary>

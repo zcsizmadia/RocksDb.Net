@@ -492,7 +492,7 @@ public sealed class TransactionDb : RocksDbHandle
         }
 
         GC.KeepAlive(options);
-        return NativeMethods.CopyAndFreeBatch(batch, pinned: false);
+        return NativeMethods.CopyAndFreeBatch(batch);
     }
 
     /// <summary>Reads a UTF-8 key as a string, or <see langword="null"/> if absent.</summary>

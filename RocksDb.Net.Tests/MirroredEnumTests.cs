@@ -29,7 +29,7 @@ internal static class NativeEnum
 }
 
 /// <summary>
-/// Pins every enum the wrapper mirrors by hand against the RocksDb 11.8.1
+/// Pins every enum the wrapper mirrors by hand against the RocksDb 11.12.0
 /// numbers it is mirroring.
 /// </summary>
 /// <remarks>
@@ -432,6 +432,29 @@ public class MirroredEnumTests
             ("GetEntity", 8),
             ("MultiGetEntity", 9),
             ("GetFileChecksumsFromCurrentManifest", 10),
+            ("LazyResolve", 11),
             ("FirstCustom", 0x80),
             ("Unknown", 0xFF));
+
+    /// <summary>
+    /// From <c>BlockBasedTableOptions::OptimizeKeyCommonPrefix</c> in
+    /// <c>include/rocksdb/table.h</c>; the C API takes a plain <c>int</c>.
+    /// </summary>
+    [Fact]
+    public void OptimizeKeyCommonPrefix_MatchesTableHeader()
+        => NativeEnum.AssertExactly<OptimizeKeyCommonPrefix>(
+            ("Disabled", 0),
+            ("IfFastSeek", 1),
+            ("Enabled", 2));
+
+    /// <summary>
+    /// From the <c>rocksdb_write_buffer_manager_flush_policy_*</c> constants in
+    /// <c>c.h</c>, which is what the C API parses; anything else it rejects.
+    /// </summary>
+    [Fact]
+    public void WriteBufferFlushPolicy_MatchesCHeader()
+        => NativeEnum.AssertExactly<WriteBufferFlushPolicy>(
+            ("Oldest", 0),
+            ("Largest", 1),
+            ("LargestAcrossDbs", 2));
 }

@@ -29,11 +29,10 @@ jobs:
     - name: Setup .NET SDKs
       uses: actions/setup-dotnet@v6
       with:
-        # The 8 and 9 runtimes are needed to *run* the tests for those target
-        # frameworks, not just to build them.
+        # The 8 runtime is needed to *run* the net8.0 tests, not just to build
+        # them.
         dotnet-version: |
           8.0.x
-          9.0.x
           10.0.x
 
     - name: Build
@@ -48,7 +47,7 @@ jobs:
       shell: bash
       env:
         # Each test creates and deletes its own RocksDb database, so a run is a
-        # few thousand short-lived files, and the three target frameworks run
+        # few thousand short-lived files, and the target frameworks run
         # concurrently. On the Windows runner the default temp directory is on
         # the OS volume, which is markedly slower than the workspace volume that
         # RUNNER_TEMP points at. Path.GetTempPath honours TMP and TEMP, so this
@@ -293,6 +292,6 @@ jobs:
         # last ran past the end of the array. It was invisible everywhere else,
         # and it stayed invisible because nothing ran 32-bit.
         #
-        # One framework rather than three. This is about pointer width, which
+        # One framework rather than all of them. This is about pointer width, which
         # does not vary between them.
         dotnet test RocksDb.Net.Tests\RocksDb.Net.Tests.csproj -c Release -f net10.0 -a x86

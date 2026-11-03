@@ -806,6 +806,26 @@ public sealed class DbOptions : RocksDbHandle
         set => NativeMethods.rocksdb_options_set_periodic_compaction_seconds(Handle, value);
     }
 
+    /// <summary>
+    /// Experimental. How fast periodic compactions drift apart across databases
+    /// configured alike, as the percentage (0 to 100) of the gap to each file's
+    /// spread-out trigger time closed per period. 0, the default, disables it.
+    /// </summary>
+    /// <remarks>
+    /// Without it, a fleet of similar databases opened together reaches
+    /// <see cref="PeriodicCompactionSeconds"/> together and compacts in a herd,
+    /// which hurts most with remote compaction. RocksDb recommends 33. Files are
+    /// only ever compacted earlier than the interval, never later, except for
+    /// files already overdue when the database opens or the interval changes,
+    /// which are spread over the first quarter of the next interval. Values
+    /// outside 0 to 100 are clamped.
+    /// </remarks>
+    public int PeriodicCompactionPhaseRecoveryPercent
+    {
+        get => NativeMethods.rocksdb_options_get_periodic_compaction_phase_recovery_percent(Handle);
+        set => NativeMethods.rocksdb_options_set_periodic_compaction_phase_recovery_percent(Handle, value);
+    }
+
     /// <summary>Fraction of memtable size allocated to the prefix bloom filter (0.0 to 1.0).</summary>
     public double MemtablePrefixBloomSizeRatio
     {
@@ -834,6 +854,20 @@ public sealed class DbOptions : RocksDbHandle
     {
         get => NativeMethods.rocksdb_options_get_blob_file_size(Handle);
         set => NativeMethods.rocksdb_options_set_blob_file_size(Handle, value);
+    }
+
+    /// <summary>
+    /// Maximum size, in bytes, of the write buffer used when writing blob files.
+    /// 0, the default, uses <see cref="WritableFileMaxBufferSize"/>.
+    /// </summary>
+    /// <remarks>
+    /// Lets blob writes use a larger buffer than SST writes, which suits their
+    /// large sequential values. Can be changed on an open database.
+    /// </remarks>
+    public ulong BlobFileWritableFileMaxBufferSize
+    {
+        get => NativeMethods.rocksdb_options_get_blob_file_writable_file_max_buffer_size(Handle);
+        set => NativeMethods.rocksdb_options_set_blob_file_writable_file_max_buffer_size(Handle, value);
     }
 
     /// <summary>Enable garbage collection for blob files during compaction.</summary>

@@ -448,6 +448,50 @@ public class DbOptionsTests
     }
 
     [Fact]
+    public void PeriodicCompactionPhaseRecoveryPercent_DefaultsToDisabledAndRoundTrips()
+    {
+        using var opts = new DbOptions();
+
+        Assert.Equal(0, opts.PeriodicCompactionPhaseRecoveryPercent);
+
+        opts.PeriodicCompactionPhaseRecoveryPercent = 33;
+        Assert.Equal(33, opts.PeriodicCompactionPhaseRecoveryPercent);
+    }
+
+    [Fact]
+    public void BlobFileWritableFileMaxBufferSize_DefaultsToInheritAndRoundTrips()
+    {
+        using var opts = new DbOptions();
+
+        Assert.Equal(0UL, opts.BlobFileWritableFileMaxBufferSize);
+
+        opts.BlobFileWritableFileMaxBufferSize = 4 * 1024 * 1024;
+        Assert.Equal(4UL * 1024 * 1024, opts.BlobFileWritableFileMaxBufferSize);
+    }
+
+    /// <summary>
+    /// Blob files are still written and read back with their own buffer size
+    /// set, so the option reaches a working blob writer.
+    /// </summary>
+    [Fact]
+    public void BlobFileWritableFileMaxBufferSize_BlobsStillRoundTrip()
+    {
+        using var db = new TempDb(o =>
+        {
+            o.EnableBlobFiles = true;
+            o.MinBlobSize = 16;
+            o.BlobFileWritableFileMaxBufferSize = 256 * 1024;
+        });
+
+        string value = new('b', 4096);
+        db.Db.Put("blob", value);
+        db.Db.Flush();
+
+        Assert.Equal(value, db.Db.GetString("blob"));
+        Assert.True(db.Db.GetPropertyInt("rocksdb.num-blob-files") > 0, "the value should have gone to a blob file");
+    }
+
+    [Fact]
     public void MemtablePrefixBloomSizeRatio_GetSet()
     {
         using var opts = new DbOptions();

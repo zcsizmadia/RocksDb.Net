@@ -221,7 +221,6 @@ public class PerOperationOptionsTests
             (nameof(opts.LinkFiles), (o, v) => o.LinkFiles = v, o => o.LinkFiles),
             (nameof(opts.SnapshotConsistency), (o, v) => o.SnapshotConsistency = v, o => o.SnapshotConsistency),
             (nameof(opts.AllowGlobalSeqno), (o, v) => o.AllowGlobalSeqno = v, o => o.AllowGlobalSeqno),
-            (nameof(opts.WriteGlobalSeqno), (o, v) => o.WriteGlobalSeqno = v, o => o.WriteGlobalSeqno),
             (nameof(opts.AllowBlockingFlush), (o, v) => o.AllowBlockingFlush = v, o => o.AllowBlockingFlush),
             (nameof(opts.FailIfNotBottommostLevel), (o, v) => o.FailIfNotBottommostLevel = v, o => o.FailIfNotBottommostLevel),
             (nameof(opts.VerifyChecksumsBeforeIngest), (o, v) => o.VerifyChecksumsBeforeIngest = v, o => o.VerifyChecksumsBeforeIngest),

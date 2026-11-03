@@ -162,6 +162,105 @@ public class ResourceGovernanceTests
         manager.AllowStall = false;
     }
 
+    [Fact]
+    public void WriteBufferManager_FlushPolicy_DefaultsToOldestAndRoundTrips()
+    {
+        using WriteBufferManager manager = WriteBufferManager.Create(8 * 1024 * 1024);
+
+        Assert.Equal(WriteBufferFlushPolicy.Oldest, manager.FlushPolicy);
+
+        foreach (WriteBufferFlushPolicy policy in Enum.GetValues<WriteBufferFlushPolicy>())
+        {
+            manager.FlushPolicy = policy;
+            Assert.Equal(policy, manager.FlushPolicy);
+        }
+    }
+
+    [Theory]
+    [InlineData(WriteBufferFlushPolicy.Oldest)]
+    [InlineData(WriteBufferFlushPolicy.Largest)]
+    [InlineData(WriteBufferFlushPolicy.LargestAcrossDbs)]
+    public void WriteBufferManager_CreatedWithAPolicy_ReportsIt(WriteBufferFlushPolicy policy)
+    {
+        using WriteBufferManager plain = WriteBufferManager.Create(8 * 1024 * 1024, policy);
+        Assert.Equal(policy, plain.FlushPolicy);
+        Assert.False(plain.CostsToCache);
+
+        using Cache cache = Cache.CreateLru(16 * 1024 * 1024);
+        using WriteBufferManager charged = WriteBufferManager.Create(4 * 1024 * 1024, cache, policy, allowStall: true);
+        Assert.Equal(policy, charged.FlushPolicy);
+        Assert.True(charged.CostsToCache);
+    }
+
+    /// <summary>
+    /// RocksDb ignores a policy it does not recognise, and creating with one
+    /// returns null, so both are refused before they reach it.
+    /// </summary>
+    [Fact]
+    public void WriteBufferManager_UndefinedPolicy_IsRefused()
+    {
+        var undefined = (WriteBufferFlushPolicy)3;
+
+        using WriteBufferManager manager = WriteBufferManager.Create(8 * 1024 * 1024, WriteBufferFlushPolicy.Largest);
+        Assert.Throws<ArgumentOutOfRangeException>(() => manager.FlushPolicy = undefined);
+        Assert.Equal(WriteBufferFlushPolicy.Largest, manager.FlushPolicy);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => WriteBufferManager.Create(1024, undefined));
+
+        using Cache cache = Cache.CreateLru(1024 * 1024);
+        Assert.Throws<ArgumentOutOfRangeException>(() => WriteBufferManager.Create(1024, cache, undefined));
+        Assert.Throws<ArgumentNullException>(() => WriteBufferManager.Create(1024, null!, WriteBufferFlushPolicy.Oldest));
+    }
+
+    /// <summary>
+    /// Two databases sharing a small budget under the cross-database policy
+    /// both keep working, and the budget forces flushes rather than letting
+    /// memtable memory grow without bound.
+    /// </summary>
+    [Fact]
+    public void WriteBufferManager_LargestAcrossDbs_SharedBetweenDatabases()
+    {
+        using var dirA = new TempDir();
+        using var dirB = new TempDir();
+        using WriteBufferManager manager = WriteBufferManager.Create(
+            1024 * 1024, WriteBufferFlushPolicy.LargestAcrossDbs);
+
+        var optsA = new DbOptions { CreateIfMissing = true };
+        optsA.WriteBufferManager = manager;
+        var optsB = new DbOptions { CreateIfMissing = true };
+        optsB.WriteBufferManager = manager;
+
+        using RocksDb a = RocksDb.Open(optsA, dirA.Path);
+        using RocksDb b = RocksDb.Open(optsB, dirB.Path);
+
+        string value = new('v', 1024);
+        for (int i = 0; i < 4000; i++)
+        {
+            a.Put($"key{i:D5}", value);
+            if (i % 4 == 0)
+            {
+                b.Put($"key{i:D5}", value);
+            }
+        }
+
+        Assert.Equal(value, a.GetString("key03999"));
+        Assert.Equal(value, b.GetString("key03996"));
+
+        // About 5 MB was written into a 1 MB budget, so something was flushed.
+        // The budget switches memtables on the write path, but the flush itself
+        // runs in the background, and on a slow runner (the 32-bit leg) it had
+        // not finished when the sizes were read. WaitForCompact waits for work
+        // already scheduled without flushing anything itself (Flush is off), so
+        // any SST still has to come from the budget.
+        using var waitOptions = new WaitForCompactOptions { Flush = false, TimeoutMicros = 30_000_000 };
+        a.WaitForCompact(waitOptions);
+        b.WaitForCompact(waitOptions);
+
+        ulong sstBytes = a.GetPropertyInt("rocksdb.total-sst-files-size")!.Value
+            + b.GetPropertyInt("rocksdb.total-sst-files-size")!.Value;
+        Assert.True(sstBytes > 0, "the shared budget should have forced a flush");
+    }
+
     /// <summary>
     /// A zero budget means the manager tracks without enforcing, which is what
     /// RocksDb calls disabled.
