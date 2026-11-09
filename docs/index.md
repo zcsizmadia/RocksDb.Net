@@ -41,4 +41,4 @@ string? value = db.GetString("key");
 
 ## Versioning
 
-The package version is `<RocksDbVersion>.<Revision>`, so `11.12.0.1` wraps RocksDb 11.12.0. Breaking changes land only when the RocksDb version changes; a revision bump alone never breaks compatibility. See the [changelog](https://github.com/zcsizmadia/RocksDb.Net/blob/main/CHANGELOG.md).
+The package version is `<RocksDbVersion>.<Revision>`, so `11.13.2.1` wraps RocksDb 11.13.2. Breaking changes land only when the RocksDb version changes; a revision bump alone never breaks compatibility. See the [changelog](https://github.com/zcsizmadia/RocksDb.Net/blob/main/CHANGELOG.md).

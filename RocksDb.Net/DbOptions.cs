@@ -2103,6 +2103,31 @@ public sealed class DbOptions : RocksDbHandle
     }
 
     /// <summary>
+    /// Whether each durable OPTIONS file is committed by a MANIFEST record that
+    /// names its file number (experimental in RocksDb). Default is
+    /// <see langword="false"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Without it, the newest OPTIONS file on disk is taken as current, even one
+    /// that was written but never committed. With it, an OPTIONS file written by
+    /// a tracking writer is ignored until the MANIFEST commits its number, and
+    /// creating or dropping a column family commits the OPTIONS file and the
+    /// membership change in the same record.
+    /// </para>
+    /// <para>
+    /// Older RocksDb versions ignore the MANIFEST record, but must know the
+    /// option to parse the OPTIONS files written with it, so a version you might
+    /// roll back to needs RocksDb 11.13 or later before this is enabled.
+    /// </para>
+    /// </remarks>
+    public bool TrackOptionsFileNumberInManifest
+    {
+        get => NativeMethods.rocksdb_options_get_track_options_file_number_in_manifest(Handle) != 0;
+        set => NativeMethods.rocksdb_options_set_track_options_file_number_in_manifest(Handle, value ? (byte)1 : (byte)0);
+    }
+
+    /// <summary>
     /// Whether writes may be applied out of order. Default is
     /// <see langword="false"/>.
     /// </summary>

@@ -97,6 +97,37 @@ public class DbOptionsPropertyTests
     }
 
     [Fact]
+    public void TrackOptionsFileNumberInManifest_GetSet()
+    {
+        using var opts = new DbOptions();
+        Assert.False(opts.TrackOptionsFileNumberInManifest);
+
+        opts.TrackOptionsFileNumberInManifest = true;
+        Assert.True(opts.TrackOptionsFileNumberInManifest);
+
+        opts.TrackOptionsFileNumberInManifest = false;
+        Assert.False(opts.TrackOptionsFileNumberInManifest);
+    }
+
+    [Fact]
+    public void TrackOptionsFileNumberInManifest_PersistsAndTracksColumnFamilies()
+    {
+        using var dir = new TempDir();
+        using (var opts = new DbOptions { CreateIfMissing = true, TrackOptionsFileNumberInManifest = true })
+        using (var db = RocksDb.Open(opts, dir.Path))
+        using (var cfOpts = new DbOptions())
+        {
+            db.CreateColumnFamily(cfOpts, "kept");
+            db.DropColumnFamily(db.CreateColumnFamily(cfOpts, "dropped"));
+        }
+
+        using LoadedOptions loaded = LoadedOptions.LoadLatest(dir.Path);
+        Assert.True(loaded.DatabaseOptions.TrackOptionsFileNumberInManifest);
+        Assert.Contains("kept", loaded.ColumnFamilyNames);
+        Assert.DoesNotContain("dropped", loaded.ColumnFamilyNames);
+    }
+
+    [Fact]
     public void BestEffortsRecovery_GetSet()
     {
         using var opts = new DbOptions();
