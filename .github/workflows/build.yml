@@ -34,6 +34,7 @@ jobs:
         dotnet-version: |
           8.0.x
           10.0.x
+          11.0.x
 
     - name: Build
       shell: bash
@@ -54,6 +55,13 @@ jobs:
         # moves that churn onto the faster disk.
         TMP: ${{ runner.temp }}
         TEMP: ${{ runner.temp }}
+        # From the .NET 11 SDK, vstest fails the run, even with every test
+        # passed, when its test session directory can be opened by users other
+        # than its owner. On the ubuntu-24.04-arm runner the one it creates
+        # under /run/user/1001 fails that check, and pointing XDG_RUNTIME_DIR
+        # at a private directory does not move it. The runner is a throwaway
+        # single-user VM, so the check guards nothing here.
+        VSTEST_DISABLE_ARTIFACTS_DIRECTORY_VERIFICATION: 1
       run: |
         # --blame-hang turns a hung test run into a report naming the test that
         # stopped responding, instead of the job stalling until the six-hour
@@ -260,8 +268,11 @@ jobs:
     - name: Install .NET SDKs
       uses: actions/setup-dotnet@v6
       with:
+        # Only net10.0 runs here, but restore covers every target framework
+        # of the test project, and net11.0 needs the 11 SDK to restore at all.
         dotnet-version: |
           10.0.x
+          11.0.x
 
     - name: Install the 32-bit runtime
       # setup-dotnet installs the 64-bit runtime, and `dotnet test -a x86` needs

@@ -1,7 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>$(DefaultClassLibTargetFrameworks)</TargetFrameworks>
+    <!--
+      Every framework the package ships for, plus the newest runtime, which the
+      package deliberately does not ship an assembly for. On net11.0 these tests
+      exercise the net10.0 library assembly, the one a .NET 11 app resolves, so
+      this is what checks the package works there.
+    -->
+    <TargetFrameworks>$(DefaultClassLibTargetFrameworks);net11.0</TargetFrameworks>
 
     <!--
       Stated here although xunit.v3 sets it too. The package sets it from its

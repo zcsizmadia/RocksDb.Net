@@ -55,7 +55,7 @@ Several of these protections exist because a test reproduced the crash they prev
 
 **How it is tested and released:**
 
-- More than 1,300 tests run on net8.0 and net10.0. CI runs on Windows x64 and x86, Linux x64 and arm64, and macOS, plus a NativeAOT job.
+- More than 1,300 tests run on net8.0, net10.0 and net11.0. CI runs on Windows x64 and x86, Linux x64 and arm64, and macOS, plus a NativeAOT job.
 - Packing fails on any change that would break a caller compiled against the previous release.
 - A symbols package with Source Link ships alongside each release.
 - Every code snippet in these guides is compiled and run as a test.
