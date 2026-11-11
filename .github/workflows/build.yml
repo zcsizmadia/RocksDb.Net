@@ -34,16 +34,7 @@ jobs:
         dotnet-version: |
           8.0.x
           10.0.x
-
-    - name: Setup .NET 11 SDK
-      uses: actions/setup-dotnet@v6
-      with:
-        # A step of its own because dotnet-quality applies to every version in
-        # a step, and the 8 and 10 channels have no preview to resolve.
-        # Preview admits the release candidates until .NET 11 ships and the GA
-        # builds after it, so dropping the line then changes nothing.
-        dotnet-version: 11.0.x
-        dotnet-quality: preview
+          11.0.x
 
     - name: Build
       shell: bash
@@ -270,16 +261,11 @@ jobs:
     - name: Install .NET SDKs
       uses: actions/setup-dotnet@v6
       with:
+        # Only net10.0 runs here, but restore covers every target framework
+        # of the test project, and net11.0 needs the 11 SDK to restore at all.
         dotnet-version: |
           10.0.x
-
-    - name: Install the .NET 11 SDK
-      uses: actions/setup-dotnet@v6
-      with:
-        # Only net10.0 runs here, but restore covers every target framework
-        # of the test project, and net11.0 needs this SDK to restore at all.
-        dotnet-version: 11.0.x
-        dotnet-quality: preview
+          11.0.x
 
     - name: Install the 32-bit runtime
       # setup-dotnet installs the 64-bit runtime, and `dotnet test -a x86` needs
